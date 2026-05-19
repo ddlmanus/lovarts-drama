@@ -1,4 +1,4 @@
-# 🎬 Huobao Drama - AI 短剧生成平台
+# 🎬 Lovarts Drama - AI 短剧生成平台
 
 <div align="center">
 
@@ -16,10 +16,10 @@
 
 ## 📖 项目简介
 
-Huobao Drama 是一个基于 AI 的短剧自动化生产平台，实现从剧本生成、角色设计、分镜制作到视频合成的全流程自动化。
+Lovarts.AI Drama 是一个基于 AI 的短剧自动化生产平台，实现从剧本生成、角色设计、分镜制作到视频合成的全流程自动化。
 
-火宝短剧商业版地址：[火宝短剧商业版](https://drama.chatfire.site/shortvideo)
-火宝小说生成：[火宝小说生成](https://marketing.chatfire.site/huobao-novel/)
+Lovarts.AI商业版地址：[Lovarts.AI商业版](https://lovarts.art/)
+Lovarts.AI商业版源码购买地址：[Lovarts。AI](联系邮箱：18202773184@163.com)
 
 ### 🎯 核心价值
 
@@ -155,7 +155,7 @@ cp configs/config.example.yaml configs/config.yaml
 
 ```yaml
 app:
-  name: "Huobao Drama API"
+  name: "Lovarts Drama API"
   version: "1.0.0"
   debug: true
 
@@ -167,7 +167,7 @@ server:
 
 database:
   type: "sqlite"
-  path: "./data/huobao_drama.db"
+  path: "./data/Lovarts_drama.db"
 
 storage:
   type: "local"
@@ -186,8 +186,8 @@ ai:
 
 ```bash
 # 克隆项目
-git clone https://github.com/chatfire-AI/huobao-drama.git
-cd huobao-drama
+git clone https://github.com/chatfire-AI/Lovarts-drama.git
+cd Lovarts-drama
 
 # 安装后端依赖
 cd backend && npm install
@@ -232,7 +232,7 @@ cd ../backend && npm start
 
 ### 🗄️ 数据库
 
-数据库表在首次启动时自动创建，无需手动迁移。默认路径 `data/huobao_drama.db`，可通过环境变量覆盖：
+数据库表在首次启动时自动创建，无需手动迁移。默认路径 `data/Lovarts_drama.db`，可通过环境变量覆盖：
 
 ```bash
 DB_PATH=/path/to/your.db npm start
@@ -244,7 +244,7 @@ DB_PATH=/path/to/your.db npm start
 
 ### ☁️ 云端一键部署（推荐 3080Ti）
 
-👉 [优云智算，一键部署](https://www.compshare.cn/images/fScvzK95NUk5?referral_code=8hUJOaWz3YzG64FI2OlCiB&ytag=GPU_YY_YX_GitHub_huobaoai)
+👉 [优云智算，一键部署](https://www.compshare.cn/images/fScvzK95NUk5?referral_code=8hUJOaWz3YzG64FI2OlCiB&ytag=GPU_YY_YX_GitHub_Lovartsai)
 
 > ⚠️ **注意**：云端部署方案数据请及时存储到本地
 
@@ -270,15 +270,15 @@ docker compose down
 ```bash
 # 从 Docker Hub 运行
 docker run -d \
-  --name huobao-drama \
+  --name Lovarts-drama \
   -p 5679:5679 \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/configs/config.yaml:/app/configs/config.yaml \
   --restart unless-stopped \
-  huobao/huobao-drama:latest
+  Lovarts/Lovarts-drama:latest
 
 # 查看日志
-docker logs -f huobao-drama
+docker logs -f Lovarts-drama
 ```
 
 > **注意**：Linux 用户需添加 `--add-host=host.docker.internal:host-gateway` 以访问宿主机服务
@@ -286,11 +286,11 @@ docker logs -f huobao-drama
 **本地构建**（可选）：
 
 ```bash
-docker build -t huobao-drama:latest .
-docker run -d --name huobao-drama -p 5679:5679 \
+docker build -t Lovarts-drama:latest .
+docker run -d --name Lovarts-drama -p 5679:5679 \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/configs/config.yaml:/app/configs/config.yaml \
-  huobao-drama:latest
+  Lovarts-drama:latest
 ```
 
 **Docker 部署优势：**
@@ -476,7 +476,7 @@ cd ../frontend && npm run build
 - 🏠 **位置**: 中国南京
 - 🚀 **状态**: 创业中
 - 📧 **Email**: [18550175439@163.com](mailto:18550175439@163.com)
-- 🐙 **GitHub**: [https://github.com/chatfire-AI/huobao-drama](https://github.com/chatfire-AI/huobao-drama)
+- 🐙 **GitHub**: [https://github.com/chatfire-AI/Lovarts-drama](https://github.com/chatfire-AI/Lovarts-drama)
 
 > _"让 AI 帮我们做更有创造力的事"_
 
@@ -501,7 +501,7 @@ cd ../frontend && npm run build
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=chatfire-AI/huobao-drama&type=date&legend=top-left)](https://www.star-history.com/#chatfire-AI/huobao-drama&type=date&legend=top-left)
-Made with ❤️ by Huobao Team
+[![Star History Chart](https://api.star-history.com/svg?repos=chatfire-AI/Lovarts-drama&type=date&legend=top-left)](https://www.star-history.com/#chatfire-AI/Lovarts-drama&type=date&legend=top-left)
+Made with ❤️ by L o v a r t s Team
 
 </div>
