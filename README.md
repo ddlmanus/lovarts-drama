@@ -2,7 +2,7 @@
   <img src="./frontend/public/huobao-logo.png" width="88" alt="Lovarts Drama Logo" />
 </p>
 
-<h1 align="center">Lovarts Drama / 火宝短剧</h1>
+<h1 align="center">Lovarts Drama / Lovarts短剧</h1>
 
 <p align="center">
   AI-native drama production workspace for scripts, storyboards, assets, video generation and node-based creative canvas.
@@ -29,7 +29,8 @@
 </p>
 
 <p align="center">
-  <img src="./drama.png" alt="Lovarts Drama Preview" width="860" />
+
+  <img src="./6b284a8a-c265-4475-ada0-fc7815b1bcea.png" alt="Lovarts Drama Preview" width="860" />
 </p>
 
 ## Overview
