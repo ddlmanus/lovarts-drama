@@ -1,0 +1,74 @@
+.canvas-scope {
+  --bg-primary: #1f1f1f;
+  --bg-secondary: #252527;
+  --bg-tertiary: #343434;
+  --text-primary: #e5e7eb;
+  --text-secondary: #a0a0a0;
+  --border-color: rgba(255, 255, 255, 0.12);
+  --accent-color: #0a84ff;
+  --accent-hover: #0078ff;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.canvas-page-root,
+.canvas-page-root #__nuxt {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #1f1f1f;
+}
+
+.canvas-page-root * {
+  box-sizing: border-box;
+}
+
+.canvas-page-root button,
+.canvas-page-root textarea,
+.canvas-page-root input,
+.canvas-page-root select {
+  font: inherit;
+}
+
+.canvas-page-root button {
+  color: inherit;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.canvas-page-root button:disabled {
+  cursor: not-allowed;
+}
+
+.canvas-scope .vue-flow {
+  background-color: var(--bg-primary);
+}
+
+.canvas-scope .vue-flow__node {
+  border-radius: 8px;
+}
+
+.canvas-scope .vue-flow__edge-path {
+  stroke: var(--border-color);
+  stroke-width: 2;
+}
+
+.canvas-scope .vue-flow__handle {
+  width: 10px;
+  height: 10px;
+  background-color: var(--accent-color) !important;
+  border: 2px solid var(--bg-secondary);
+}

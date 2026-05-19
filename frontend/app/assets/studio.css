@@ -1,0 +1,323 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --chatfire-bg-common: #1f1f1f;
+  --chatfire-bg-primary-theme: #1f1f1f;
+  --chatfire-bg-primary: #242424;
+  --chatfire-bg-secondary: #2b2b2b;
+  --chatfire-bg-tertiary: #343434;
+  --chatfire-bg-elevated: #252527;
+  --chatfire-bg-hover: rgba(255, 255, 255, 0.08);
+
+  --chatfire-card-bg: #252527;
+  --chatfire-card-tag-bg: rgba(24, 24, 24, 0.72);
+  --chatfire-card-episode-bg: rgba(36, 36, 36, 0.92);
+  --chatfire-card-episode-border: rgba(255, 255, 255, 0.12);
+  --chatfire-card-episode-more-bg: rgba(52, 52, 52, 0.86);
+
+  --chatfire-episode-configured-bg: rgba(16, 185, 129, 0.16);
+  --chatfire-episode-configured-border: #10b981;
+  --chatfire-episode-progress-bg: rgba(59, 130, 246, 0.16);
+  --chatfire-episode-progress-border: #3b82f6;
+  --chatfire-episode-unconfigured-bg: rgba(107, 114, 128, 0.16);
+  --chatfire-episode-unconfigured-border: #6b7280;
+
+  --chatfire-color-primary: #0a84ff;
+  --chatfire-color-accent: #7c3aed;
+  --chatfire-primary: #0f7ad9;
+
+  --chatfire-text-primary: #e5e7eb;
+  --chatfire-text-secondary: #a0a0a0;
+  --chatfire-text-tertiary: #737373;
+  --chatfire-text-white: #ffffff;
+
+  --chatfire-border: #3a3a3a;
+  --chatfire-border-light: rgba(255, 255, 255, 0.08);
+  --chatfire-border-color: rgba(255, 255, 255, 0.08);
+  --chatfire-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --chatfire-shadow-hover: 0 8px 22px rgba(0, 0, 0, 0.42);
+  --chatfire-shadow-md: 0 8px 20px rgba(0, 0, 0, 0.28);
+
+  --bg-base: var(--chatfire-bg-primary-theme);
+  --bg-0: var(--chatfire-bg-elevated);
+  --bg-1: var(--chatfire-bg-primary);
+  --bg-2: var(--chatfire-bg-secondary);
+  --bg-3: #343434;
+  --bg-hover: var(--chatfire-bg-hover);
+  --bg-active: rgba(10, 132, 255, 0.18);
+  --bg-input: #171717;
+  --bg-surface: var(--chatfire-bg-elevated);
+
+  --border: var(--chatfire-border);
+  --border-strong: #525252;
+  --border-focus: #3b82f6;
+
+  --text-0: var(--chatfire-text-primary);
+  --text-1: #d1d5db;
+  --text-2: var(--chatfire-text-secondary);
+  --text-3: var(--chatfire-text-tertiary);
+
+  --accent: #3b82f6;
+  --accent-dark: #1d4ed8;
+  --accent-bg: rgba(59, 130, 246, 0.12);
+  --accent-text: #93c5fd;
+  --accent-glow: rgba(59, 130, 246, 0.22);
+  --accent-gradient: linear-gradient(90deg, #0078ff, #5b4fff);
+
+  --success: #10b981;
+  --success-bg: rgba(16, 185, 129, 0.12);
+  --error: #ef4444;
+  --error-bg: rgba(239, 68, 68, 0.12);
+  --info: #60a5fa;
+  --info-bg: rgba(96, 165, 250, 0.12);
+  --warning: #f59e0b;
+  --warning-bg: rgba(245, 158, 11, 0.12);
+
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-sm: 0 3px 10px rgba(0,0,0,0.22);
+  --shadow: 0 8px 20px rgba(0,0,0,0.3);
+  --shadow-lg: 0 14px 30px rgba(0,0,0,0.38);
+  --shadow-card: 0 4px 10px rgba(0,0,0,0.22);
+  --shadow-elevated: 0 22px 60px rgba(0,0,0,0.48);
+
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 20px;
+
+  --font-body: v-sans, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+  --font-display: var(--font-body);
+  --font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html, body, #__nuxt {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+  background: var(--chatfire-bg-common);
+  color: var(--chatfire-text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body * {
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+h1, h2, h3, h4, h5 {
+  color: var(--text-0);
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+p {
+  line-height: 1.65;
+}
+
+a {
+  color: inherit;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-0);
+  color: var(--text-1);
+  box-shadow: var(--shadow-xs);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all 0.18s var(--ease-out);
+}
+
+.btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  color: var(--text-0);
+  transform: translateY(-1px);
+}
+
+.btn-primary {
+  border-color: transparent;
+  background: var(--accent-gradient);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(59,130,246,0.3);
+}
+
+.btn-primary:hover {
+  color: #fff;
+  filter: brightness(1.05);
+}
+
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-2);
+}
+
+.btn-ghost:hover {
+  background: var(--bg-hover);
+  color: #fff;
+}
+
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 11px;
+}
+
+.btn-icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
+.input,
+.textarea,
+select.input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+  background: var(--bg-input);
+  color: var(--text-0);
+  font-size: 13px;
+  transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+}
+
+.input:hover,
+.textarea:hover {
+  border-color: var(--border-strong);
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: var(--border-focus);
+  background: #171717;
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--text-3);
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 82px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: var(--bg-2);
+  color: var(--text-2);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.tag-accent { background: var(--accent-bg); color: var(--accent-text); }
+.tag-success { background: var(--success-bg); color: var(--success); }
+.tag-error { background: var(--error-bg); color: var(--error); }
+.tag-info { background: var(--info-bg); color: var(--info); }
+.tag-warning { background: var(--warning-bg); color: var(--warning); }
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-card);
+  transition: border-color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out), transform 0.2s var(--ease-out);
+}
+
+.card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: var(--chatfire-border);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--chatfire-text-tertiary);
+  background-clip: content-box;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+
+.animate-spin { animation: spin 0.9s linear infinite; }
+.mono { font-family: var(--font-mono); }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dim { color: var(--text-3); }
+.flex { display: flex; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-1 { gap: 4px; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.gap-4 { gap: 16px; }
+.ml-auto { margin-left: auto; }
+.flex-1 { flex: 1; min-width: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }

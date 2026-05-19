@@ -1,0 +1,29 @@
+app:
+  name: "Huobao Drama API"
+  version: "1.0.0"
+  debug: true
+  language: "zh" # 系统语言：zh(中文) 或 en(英文)
+
+server:
+  port: 5678
+  host: "0.0.0.0"
+  cors_origins:
+    - "http://localhost:3012"
+  read_timeout: 600
+  write_timeout: 600
+
+database:
+  type: "sqlite"
+  path: "./data/huobao_drama.db"
+  max_idle: 10
+  max_open: 100
+
+storage:
+  type: "local"
+  local_path: "./data/storage"
+  base_url: "http://localhost:5678/static"
+
+ai:
+  default_text_provider: "apimart"
+  default_image_provider: "apimart"
+  default_video_provider: "apimart"

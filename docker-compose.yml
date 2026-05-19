@@ -1,0 +1,12 @@
+services:
+  huobao-drama:
+    build: .
+    ports:
+      - "5679:5679"
+    volumes:
+      - ./data:/app/data
+      - ./configs/config.yaml:/app/configs/config.yaml
+    environment:
+      - NODE_ENV=production
+      - PORT=5679
+    restart: unless-stopped
