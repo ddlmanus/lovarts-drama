@@ -721,18 +721,37 @@ function findTerminalSession(userId: string, sessionId: string) {
 
 function terminalShell() {
   if (process.platform === 'win32') return { command: 'cmd.exe', args: [] }
-  return { command: process.env.SHELL || '/bin/zsh', args: ['-l'] }
+  const candidates = [
+    String(process.env.SHELL || ''),
+    '/bin/zsh',
+    '/bin/bash',
+    '/bin/sh',
+  ].filter(Boolean)
+  const command = candidates.find((candidate) => {
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK)
+      return true
+    } catch {
+      return false
+    }
+  }) || '/bin/sh'
+  return { command, args: ['-l'] }
 }
 
 function createTerminalSession(userId: string, project: CodexProject) {
   const shell = terminalShell()
-  const terminal = pty.spawn(shell.command, shell.args, {
-    name: 'xterm-256color',
-    cols: 100,
-    rows: 24,
-    cwd: project.path,
-    env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
-  })
+  let terminal: pty.IPty
+  try {
+    terminal = pty.spawn(shell.command, shell.args, {
+      name: 'xterm-256color',
+      cols: 100,
+      rows: 24,
+      cwd: project.path,
+      env: { ...process.env, SHELL: shell.command, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
+    })
+  } catch (err: any) {
+    throw new Error(`终端启动失败：${err?.message || 'PTY 启动失败'}，shell=${shell.command}`)
+  }
   const ts = now()
   const session: TerminalSession = {
     id: `terminal_${randomUUID()}`,

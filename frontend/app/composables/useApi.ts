@@ -44,7 +44,13 @@ async function req<T = any>(method: string, path: string, body?: any): Promise<T
 
   try {
     const resp = await fetch(`${BASE}${path}`, opts)
-    const json = await resp.json()
+    const text = await resp.text()
+    let json: any = null
+    try {
+      json = text ? JSON.parse(text) : null
+    } catch {
+      json = { code: resp.status, message: text || resp.statusText || `${resp.status}` }
+    }
     const ms = Math.round(performance.now() - start)
 
     if (!resp.ok || (json.code && json.code >= 400)) {
