@@ -997,9 +997,13 @@ const renderedEvents = computed(() => {
 const changedFileSummaries = computed(() => extractChangedFiles(activeTaskLogs.value))
 const liveFileChangeItems = computed(() => extractLiveFileChangeItems(activeTaskLogs.value))
 const liveEditingEvent = computed(() => buildLiveEditingEvent(liveFileChangeItems.value))
+const finishedChangedFileSummaries = computed(() => {
+  if (isCurrentTaskRunning.value) return []
+  return changedFileSummaries.value
+})
 const completedChangesEvent = computed(() => {
-  if (isCurrentTaskRunning.value || !changedFileSummaries.value.length) return null
-  return buildChangesEvent('completed-file-changes-summary', '', changedFileSummaries.value)
+  if (!finishedChangedFileSummaries.value.length) return null
+  return buildChangesEvent('completed-file-changes-summary', '', finishedChangedFileSummaries.value)
 })
 const composerChangesEvent = computed(() => {
   if (!isCurrentTaskRunning.value || !changedFileSummaries.value.length) return null
@@ -1007,8 +1011,9 @@ const composerChangesEvent = computed(() => {
 })
 const composerRunSummaryVisible = computed(() => Boolean(isCurrentTaskRunning.value && (composerChangesEvent.value || latestTokenUsageLabel.value)))
 const selectedPreview = computed(() => {
-  if (!selectedPreviewPath.value) return changedFileSummaries.value[0] || null
-  const matchedFile = changedFileSummaries.value.find(file => file.path === selectedPreviewPath.value)
+  const files = finishedChangedFileSummaries.value.length ? finishedChangedFileSummaries.value : changedFileSummaries.value
+  if (!selectedPreviewPath.value) return files[0] || null
+  const matchedFile = files.find(file => file.path === selectedPreviewPath.value)
   if (matchedFile) return matchedFile
   const displayPath = displayProjectPath(selectedPreviewPath.value)
   return {
@@ -1126,8 +1131,8 @@ function formatTaskDuration(task) {
   const isRunning = task.status === 'running' || task.status === 'queued'
   const endValue = isRunning ? new Date() : new Date(task.updated_at || task.created_at)
   if (Number.isNaN(endValue.getTime())) return ''
-  const label = isRunning ? 'Working for' : 'Worked for'
-  return `${label} ${formatDuration(endValue.getTime() - start.getTime())}`
+  if (!isRunning) return ''
+  return `Working for ${formatDuration(endValue.getTime() - start.getTime())}`
 }
 
 function tasksForProject(projectId) {
@@ -5617,7 +5622,11 @@ button:disabled {
 .codex-workspace {
   position: relative;
   background: #ffffff;
-  --codex-track-width: min(920px, calc(100% - 96px));
+  --codex-track-width: min(48rem, calc(100% - 96px));
+  --conversation-block-gap: 12px;
+  --conversation-tool-assistant-gap: 16px;
+  --codex-chat-font-size: 15px;
+  --codex-chat-code-font-size: 13px;
 }
 
 .codex-workspace.composing {
@@ -5860,11 +5869,17 @@ button:disabled {
   margin: 0 auto;
   border: 0;
   background: transparent;
-  padding: 0 8px 18px;
+  padding: 0 0 18px;
 }
 
 .codex-event + .codex-event {
-  margin-top: 24px;
+  margin-top: var(--conversation-block-gap);
+}
+
+.codex-event.activity + .codex-event.assistant,
+.codex-event.editing + .codex-event.assistant,
+.codex-event.tool + .codex-event.assistant {
+  margin-top: var(--conversation-tool-assistant-gap);
 }
 
 .task-duration-line {
@@ -5872,11 +5887,11 @@ button:disabled {
   width: 100%;
   align-items: center;
   gap: 4px;
-  margin: 0 0 18px;
+  margin: 0 0 16px;
   border-bottom: 1px solid #e8e8eb;
   padding-bottom: 10px;
-  color: #85868d;
-  font-size: 15px;
+  color: #77787f;
+  font-size: var(--codex-chat-font-size);
   line-height: 22px;
 }
 
@@ -5932,24 +5947,24 @@ button:disabled {
 }
 
 .message-bubble {
-  max-width: min(820px, 100%);
+  max-width: 100%;
   padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
   color: #202124;
-  font-size: 15.5px;
+  font-size: var(--codex-chat-font-size);
   font-weight: 400;
   line-height: 1.68;
 }
 
 .message-row.user .message-bubble {
-  max-width: min(640px, 72%);
+  max-width: min(640px, 78%);
   border-radius: 17px;
   background: #f1f1f3;
   color: #202124;
   padding: 10px 15px;
-  font-size: 15px;
+  font-size: var(--codex-chat-font-size);
   font-weight: 500;
   line-height: 1.5;
 }
@@ -5966,7 +5981,7 @@ button:disabled {
 .markdown-body {
   max-width: 100%;
   color: #202124;
-  font-size: 15.5px;
+  font-size: var(--codex-chat-font-size);
   line-height: 1.68;
 }
 
@@ -6025,8 +6040,8 @@ button:disabled {
 .status-line {
   width: 100%;
   max-width: 100%;
-  color: #96979d;
-  font-size: 13px;
+  color: #9a9ba1;
+  font-size: var(--codex-chat-font-size);
   line-height: 20px;
 }
 
@@ -6035,19 +6050,19 @@ button:disabled {
   width: fit-content;
   max-width: 100%;
   align-items: center;
-  gap: 7px;
-  color: #76777e;
-  font-size: 13px;
+  gap: 6px;
+  color: #9a9ba1;
+  font-size: var(--codex-chat-font-size);
 }
 
 .editing-line svg {
   flex: 0 0 auto;
-  color: #85868d;
+  color: #9a9ba1;
 }
 
 .editing-label {
-  color: #5f6067;
-  font-weight: 500;
+  color: #9a9ba1;
+  font-weight: 400;
 }
 
 .editing-file {
@@ -6058,7 +6073,7 @@ button:disabled {
   color: #0a66d8;
   padding: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12.5px;
+  font-size: var(--codex-chat-code-font-size);
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
@@ -6072,7 +6087,7 @@ button:disabled {
 .editing-extra {
   flex: 0 0 auto;
   color: #96979d;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .artifact-card {
@@ -6170,15 +6185,18 @@ button:disabled {
 }
 
 .activity-line {
-  grid-template-columns: 14px minmax(0, 1fr);
-  gap: 7px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #9a9ba1;
 }
 
 .activity-dot {
-  width: 5px;
-  height: 5px;
-  margin-left: 4px;
-  background: #a8a9af;
+  width: 6px;
+  height: 6px;
+  margin-left: 3px;
+  border-radius: 50%;
+  background: #c7c7cd;
 }
 
 .tool-line {
@@ -6189,11 +6207,13 @@ button:disabled {
 }
 
 .tool-line summary {
-  grid-template-columns: 14px minmax(0, 1fr);
+  display: inline-flex;
+  align-items: center;
   gap: 7px;
   color: #96979d;
-  font-size: 13px;
+  font-size: var(--codex-chat-font-size);
   line-height: 20px;
+  cursor: pointer;
 }
 
 .tool-line pre {
@@ -6203,14 +6223,14 @@ button:disabled {
   color: #77787f;
   padding-left: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
+  font-size: var(--codex-chat-code-font-size);
   line-height: 1.55;
 }
 
 .changes-card {
   overflow: hidden;
   border: 1px solid #dedee3;
-  border-radius: 12px;
+  border-radius: 14px;
   background: #ffffff;
   color: #202124;
   box-shadow: none;
@@ -6218,12 +6238,12 @@ button:disabled {
 
 .changes-card-head {
   display: flex;
-  min-height: 44px;
+  min-height: 48px;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
   border-bottom: 1px solid #eeeeef;
-  padding: 7px 10px 7px 13px;
+  padding: 8px 16px;
 }
 
 .changes-card-title,
@@ -6236,7 +6256,7 @@ button:disabled {
 
 .changes-card-title {
   color: #202124;
-  font-size: 13.5px;
+  font-size: 15px;
   font-weight: 600;
 }
 
@@ -6271,7 +6291,7 @@ button:disabled {
   background: transparent;
   color: #5f6067;
   padding: 0 9px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -6292,12 +6312,12 @@ button:disabled {
 .changes-file-row {
   display: grid;
   width: 100%;
-  grid-template-columns: minmax(0, 1fr) auto 46px 46px 25px 18px;
+  grid-template-columns: minmax(0, 1fr) auto 54px 54px 25px 18px;
   align-items: center;
   gap: 8px;
   border: 0;
   background: transparent;
-  padding: 8px 10px 8px 13px;
+  padding: 11px 16px;
   color: #3f4046;
   text-align: left;
   cursor: pointer;
@@ -6313,7 +6333,7 @@ button:disabled {
   overflow: hidden;
   color: #2f3036;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12.5px;
+  font-size: var(--codex-chat-code-font-size);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -6323,8 +6343,8 @@ button:disabled {
   background: #f0f0f2;
   color: #74757c;
   padding: 1px 7px;
-  font-size: 11.5px;
-  line-height: 18px;
+  font-size: 12px;
+  line-height: 20px;
   white-space: nowrap;
 }
 
@@ -6385,7 +6405,7 @@ button:disabled {
 .change-stat {
   color: #76777e;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
+  font-size: 14px;
   text-align: right;
   white-space: nowrap;
 }
@@ -6780,19 +6800,19 @@ button:disabled {
 
 .change-summary {
   display: inline-flex;
-  height: 39px;
+  height: 48px;
   min-width: min(100%, 560px);
   align-items: center;
   gap: 8px;
   justify-content: flex-start;
   border: 1px solid #dedee3;
-  border-radius: 14px;
+  border-radius: 15px;
   background: #fff;
   color: #686970;
-  padding: 0 13px;
+  padding: 0 16px;
   font-size: 12px;
   font: inherit;
-  font-size: 13px;
+  font-size: 15px;
   cursor: pointer;
   pointer-events: auto;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
@@ -6821,14 +6841,14 @@ button:disabled {
 
 .token-summary {
   display: inline-flex;
-  height: 27px;
+  height: 34px;
   align-items: center;
   border: 1px solid #e1e1e5;
   border-radius: 999px;
   background: #f7f7f8;
   color: #77787f;
-  padding: 0 10px;
-  font-size: 12px;
+  padding: 0 13px;
+  font-size: 14px;
   pointer-events: auto;
   white-space: nowrap;
 }

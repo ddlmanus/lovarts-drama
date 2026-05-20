@@ -3,9 +3,9 @@
     {
       "userId": "user_dudl_iz0pxh",
       "baseUrl": "https://zenmux.ai/api/v1",
-      "apiKey": "sk-ai-v1-9f26f03b23743cc10da30f3e0129378569ab0014dfdbfc93c054aa19c10f0d8b",
+      "apiKey": "sk-ai-v1-5a16552fc1b356c277eb2ef871377f1b1213c353ba532e31645002b005bad30c",
       "model": "openai/gpt-5.5",
-      "updatedAt": "2026-05-19T13:34:35.018Z"
+      "updatedAt": "2026-05-20T03:41:02.596Z"
     }
   ]
 }
