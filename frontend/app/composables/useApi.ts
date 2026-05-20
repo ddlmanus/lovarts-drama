@@ -76,6 +76,20 @@ export const api = {
   del: <T = any>(p: string) => req<T>('DELETE', p),
 }
 
+export function codexAttachmentUrl(projectId: string, filePath: string) {
+  const params = new URLSearchParams({ path: filePath })
+  const user = getAuthUser()
+  if (user?.id) params.set('user_id', user.id)
+  return `${BASE}/codex/projects/${encodeURIComponent(projectId)}/attachments/view?${params.toString()}`
+}
+
+export function codexProjectFileViewUrl(projectId: string, filePath: string) {
+  const params = new URLSearchParams({ path: filePath })
+  const user = getAuthUser()
+  if (user?.id) params.set('user_id', user.id)
+  return `${BASE}/codex/projects/${encodeURIComponent(projectId)}/files/view?${params.toString()}`
+}
+
 export const agentAPI = {
   task: (taskId: string) => api.get(`/agent/tasks/${encodeURIComponent(taskId)}`),
 }
@@ -219,6 +233,7 @@ export const codexAPI = {
   projectGitStatus: (projectId: string) => api.get(`/codex/projects/${encodeURIComponent(projectId)}/git`),
   projectGitCommit: (projectId: string, d: any) => api.post(`/codex/projects/${encodeURIComponent(projectId)}/git/commit`, d),
   projectGitPush: (projectId: string) => api.post(`/codex/projects/${encodeURIComponent(projectId)}/git/push`, {}),
+  undoPatch: (projectId: string, patch: string) => api.post(`/codex/projects/${encodeURIComponent(projectId)}/patches/undo`, { patch }),
   projectTerminals: (projectId: string) => api.get(`/codex/projects/${encodeURIComponent(projectId)}/terminals`),
   createTerminal: (projectId: string) => api.post(`/codex/projects/${encodeURIComponent(projectId)}/terminals`, {}),
   terminal: (terminalId: string, afterSeq = 0) => api.get(`/codex/terminals/${encodeURIComponent(terminalId)}${afterSeq ? `?after_seq=${encodeURIComponent(String(afterSeq))}` : ''}`),

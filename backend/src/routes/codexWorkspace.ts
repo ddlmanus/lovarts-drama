@@ -402,13 +402,14 @@ function appendTaskEvent(taskId: string, event: CodexTaskEvent) {
   fs.appendFileSync(path.join(LOG_ROOT, `${taskId}.jsonl`), `${JSON.stringify(event)}\n`)
 }
 
-function appendUserMessage(taskId: string, prompt: string) {
+function appendUserMessage(taskId: string, prompt: string, images: string[] = []) {
   appendTaskEvent(taskId, {
     ts: now(),
     stream: 'system',
     type: 'user_message',
     role: 'user',
     text: prompt,
+    raw: images.length ? JSON.stringify({ images }) : undefined,
   })
 }
 
@@ -577,6 +578,30 @@ function execOptional(cwd: string, command: string, args: string[], timeout = 10
         stderr: String(stderr || ''),
       })
     })
+  })
+}
+
+function execFileWithInput(cwd: string, command: string, args: string[], input: string, timeout = 30_000) {
+  return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+    const child = spawn(command, args, { cwd })
+    let stdout = ''
+    let stderr = ''
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM')
+      reject(new Error(`${command} timeout`))
+    }, timeout)
+    child.stdout.on('data', chunk => { stdout += String(chunk) })
+    child.stderr.on('data', chunk => { stderr += String(chunk) })
+    child.on('error', (err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
+    child.on('exit', (code) => {
+      clearTimeout(timer)
+      if (code === 0) resolve({ stdout, stderr })
+      else reject(new Error(stderr.trim() || stdout.trim() || `${command} exited with ${code}`))
+    })
+    child.stdin.end(input)
   })
 }
 
@@ -1449,11 +1474,22 @@ function normalizeAppServerEvent(message: any): CodexTaskEvent | null {
 
   if (method === 'item/completed') {
     if (item.type === 'userMessage') {
-      const textParts = (item.content || [])
-        .map((part: any) => part.type === 'text' ? part.text : part.type === 'localImage' ? `[图片] ${part.path}` : '')
+      const parts = Array.isArray(item.content) ? item.content : []
+      const textParts = parts
+        .map((part: any) => part.type === 'text' ? part.text : '')
         .filter(Boolean)
-      const text = textParts[textParts.length - 1] || ''
-      return { ts: now(), stream: 'system', type: 'user_message', role: 'user', text, raw: JSON.stringify(message) }
+      const images = parts
+        .map((part: any) => part.type === 'localImage' ? String(part.path || '') : '')
+        .filter(Boolean)
+      const text = String(textParts[textParts.length - 1] || '').trim()
+      return {
+        ts: now(),
+        stream: 'system',
+        type: 'user_message',
+        role: 'user',
+        text,
+        raw: JSON.stringify({ ...message, huobaoImages: images }),
+      }
     }
     if (item.type === 'agentMessage') {
       return { ts: now(), stream: 'stdout', type: 'app.agent_message', role: 'assistant', text: item.text || '', raw: JSON.stringify(message) }
@@ -1488,6 +1524,16 @@ function normalizeAppServerEvent(message: any): CodexTaskEvent | null {
         raw: JSON.stringify(message),
       }
     }
+    if (item.type === 'imageGeneration' || item.type === 'imageView') {
+      return {
+        ts: now(),
+        stream: 'stdout',
+        type: `app.${item.type}`,
+        role: 'tool',
+        text: JSON.stringify(item),
+        raw: JSON.stringify(message),
+      }
+    }
     if (item.type === 'reasoning') return null
     return { ts: now(), stream: 'stdout', type: `app.${item.type || 'item'}`, role: 'tool', text: item.text || item.command || JSON.stringify(item), raw: JSON.stringify(message) }
   }
@@ -1505,9 +1551,19 @@ function normalizeAppServerEvent(message: any): CodexTaskEvent | null {
   }
 
   if (method === 'item/fileChange/patchUpdated') {
-    const file = params.path || params.filePath || params.item?.path || ''
-    const patch = params.patch || params.diff || params.item?.patch || ''
-    return { ts: now(), stream: 'stdout', type: 'app.patch', role: 'tool', text: `${file ? `${file}\n` : ''}${patch}`, raw: JSON.stringify(message) }
+    return {
+      ts: now(),
+      stream: 'stdout',
+      type: 'app.fileChange',
+      role: 'tool',
+      text: JSON.stringify({
+        type: 'fileChange',
+        id: params.itemId || params.item?.id || '',
+        changes: Array.isArray(params.changes) ? params.changes : [],
+        status: 'inProgress',
+      }),
+      raw: JSON.stringify(message),
+    }
   }
 
   if (method === 'turn/diff/updated') {
@@ -2142,6 +2198,27 @@ app.post('/projects/:id/git/push', async (c) => {
   }
 })
 
+app.post('/projects/:id/patches/undo', async (c) => {
+  const userId = currentAuthUserId(c)
+  const projectId = c.req.param('id')
+  const project = findProject(userId, projectId)
+  if (!project) return badRequest(c, 'codex project not found')
+
+  const body = await c.req.json().catch(() => ({}))
+  const patch = String(body.patch || body.diff || '').trim()
+  if (!patch) return badRequest(c, 'patch is required')
+
+  try {
+    await execFileWithInput(project.path, 'git', ['apply', '-R', '--whitespace=nowarn'], `${patch}\n`, 60_000)
+    return success(c, {
+      undone: true,
+      git: await projectGitStatus(project).catch(() => null),
+    })
+  } catch (err: any) {
+    return badRequest(c, err.message || 'Undo failed')
+  }
+})
+
 app.get('/projects/:id/files', (c) => {
   const userId = currentAuthUserId(c)
   const projectId = c.req.param('id')
@@ -2186,6 +2263,93 @@ app.get('/projects/:id/files', (c) => {
   } finally {
     fs.closeSync(fd)
   }
+})
+
+app.get('/projects/:id/files/view', (c) => {
+  const userId = currentAuthUserId(c)
+  const projectId = c.req.param('id')
+  const project = findProject(userId, projectId)
+  if (!project) return badRequest(c, 'codex project not found')
+
+  const requestedPath = String(c.req.query('path') || '').trim()
+  const targetPath = resolveProjectFilePath(project, requestedPath)
+  if (!targetPath) return badRequest(c, 'file path is outside project')
+  if (!fs.existsSync(targetPath)) return badRequest(c, 'file not found')
+  const stat = fs.statSync(targetPath)
+  if (!stat.isFile()) return badRequest(c, 'not a file')
+
+  const ext = path.extname(targetPath).toLowerCase()
+  const contentType = ({
+    '.avif': 'image/avif',
+    '.bmp': 'image/bmp',
+    '.gif': 'image/gif',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+    '.pdf': 'application/pdf',
+    '.3g2': 'video/3gpp2',
+    '.3gp': 'video/3gpp',
+    '.avi': 'video/x-msvideo',
+    '.flv': 'video/x-flv',
+    '.m4v': 'video/x-m4v',
+    '.mkv': 'video/x-matroska',
+    '.mp4': 'video/mp4',
+    '.mov': 'video/quicktime',
+    '.m2ts': 'video/mp2t',
+    '.mpeg': 'video/mpeg',
+    '.mpg': 'video/mpeg',
+    '.mts': 'video/mp2t',
+    '.ogv': 'video/ogg',
+    '.vob': 'video/dvd',
+    '.webm': 'video/webm',
+    '.wmv': 'video/x-ms-wmv',
+    '.aac': 'audio/aac',
+    '.flac': 'audio/flac',
+    '.m4a': 'audio/mp4',
+    '.mp3': 'audio/mpeg',
+    '.ogg': 'audio/ogg',
+    '.wav': 'audio/wav',
+    '.wma': 'audio/x-ms-wma',
+  } as Record<string, string>)[ext] || 'application/octet-stream'
+
+  return new Response(fs.readFileSync(targetPath), {
+    headers: {
+      'content-type': contentType,
+      'cache-control': 'private, max-age=3600',
+    },
+  })
+})
+
+app.get('/projects/:id/attachments/view', (c) => {
+  const userId = currentAuthUserId(c)
+  const projectId = c.req.param('id')
+  const project = findProject(userId, projectId)
+  if (!project) return badRequest(c, 'codex project not found')
+
+  const requestedPath = String(c.req.query('path') || '').trim()
+  const targetPath = resolveProjectFilePath(project, requestedPath)
+  if (!targetPath) return badRequest(c, 'file path is outside project')
+  if (!fs.existsSync(targetPath)) return badRequest(c, 'file not found')
+  if (!projectContainsFile(path.join(project.path, '.codex-attachments'), targetPath)) {
+    return badRequest(c, 'attachment is outside attachment directory')
+  }
+
+  const ext = path.extname(targetPath).toLowerCase()
+  const type = ext === '.jpg' || ext === '.jpeg'
+    ? 'image/jpeg'
+    : ext === '.webp'
+      ? 'image/webp'
+      : ext === '.gif'
+        ? 'image/gif'
+        : 'image/png'
+  return new Response(fs.readFileSync(targetPath), {
+    headers: {
+      'content-type': type,
+      'cache-control': 'private, max-age=3600',
+    },
+  })
 })
 
 app.post('/projects/:id/open-file', async (c) => {
@@ -2242,7 +2406,8 @@ app.post('/projects/:id/attachments', async (c) => {
     name: uploaded.name,
     type: uploaded.type,
     size: uploaded.size,
-    path: filePath,
+    path: path.relative(project.path, filePath),
+    absolute_path: filePath,
     relative_path: path.relative(project.path, filePath),
   })
 })
@@ -2467,7 +2632,7 @@ app.post('/tasks', async (c) => {
   const store = tasksStore()
   store.tasks.push(task)
   writeTasksStore(store)
-  appendUserMessage(task.id, prompt)
+  appendUserMessage(task.id, prompt, images)
 
   runCodexAppTurn(task, { resumeThreadId: resumeTask?.threadId }).catch((err) => {
     appendTaskEvent(task.id, { ts: now(), stream: 'stderr', type: 'app.error', text: err.message || 'Codex app-server 启动失败' })
@@ -2517,7 +2682,7 @@ app.post('/tasks/:id/messages', async (c) => {
     const store = tasksStore()
     store.tasks.push(newTask)
     writeTasksStore(store)
-    appendUserMessage(newTask.id, prompt)
+    appendUserMessage(newTask.id, prompt, images)
     runCodexAppTurn(newTask, {}).catch((err) => {
       appendTaskEvent(newTask.id, { ts: now(), stream: 'stderr', type: 'app.error', text: err.message || 'Codex app-server 启动失败' })
       updateTask(newTask.id, { status: 'failed', exitCode: 1 })
@@ -2536,7 +2701,7 @@ app.post('/tasks/:id/messages', async (c) => {
     exitCode: null,
     signal: null,
   })
-  appendUserMessage(task.id, prompt)
+  appendUserMessage(task.id, prompt, images)
 
   const updated = tasksStore().tasks.find(item => item.id === id) || task
   runCodexAppTurn(updated, { resumeThreadId: task.threadId }).catch((err) => {

@@ -262,6 +262,16 @@
                 <span class="activity-dot"></span>
                 <span>{{ event.text }}</span>
               </div>
+              <div v-else-if="event.kind === 'editing'" class="editing-line">
+                <Edit3 :size="15" />
+                <span class="editing-label">Editing</span>
+                <button type="button" class="editing-file" @click="openPreview(event.file.path)">
+                  {{ event.file.displayPath || event.file.path }}
+                </button>
+                <span class="change-stat additions">+{{ event.file.added }}</span>
+                <span class="change-stat deletions">-{{ event.file.removed }}</span>
+                <span v-if="event.extraCount" class="editing-extra">等 {{ event.extraCount }} 个文件</span>
+              </div>
               <div v-else-if="event.kind === 'changes'" class="changes-card">
                 <div class="changes-card-head">
                   <div class="changes-card-title">
@@ -271,21 +281,61 @@
                   <div class="changes-card-actions">
                     <span class="change-stat additions">+{{ event.stats.added }}</span>
                     <span class="change-stat deletions">-{{ event.stats.removed }}</span>
+                    <button
+                      class="changes-undo-btn"
+                      type="button"
+                      :disabled="undoingChangeKey === event.key"
+                      @click="undoChangeEvent(event)"
+                    >
+                      {{ undoingChangeKey === event.key ? 'Undoing...' : 'Undo' }}
+                    </button>
                     <button type="button" @click="openPreview(event.files[0]?.path)">Review</button>
                   </div>
                 </div>
-                <button
-                  v-for="file in event.files"
-                  :key="`${event.key}-${file.path}`"
-                  class="changes-file-row"
-                  type="button"
-                  :class="{ active: selectedPreviewPath === file.path && previewPanelOpen }"
-                  @click="openPreview(file.path)"
-                >
-                  <span class="changes-file-path">{{ file.displayPath || file.path }}</span>
-                  <span class="changes-file-meta">{{ file.action }}</span>
-                  <span class="change-stat additions">+{{ file.added }}</span>
-                  <span class="change-stat deletions">-{{ file.removed }}</span>
+                <div v-for="file in event.files" :key="`${event.key}-${file.path}`" class="changes-file-block">
+                  <button
+                    class="changes-file-row"
+                    type="button"
+                    :class="{ expanded: isChangeExpanded(event, file) }"
+                    @click="toggleChangeExpanded(event.key, file.path)"
+                  >
+                    <span class="changes-file-path">{{ file.displayPath || file.path }}</span>
+                    <span v-if="file.action" class="changes-file-action">{{ file.action }}</span>
+                    <span class="change-stat additions">+{{ file.added }}</span>
+                    <span class="change-stat deletions">-{{ file.removed }}</span>
+                    <span class="changes-open-btn" role="button" tabindex="0" title="用本地工具打开" @click.stop="openChangedFile(file.path)" @keydown.enter.stop.prevent="openChangedFile(file.path)">
+                      <ExternalLink :size="13" />
+                    </span>
+                    <ChevronUp v-if="isChangeExpanded(event, file)" :size="16" />
+                    <ChevronRight v-else :size="16" />
+                  </button>
+                  <div v-if="isChangeExpanded(event, file)" class="changes-inline-diff">
+                    <div
+                      v-for="line in previewEditorLines(file.displayPatch || file.patch || '暂无可预览内容')"
+                      :key="`${event.key}-${file.path}-${line.key}`"
+                      class="preview-code-line"
+                      :class="line.kind"
+                    >
+                      <span class="preview-line-number">{{ line.number }}</span>
+                      <code>{{ line.text || ' ' }}</code>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div v-else-if="event.kind === 'artifact'" class="artifact-card" :class="event.artifactType">
+                <button class="artifact-preview" type="button" @click="openArtifact(event)">
+                  <img v-if="event.previewUrl" :src="event.previewUrl" :alt="event.title" />
+                  <video v-else-if="event.mediaKind === 'video' && event.url" :src="event.url" muted playsinline preload="metadata"></video>
+                  <Image v-else-if="event.mediaKind === 'image'" :size="18" />
+                  <Music v-else-if="event.mediaKind === 'audio'" :size="18" />
+                  <FileCode2 v-else :size="18" />
+                </button>
+                <button class="artifact-body" type="button" @click="openArtifact(event)">
+                  <span class="artifact-title">{{ event.title }}</span>
+                  <span class="artifact-subtitle">{{ event.subtitle }}</span>
+                </button>
+                <button class="artifact-open" type="button" title="打开" @click.stop="openArtifact(event)">
+                  <ExternalLink :size="13" />
                 </button>
               </div>
               <details v-else-if="event.kind === 'tool'" class="tool-line">
@@ -295,6 +345,18 @@
                 <pre>{{ event.text }}</pre>
               </details>
               <div v-else class="message-row" :class="event.role">
+                <div v-if="event.images?.length" class="message-image-stack">
+                  <button
+                    v-for="image in event.images"
+                    :key="`${event.key}-${image.path}`"
+                    class="message-image-thumb"
+                    type="button"
+                    title="查看图片"
+                    @click="openAttachmentPreview(image.path)"
+                  >
+                    <img :src="image.url" :alt="image.name || '上传图片'" />
+                  </button>
+                </div>
                 <div class="message-bubble">
                   <div
                     v-if="event.role === 'assistant'"
@@ -318,7 +380,23 @@
           <h1>要在 {{ activeProject.name }} 里构建什么？</h1>
         </div>
 
-        <form class="codex-composer" @submit.prevent="startTask">
+        <div v-if="composerRunSummaryVisible" class="composer-run-summary">
+          <button
+            v-if="composerChangesEvent"
+            class="change-summary"
+            type="button"
+            @click="openPreview(composerChangesEvent.files[0]?.path)"
+          >
+            <FileCode2 :size="14" />
+            <span>{{ composerChangesEvent.files.length }} {{ composerChangesEvent.files.length === 1 ? 'file changed' : 'files changed' }}</span>
+            <span class="additions">+{{ composerChangesEvent.stats.added }}</span>
+            <span class="deletions">-{{ composerChangesEvent.stats.removed }}</span>
+            <em>Review here</em>
+          </button>
+          <span v-if="isCurrentTaskRunning && latestTokenUsageLabel" class="token-summary">{{ latestTokenUsageLabel }}</span>
+        </div>
+
+        <form ref="composerEl" class="codex-composer" @submit.prevent="startTask">
           <input ref="fileInput" class="hidden-file-input" type="file" accept="image/*" multiple @change="handleAttachmentChange" />
           <div v-if="slashMenuOpen" class="slash-menu">
             <div class="slash-menu-head">
@@ -348,10 +426,11 @@
             </button>
           </div>
           <div v-if="attachments.length" class="attachment-strip">
-            <div v-for="attachment in attachments" :key="attachment.path" class="attachment-chip">
-              <Image :size="14" />
-              <span>{{ attachment.name }}</span>
-              <button type="button" title="移除" @click="removeAttachment(attachment.path)">
+            <div v-for="attachment in attachments" :key="attachment.path" class="image-preview-chip">
+              <button class="image-preview-trigger" type="button" title="预览图片" @click="openImageLightbox(attachment)">
+                <img :src="attachmentUrl(attachment.path)" :alt="attachment.name || '上传图片'" />
+              </button>
+              <button class="image-preview-remove" type="button" title="移除" @click="removeAttachment(attachment.path)">
                 <X :size="13" />
               </button>
             </div>
@@ -372,6 +451,7 @@
             :disabled="starting"
             @input="handleDraftInput"
             @focus="handleDraftInput"
+            @paste="handleComposerPaste"
             @keydown.escape="slashMenuOpen = false"
             @keydown.enter.exact.prevent="startTask"
           ></textarea>
@@ -446,10 +526,10 @@
           </div>
           <div v-if="selectedPreview" class="preview-tabs">
             <button type="button" :class="{ active: previewMode === 'file' }" @click="previewMode = 'file'">文件</button>
-            <button type="button" :class="{ active: previewMode === 'diff' }" @click="previewMode = 'diff'">变更</button>
+            <button v-if="selectedPreviewHasDiff" type="button" :class="{ active: previewMode === 'diff' }" @click="previewMode = 'diff'">变更</button>
           </div>
           <template v-if="selectedPreview">
-            <div v-if="previewMode === 'diff'" class="preview-code-editor">
+            <div v-if="previewMode === 'diff' && selectedPreviewHasDiff" class="preview-code-editor">
               <div
                 v-for="line in previewEditorLines(selectedPreview.displayPatch || selectedPreview.patch || '暂无可预览内容')"
                 :key="line.key"
@@ -464,12 +544,49 @@
               <div v-if="previewFileLoading" class="preview-empty">正在读取文件...</div>
               <div v-else-if="previewFileError" class="preview-empty">{{ previewFileError }}</div>
               <template v-else>
-                <div v-if="previewFileMeta" class="preview-file-meta">
-                  <span>{{ previewFileMeta.language || 'text' }}</span>
-                  <span>{{ formatFileSize(previewFileMeta.size) }}</span>
-                  <span v-if="previewFileMeta.truncated">仅显示前 1MB</span>
+                <div class="preview-file-meta">
+                  <span>{{ selectedPreviewKindLabel }}</span>
+                  <span v-if="previewFileMeta?.size">{{ formatFileSize(previewFileMeta.size) }}</span>
+                  <span v-if="previewFileMeta?.truncated">仅显示前 1MB</span>
                 </div>
-                <div class="preview-code-editor">
+                <div v-if="selectedPreviewKind === 'image'" class="preview-media-stage">
+                  <img class="preview-media-image" :src="selectedPreviewFileUrl" :alt="selectedPreview.name" />
+                </div>
+                <div v-else-if="selectedPreviewKind === 'video'" class="preview-media-stage">
+                  <video class="preview-media-video" :src="selectedPreviewFileUrl" controls preload="metadata"></video>
+                </div>
+                <div v-else-if="selectedPreviewKind === 'audio'" class="preview-media-stage audio">
+                  <Music :size="24" />
+                  <audio :src="selectedPreviewFileUrl" controls></audio>
+                </div>
+                <iframe
+                  v-else-if="selectedPreviewKind === 'pdf'"
+                  class="preview-pdf-frame"
+                  :src="selectedPreviewFileUrl"
+                  title="PDF 预览"
+                ></iframe>
+                <div
+                  v-else-if="selectedPreviewKind === 'markdown'"
+                  class="preview-markdown markdown-body"
+                  v-html="renderMarkdown(previewFileContent || '文件为空')"
+                  @click="handleMarkdownClick"
+                ></div>
+                <div v-else-if="selectedPreviewKind === 'table'" class="preview-table-wrap">
+                  <table class="preview-table">
+                    <tbody>
+                      <tr v-for="(row, rowIndex) in previewTableRows" :key="`row-${rowIndex}`">
+                        <td v-for="(cell, cellIndex) in row" :key="`cell-${rowIndex}-${cellIndex}`">{{ cell }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div v-else-if="selectedPreviewIsUnsupported" class="preview-unsupported">
+                  <FileCode2 :size="28" />
+                  <strong>{{ selectedPreviewKindLabel }} 无法在这里预览</strong>
+                  <span>{{ selectedPreview.displayPath || selectedPreview.path }}</span>
+                  <button type="button" @click="openChangedFile(selectedPreview.path)">用本地工具打开</button>
+                </div>
+                <div v-else class="preview-code-editor">
                   <div
                     v-for="line in previewEditorLines(previewFileContent || '文件为空', false)"
                     :key="line.key"
@@ -630,6 +747,37 @@
         </div>
       </section>
     </div>
+
+    <div v-if="imageLightboxOpen" class="image-lightbox" @click.self="closeImageLightbox">
+      <div class="image-lightbox-actions">
+        <a
+          v-if="imageLightboxImage?.url"
+          class="image-lightbox-round"
+          :href="imageLightboxImage.url"
+          :download="imageLightboxImage.name || 'image.png'"
+          title="下载"
+          @click.stop
+        >
+          <Download :size="20" />
+        </a>
+        <button class="image-lightbox-round" type="button" title="关闭" @click="closeImageLightbox">
+          <X :size="24" />
+        </button>
+      </div>
+      <div class="image-lightbox-stage" :style="{ transform: `scale(${imageLightboxScale})` }">
+        <img
+          v-if="imageLightboxImage?.url"
+          class="image-lightbox-img"
+          :src="imageLightboxImage.url"
+          :alt="imageLightboxImage.name || '图片预览'"
+        />
+      </div>
+      <div class="image-lightbox-zoom" @click.stop>
+        <button type="button" title="缩小" @click="zoomImageLightbox(-0.1)">-</button>
+        <span>{{ Math.round(imageLightboxScale * 100) }}%</span>
+        <button type="button" title="放大" @click="zoomImageLightbox(0.1)">+</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -644,7 +792,10 @@ import {
   Bot,
   Check,
   ChevronRight,
+  ChevronUp,
+  Download,
   Edit3,
+  ExternalLink,
   FileCode2,
   Folder,
   GitBranch,
@@ -654,6 +805,7 @@ import {
   HardDrive,
   Image,
   Loader2,
+  Music,
   PanelLeft,
   PanelLeftClose,
   Plus,
@@ -669,7 +821,7 @@ import {
   X,
 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
-import { codexAPI } from '~/composables/useApi'
+import { codexAPI, codexAttachmentUrl, codexProjectFileViewUrl } from '~/composables/useApi'
 
 let XtermCtor = null
 let FitAddonCtor = null
@@ -716,6 +868,9 @@ const selectedModel = ref('')
 const selectedReasoning = ref('')
 const selectedSandbox = ref('workspace-write')
 const attachments = ref([])
+const imageLightboxOpen = ref(false)
+const imageLightboxImage = ref(null)
+const imageLightboxScale = ref(1)
 const starting = ref(false)
 const creatingProject = ref(false)
 const uploadingAttachment = ref(false)
@@ -726,6 +881,8 @@ const previewFileContent = ref('')
 const previewFileMeta = ref(null)
 const previewFileLoading = ref(false)
 const previewFileError = ref('')
+const expandedChangeKeys = ref({})
+const undoingChangeKey = ref('')
 const gitPanelOpen = ref(false)
 const gitStatus = ref(null)
 const gitLoading = ref(false)
@@ -738,6 +895,7 @@ const terminalLoading = ref(false)
 const logBox = ref(null)
 const fileInput = ref(null)
 const draftInput = ref(null)
+const composerEl = ref(null)
 const terminalOutputEl = ref(null)
 const xtermHost = ref(null)
 let pollTimer = null
@@ -748,6 +906,7 @@ let terminalDataDisposable = null
 let lastTerminalSeq = 0
 let terminalResizeTimer = null
 let knownTaskStatuses = {}
+let composerResizeObserver = null
 
 const activeProject = computed(() => projects.value.find(project => project.id === activeProjectId.value) || null)
 const activeTask = computed(() => tasks.value.find(task => task.id === activeTaskId.value) || null)
@@ -756,6 +915,8 @@ const isCurrentTaskRunning = computed(() => activeTask.value?.status === 'runnin
 const isComposingThread = computed(() => !activeTaskId.value && !renderedEvents.value.length)
 const taskDurationLabel = computed(() => formatTaskDuration(activeTask.value))
 const activeApproval = computed(() => approvals.value[0] || null)
+const latestTokenUsage = computed(() => extractLatestTokenUsage(activeTaskLogs.value))
+const latestTokenUsageLabel = computed(() => formatTokenUsage(latestTokenUsage.value))
 const canCreateProject = computed(() => {
   if (projectSource.value === 'local') return Boolean(projectLocalPath.value.trim())
   if (projectSource.value === 'github') return Boolean(projectRepoUrl.value.trim())
@@ -834,6 +995,17 @@ const renderedEvents = computed(() => {
   })
 })
 const changedFileSummaries = computed(() => extractChangedFiles(activeTaskLogs.value))
+const liveFileChangeItems = computed(() => extractLiveFileChangeItems(activeTaskLogs.value))
+const liveEditingEvent = computed(() => buildLiveEditingEvent(liveFileChangeItems.value))
+const completedChangesEvent = computed(() => {
+  if (isCurrentTaskRunning.value || !changedFileSummaries.value.length) return null
+  return buildChangesEvent('completed-file-changes-summary', '', changedFileSummaries.value)
+})
+const composerChangesEvent = computed(() => {
+  if (!isCurrentTaskRunning.value || !changedFileSummaries.value.length) return null
+  return buildChangesEvent('composer-live-file-changes-summary', '', changedFileSummaries.value)
+})
+const composerRunSummaryVisible = computed(() => Boolean(isCurrentTaskRunning.value && (composerChangesEvent.value || latestTokenUsageLabel.value)))
 const selectedPreview = computed(() => {
   if (!selectedPreviewPath.value) return changedFileSummaries.value[0] || null
   const matchedFile = changedFileSummaries.value.find(file => file.path === selectedPreviewPath.value)
@@ -850,6 +1022,15 @@ const selectedPreview = computed(() => {
     displayPatch: '',
   }
 })
+const selectedPreviewHasDiff = computed(() => Boolean(selectedPreview.value?.patch || selectedPreview.value?.displayPatch))
+const selectedPreviewKind = computed(() => previewKindForFile(selectedPreview.value?.path || ''))
+const selectedPreviewKindLabel = computed(() => fileKindLabel(selectedPreview.value?.path || '', selectedPreviewKind.value))
+const selectedPreviewFileUrl = computed(() => artifactUrl(selectedPreview.value?.path || ''))
+const selectedPreviewIsUnsupported = computed(() => {
+  const kind = selectedPreviewKind.value
+  return kind === 'archive' || kind === 'document' || kind === 'spreadsheet' || kind === 'slides' || kind === 'notebook' || kind === 'unsupported'
+})
+const previewTableRows = computed(() => parseDelimitedPreview(previewFileContent.value, fileExt(selectedPreview.value?.path || '')))
 
 watch(changedFileSummaries, (files) => {
   if (!files.length) {
@@ -880,8 +1061,19 @@ watch(activeTerminalId, async () => {
 })
 
 watch(terminalOpen, async (open) => {
+  updateComposerScrollSpace()
   if (open) await mountXtermForActiveSession()
 })
+
+watch([
+  attachments,
+  selectedSlashItem,
+  completedChangesEvent,
+  latestTokenUsageLabel,
+  isComposingThread,
+], () => {
+  nextTick(updateComposerScrollSpace)
+}, { deep: true })
 
 function statusLabel(status) {
   return {
@@ -998,6 +1190,15 @@ function rewriteProjectPathsInText(value, root = activeProject.value?.path || ac
   })
 }
 
+function visibleUserMessageText(value) {
+  const text = String(value || '').trim()
+  if (!text.includes('Huobao Codex runtime note:')) return text
+  const marker = 'This workspace context is for execution accuracy; do not repeat it unless it is directly relevant to the user request.'
+  const index = text.indexOf(marker)
+  if (index < 0) return text.replace(/Huobao Codex runtime note:[\s\S]*$/g, '').trim()
+  return text.slice(index + marker.length).trim()
+}
+
 function normalizePathSeparators(value) {
   return String(value || '').replace(/\\/g, '/')
 }
@@ -1052,12 +1253,80 @@ function previewEditorLines(value, diff = true) {
     })
 }
 
+function changeExpansionKey(eventKey, filePath) {
+  return `${eventKey}:${filePath}`
+}
+
+function isChangeExpanded(event, file) {
+  if (!event?.key || !file?.path) return false
+  const key = changeExpansionKey(event.key, file.path)
+  if (Object.prototype.hasOwnProperty.call(expandedChangeKeys.value, key)) {
+    return Boolean(expandedChangeKeys.value[key])
+  }
+  return false
+}
+
+function toggleChangeExpanded(eventKey, filePath) {
+  if (!eventKey || !filePath) return
+  const key = changeExpansionKey(eventKey, filePath)
+  const current = Object.prototype.hasOwnProperty.call(expandedChangeKeys.value, key)
+    ? Boolean(expandedChangeKeys.value[key])
+    : false
+  expandedChangeKeys.value = {
+    ...expandedChangeKeys.value,
+    [key]: !current,
+  }
+}
+
+function combinedPatchForChangeEvent(event) {
+  return (event?.files || [])
+    .map(file => file.patch || '')
+    .filter(Boolean)
+    .join('\n')
+}
+
+async function undoChangeEvent(event) {
+  if (!activeProject.value?.id || undoingChangeKey.value) return
+  const patch = combinedPatchForChangeEvent(event)
+  if (!patch.trim()) {
+    toast.error('没有可回退的变更')
+    return
+  }
+  undoingChangeKey.value = event.key
+  try {
+    await codexAPI.undoPatch(activeProject.value.id, patch)
+    toast.success('已回退文件变更')
+    await Promise.all([
+      loadGitStatus().catch(() => {}),
+      loadActiveLogs().catch(() => {}),
+    ])
+  } catch (err) {
+    toast.error(err.message || '回退失败')
+  } finally {
+    undoingChangeKey.value = ''
+  }
+}
+
 async function handleMarkdownClick(event) {
   const target = event.target?.closest?.('[data-project-file]')
   if (!target) return
   event.preventDefault()
   const filePath = target.getAttribute('data-project-file') || ''
   if (!filePath || !activeProject.value?.id) return
+  try {
+    await codexAPI.openProjectFile(activeProject.value.id, filePath)
+  } catch (err) {
+    openPreview(filePath)
+    toast.error(err.message || '无法用本地应用打开，已切换到预览')
+  }
+}
+
+async function openChangedFile(filePath) {
+  if (!filePath) return
+  if (!activeProject.value?.id) {
+    openPreview(filePath)
+    return
+  }
   try {
     await codexAPI.openProjectFile(activeProject.value.id, filePath)
   } catch (err) {
@@ -1116,6 +1385,184 @@ function parseRawEvent(event) {
   }
 }
 
+function imagesFromUserEvent(event) {
+  const raw = parseRawEvent(event)
+  const rawImages = raw?.huobaoImages || raw?.images || []
+  const contentImages = raw?.params?.item?.content || raw?.item?.content || []
+  return [
+    ...rawImages,
+    ...contentImages
+      .filter((part) => part?.type === 'localImage' && part.path)
+      .map((part) => part.path),
+  ]
+    .map((imagePath) => String(imagePath || '').trim())
+    .filter(Boolean)
+    .filter((imagePath, index, list) => list.indexOf(imagePath) === index)
+    .map((imagePath) => ({
+      path: imagePath,
+      name: imagePath.split('/').pop() || '上传图片',
+      url: attachmentUrl(imagePath),
+    }))
+}
+
+function attachmentUrl(imagePath) {
+  const projectId = activeProject.value?.id || activeTask.value?.project_id || ''
+  return projectId && imagePath ? codexAttachmentUrl(projectId, imagePath) : ''
+}
+
+function openAttachmentPreview(imagePath) {
+  if (!imagePath) return
+  openImageLightbox({
+    path: imagePath,
+    name: String(imagePath).split('/').pop() || '图片预览',
+  })
+}
+
+function openImageLightbox(image) {
+  if (!image?.path && !image?.url) return
+  imageLightboxImage.value = {
+    ...image,
+    url: image.url || attachmentUrl(image.path),
+  }
+  imageLightboxScale.value = 1
+  imageLightboxOpen.value = true
+}
+
+function closeImageLightbox() {
+  imageLightboxOpen.value = false
+  imageLightboxImage.value = null
+  imageLightboxScale.value = 1
+}
+
+function zoomImageLightbox(delta) {
+  const next = imageLightboxScale.value + delta
+  imageLightboxScale.value = Math.min(3, Math.max(0.2, Number(next.toFixed(2))))
+}
+
+function fileExt(filePath) {
+  const name = String(filePath || '').split('?')[0].split('#')[0]
+  const match = name.match(/\.([a-z0-9]+)$/i)
+  return match ? match[1].toLowerCase() : ''
+}
+
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'bmp', 'svg']
+const VIDEO_EXTENSIONS = ['3g2', '3gp', 'avi', 'flv', 'm4v', 'mkv', 'mov', 'mp4', 'm2ts', 'mpeg', 'mpg', 'mts', 'ogv', 'vob', 'webm', 'wmv']
+const AUDIO_EXTENSIONS = ['aac', 'flac', 'm4a', 'mp3', 'ogg', 'wav', 'wma']
+const ARCHIVE_EXTENSIONS = ['7z', 'br', 'bz2', 'dmg', 'gz', 'iso', 'jar', 'rar', 'tar', 'tgz', 'txz', 'xz', 'zip', 'zst']
+const MARKDOWN_EXTENSIONS = ['md', 'markdown', 'mdx']
+const TABLE_EXTENSIONS = ['csv', 'tsv']
+const CODE_EXTENSIONS = [
+  'astro', 'bash', 'c', 'cc', 'clj', 'cljs', 'cpp', 'cs', 'css', 'dart', 'dockerfile', 'env', 'go',
+  'graphql', 'h', 'hpp', 'html', 'java', 'js', 'jsx', 'json', 'kt', 'less', 'lua', 'm', 'mm', 'php',
+  'pl', 'proto', 'py', 'r', 'rb', 'rs', 'sass', 'scss', 'sh', 'sql', 'svelte', 'swift', 'toml', 'ts',
+  'tsx', 'vue', 'xml', 'yaml', 'yml',
+]
+const DOCUMENT_EXTENSIONS = ['doc', 'docx', 'key', 'numbers', 'odp', 'ods', 'odt', 'pages', 'ppt', 'pptx', 'rtf', 'xls', 'xlsx', 'xlsm']
+
+function artifactMediaKind(filePath) {
+  const ext = fileExt(filePath)
+  if (IMAGE_EXTENSIONS.includes(ext)) return 'image'
+  if (VIDEO_EXTENSIONS.includes(ext)) return 'video'
+  if (AUDIO_EXTENSIONS.includes(ext)) return 'audio'
+  return 'file'
+}
+
+function previewKindForFile(filePath) {
+  const ext = fileExt(filePath)
+  if (IMAGE_EXTENSIONS.includes(ext)) return 'image'
+  if (VIDEO_EXTENSIONS.includes(ext)) return 'video'
+  if (AUDIO_EXTENSIONS.includes(ext)) return 'audio'
+  if (ext === 'pdf') return 'pdf'
+  if (MARKDOWN_EXTENSIONS.includes(ext)) return 'markdown'
+  if (TABLE_EXTENSIONS.includes(ext)) return 'table'
+  if (['txt', 'text', 'log', 'gitignore', 'dockerignore'].includes(ext) || CODE_EXTENSIONS.includes(ext)) return 'code'
+  if (['docx', 'doc', 'rtf', 'odt', 'pages'].includes(ext)) return 'document'
+  if (['xlsx', 'xlsm', 'xls', 'numbers', 'ods'].includes(ext)) return 'spreadsheet'
+  if (['pptx', 'ppt', 'key', 'odp'].includes(ext)) return 'slides'
+  if (ext === 'ipynb') return 'notebook'
+  if (ARCHIVE_EXTENSIONS.includes(ext)) return 'archive'
+  return ext ? 'unsupported' : 'code'
+}
+
+function fileKindLabel(filePath, kind = previewKindForFile(filePath)) {
+  const ext = fileExt(filePath)
+  const upperExt = ext ? ext.toUpperCase() : ''
+  if (kind === 'image') return 'Image'
+  if (kind === 'video') return 'Video'
+  if (kind === 'audio') return 'Audio'
+  if (kind === 'pdf') return 'PDF'
+  if (kind === 'markdown') return 'Markdown'
+  if (kind === 'table') return ext === 'tsv' ? 'TSV' : 'CSV'
+  if (kind === 'document') return upperExt || 'Document'
+  if (kind === 'spreadsheet') return upperExt || 'Spreadsheet'
+  if (kind === 'slides') return upperExt || 'Slides'
+  if (kind === 'notebook') return 'Notebook'
+  if (kind === 'archive') return upperExt ? `${upperExt} archive` : 'Archive'
+  return upperExt || 'Text'
+}
+
+function artifactTitleForFile(filePath, type) {
+  if (type === 'imageGeneration') return 'Generated image'
+  if (type === 'imageView') return 'Image'
+  const displayPath = displayProjectPath(filePath)
+  return displayPath.split('/').pop() || displayPath || '文件'
+}
+
+function isExternalUrl(value) {
+  return /^https?:\/\//i.test(String(value || ''))
+}
+
+function artifactUrl(filePath) {
+  if (isExternalUrl(filePath)) return filePath
+  const projectId = activeProject.value?.id || activeTask.value?.project_id || ''
+  return projectId && filePath ? codexProjectFileViewUrl(projectId, filePath) : ''
+}
+
+function buildArtifactEvent(key, time, item) {
+  const type = item?.type || ''
+  const path = item?.savedPath || item?.path || item?.src || item?.result || ''
+  const mediaKind = artifactMediaKind(path)
+  const displayPath = displayProjectPath(path)
+  const title = artifactTitleForFile(path, type)
+  const status = item?.status && item.status !== 'completed' ? item.status : ''
+  const label = type === 'imageGeneration' ? 'Generated image' : fileKindLabel(path)
+  const subtitle = status || item?.revisedPrompt || displayPath || label
+  const url = path ? artifactUrl(path) : ''
+  return {
+    key,
+    kind: 'artifact',
+    role: 'tool',
+    level: 'muted',
+    time,
+    artifactType: type || 'file',
+    mediaKind,
+    path,
+    displayPath,
+    title,
+    subtitle,
+    url,
+    previewUrl: mediaKind === 'image' ? url : '',
+  }
+}
+
+async function openArtifact(event) {
+  if (!event?.path) return
+  if (isExternalUrl(event.path)) {
+    window.open(event.path, '_blank', 'noopener,noreferrer')
+    return
+  }
+  openPreview(event.path)
+}
+
+function parseDelimitedPreview(content, ext) {
+  if (!['csv', 'tsv'].includes(ext)) return []
+  const delimiter = ext === 'tsv' ? '\t' : ','
+  return String(content || '')
+    .split(/\r?\n/)
+    .filter((line, index) => index < 80 && line.length)
+    .map(line => line.split(delimiter).slice(0, 16).map(cell => cell.trim().replace(/^"|"$/g, '')))
+}
+
 function parseJsonText(value) {
   try {
     return JSON.parse(String(value || ''))
@@ -1141,6 +1588,14 @@ function extractLatestTokenUsage(events) {
   return null
 }
 
+function formatTokenUsage(usage) {
+  if (!usage) return ''
+  const total = usage.totalTokens || ((usage.inputTokens || 0) + (usage.outputTokens || 0))
+  if (!total) return ''
+  const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(total)
+  return `${compact} tokens`
+}
+
 function extractChangedFiles(events) {
   const files = new Map()
   const root = activeProject.value?.path || activeTask.value?.project_path || ''
@@ -1160,11 +1615,62 @@ function extractChangedFiles(events) {
       patches.push(...extractPatchesFromRaw(raw, root))
     }
     patches.filter(Boolean).forEach((patch) => {
-      const existing = files.get(patch.path)
-      files.set(patch.path, mergePatchSummary(existing, patch))
+      const key = fileSummaryKey(patch, root)
+      const existing = files.get(key)
+      files.set(key, mergePatchSummary(existing, patch))
     })
   })
   return Array.from(files.values())
+}
+
+function fileChangeItemId(event) {
+  const payload = parseJsonText(event?.text)
+  const raw = parseRawEvent(event)
+  return payload?.id
+    || raw?.params?.itemId
+    || raw?.params?.item?.id
+    || raw?.item?.id
+    || raw?.params?.turnId
+    || event?.type
+    || 'file-change'
+}
+
+function extractLiveFileChangeItems(events) {
+  const root = activeProject.value?.path || activeTask.value?.project_path || ''
+  const items = new Map()
+  events.forEach((event, index) => {
+    if (event.type !== 'app.fileChange' && event.type !== 'app.diff' && event.type !== 'app.patch') return
+    const id = fileChangeItemId(event)
+    const payload = parseJsonText(event.text)
+    const raw = parseRawEvent(event)
+    let files = []
+    if (event.type === 'app.fileChange') files = extractPatchesFromFileChange(payload, root)
+    if (event.type === 'app.diff') files = extractPatchesFromDiffPayload(payload || event.text, root)
+    if (event.type === 'app.patch') files = [parsePatchText(event.text, '', root)].filter(Boolean)
+    if (!files.length && (raw?.method === 'item/fileChange/patchUpdated' || raw?.method === 'turn/diff/updated')) {
+      files = extractPatchesFromRaw(raw, root)
+    }
+    if (!files.length) return
+    const existing = items.get(id)
+    const mergedFiles = new Map(existing?.files?.map(file => [fileSummaryKey(file, root), file]) || [])
+    files.forEach((file) => {
+      const key = fileSummaryKey(file, root)
+      mergedFiles.set(key, mergePatchSummary(mergedFiles.get(key), file))
+    })
+    const status = payload?.status
+      || raw?.params?.status
+      || raw?.params?.item?.status
+      || raw?.item?.status
+      || (raw?.method === 'item/fileChange/patchUpdated' ? 'inProgress' : 'completed')
+    items.set(id, {
+      id,
+      index,
+      time: event.ts ? formatTime(event.ts) : existing?.time || '',
+      status,
+      files: Array.from(mergedFiles.values()),
+    })
+  })
+  return Array.from(items.values())
 }
 
 function extractPatchesFromFileChange(payload, root = activeProject.value?.path || activeTask.value?.project_path || '') {
@@ -1241,7 +1747,8 @@ function parsePatchText(text, kind = '', root = activeProject.value?.path || act
     || raw.match(/^diff --git a\/.+ b\/(.+)$/m)?.[1]
   const firstLinePath = !lines[0]?.startsWith('diff ') && !lines[0]?.startsWith('@@') ? lines[0] : ''
   const path = cleanPatchPath(diffPath || firstLinePath || '未命名文件')
-  const patch = diffPath ? raw : lines.slice(firstLinePath ? 1 : 0).join('\n').trim()
+  const bodyPatch = diffPath ? raw : lines.slice(firstLinePath ? 1 : 0).join('\n').trim()
+  const patch = normalizePatchForFile(path, bodyPatch, kind)
   const displayPath = displayProjectPath(path, root)
   const patchLines = patch ? patch.split(/\r?\n/) : []
   const added = patchLines.filter(line => line.startsWith('+') && !line.startsWith('+++')).length
@@ -1260,12 +1767,37 @@ function parsePatchText(text, kind = '', root = activeProject.value?.path || act
   }
 }
 
+function normalizePatchForFile(path, patch, kind = '') {
+  const rawPatch = String(patch || '').trim()
+  if (!rawPatch) return ''
+  if (/^diff --git /m.test(rawPatch)) return rawPatch
+  if (/^@@ /m.test(rawPatch) || /^--- |\+\+\+ /m.test(rawPatch)) {
+    const cleanPath = cleanPatchPath(path)
+    const kindType = typeof kind === 'string' ? kind : kind?.type || ''
+    const fromPath = kindType === 'add' || kindType === 'create' ? '/dev/null' : `a/${cleanPath}`
+    const toPath = kindType === 'delete' || kindType === 'remove' ? '/dev/null' : `b/${cleanPath}`
+    const header = [
+      `diff --git a/${cleanPath} b/${cleanPath}`,
+      `--- ${fromPath}`,
+      `+++ ${toPath}`,
+    ]
+    const body = rawPatch.replace(/^(--- .+\n\+\+\+ .+\n)/, '')
+    return [...header, body].join('\n')
+  }
+  return rawPatch
+}
+
 function cleanPatchPath(path) {
   return String(path || '')
     .replace(/^["']|["']$/g, '')
     .replace(/^a\//, '')
     .replace(/^b\//, '')
     .trim()
+}
+
+function fileSummaryKey(file, root = activeProject.value?.path || activeTask.value?.project_path || '') {
+  const path = file?.path || file?.displayPath || ''
+  return displayProjectPath(path, root).replace(/^\.\/+/, '').replace(/\/+/g, '/').toLowerCase()
 }
 
 function summarizeFileAction(text, added, removed, kind = '') {
@@ -1282,17 +1814,26 @@ function summarizeFileAction(text, added, removed, kind = '') {
 
 function mergePatchSummary(existing, patch) {
   if (!existing) return patch
+  const added = (existing.added || 0) + (patch.added || 0)
+  const removed = (existing.removed || 0) + (patch.removed || 0)
+  const patchText = [existing.patch, patch.patch].filter(Boolean).join('\n')
+  const displayPatch = [existing.displayPatch, patch.displayPatch].filter(Boolean).join('\n')
   return {
+    ...existing,
     ...patch,
-    added: Math.max(existing.added || 0, patch.added || 0),
-    removed: Math.max(existing.removed || 0, patch.removed || 0),
-    patch: patch.patch || existing.patch,
-    displayPatch: patch.displayPatch || existing.displayPatch,
+    path: existing.path || patch.path,
+    displayPath: existing.displayPath || patch.displayPath,
+    name: existing.name || patch.name,
+    action: existing.action === patch.action ? existing.action : summarizeFileAction('', added, removed, 'modify'),
+    added,
+    removed,
+    patch: patchText,
+    displayPatch,
   }
 }
 
 function buildChangesEvent(key, time, files) {
-  const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : []
+  const normalizedFiles = mergeFileSummaries(files)
   if (!normalizedFiles.length) return null
   const stats = normalizedFiles.reduce((acc, file) => ({
     added: acc.added + (file.added || 0),
@@ -1307,6 +1848,41 @@ function buildChangesEvent(key, time, files) {
     title: `Edited ${normalizedFiles.length} ${normalizedFiles.length === 1 ? 'file' : 'files'}`,
     files: normalizedFiles,
     stats,
+  }
+}
+
+function mergeFileSummaries(files) {
+  const root = activeProject.value?.path || activeTask.value?.project_path || ''
+  const merged = new Map()
+  ;(Array.isArray(files) ? files : []).filter(Boolean).forEach((file) => {
+    const key = fileSummaryKey(file, root)
+    merged.set(key, mergePatchSummary(merged.get(key), file))
+  })
+  return Array.from(merged.values())
+}
+
+function buildLiveEditingEvent(items) {
+  const activeItems = (Array.isArray(items) ? items : []).filter((item) => {
+    const status = item?.status || 'completed'
+    return status === 'inProgress' || status === 'pending'
+  })
+  if (!activeItems.length) return null
+  const filesByPath = new Map()
+  activeItems.forEach((item) => {
+    ;(item.files || []).forEach((file) => {
+      filesByPath.set(file.path, mergePatchSummary(filesByPath.get(file.path), file))
+    })
+  })
+  const files = Array.from(filesByPath.values()).filter(Boolean)
+  if (!files.length) return null
+  const file = files[files.length - 1]
+  return {
+    key: 'live-file-editing',
+    kind: 'editing',
+    role: 'tool',
+    level: 'muted',
+    file,
+    extraCount: Math.max(0, files.length - 1),
   }
 }
 
@@ -1328,10 +1904,23 @@ async function loadPreviewFile() {
   const project = activeProject.value
   const file = selectedPreview.value
   if (!project?.id || !file?.path || previewFileLoading.value) return
+  const kind = previewKindForFile(file.path)
   if (file.action === '已删除') {
     previewFileContent.value = ''
     previewFileMeta.value = null
     previewFileError.value = '该文件已删除，不能读取当前文件内容'
+    return
+  }
+  if (['image', 'video', 'audio', 'pdf'].includes(kind)) {
+    previewFileContent.value = ''
+    previewFileMeta.value = null
+    previewFileError.value = ''
+    return
+  }
+  if (['archive', 'document', 'spreadsheet', 'slides', 'notebook', 'unsupported'].includes(kind)) {
+    previewFileContent.value = ''
+    previewFileMeta.value = null
+    previewFileError.value = ''
     return
   }
   previewFileLoading.value = true
@@ -1340,7 +1929,7 @@ async function loadPreviewFile() {
     const result = await codexAPI.projectFile(project.id, file.path)
     previewFileMeta.value = result
     previewFileContent.value = result.binary ? '' : (result.content || '')
-    previewFileError.value = result.binary ? '这是二进制文件，不能作为文本预览' : ''
+    previewFileError.value = result.binary ? '' : ''
   } catch (err) {
     previewFileContent.value = ''
     previewFileMeta.value = null
@@ -1411,7 +2000,9 @@ function normalizeCodexEvents(events) {
     if (event.type === 'app.file_delta') {
       flushAssistantDelta()
       flushCommandDelta()
-      activityLine = { key, kind: 'activity', role: 'tool', level: 'activity', time, text: '正在写入文件' }
+      if (!liveEditingEvent.value) {
+        activityLine = { key, kind: 'activity', role: 'tool', level: 'activity', time, text: '正在写入文件' }
+      }
       return
     }
 
@@ -1426,6 +2017,10 @@ function normalizeCodexEvents(events) {
   flushAssistantDelta()
   flushCommandDelta()
   flushActivityLine()
+  const editingEvent = liveEditingEvent.value
+  if (editingEvent && isCurrentTaskRunning.value) list.push(editingEvent)
+  const finalChangesEvent = completedChangesEvent.value
+  if (finalChangesEvent) list.push(finalChangesEvent)
   return compactActivityEvents(list)
 }
 
@@ -1435,7 +2030,7 @@ function normalizeCodexEvent(event, index) {
   const raw = parseRawEvent(event)
 
   if (event.role === 'user' || event.type === 'user_message') {
-    return { key, kind: 'message', role: 'user', time, text: event.text || '' }
+    return { key, kind: 'message', role: 'user', time, text: visibleUserMessageText(event.text), images: imagesFromUserEvent(event) }
   }
 
   if (event.type === 'app.agent_message') {
@@ -1455,17 +2050,15 @@ function normalizeCodexEvent(event, index) {
   }
 
   if (event.type === 'app.patch') {
-    const root = activeProject.value?.path || activeTask.value?.project_path || ''
-    const file = parsePatchText(event.text, '', root)
-    return file ? buildChangesEvent(key, time, [file]) : null
+    return null
   }
 
   if (event.type === 'app.fileChange' || event.type === 'app.diff') {
-    const root = activeProject.value?.path || activeTask.value?.project_path || ''
-    const files = event.type === 'app.fileChange'
-      ? extractPatchesFromFileChange(parseJsonText(event.text), root)
-      : extractPatchesFromDiffPayload(parseJsonText(event.text) || event.text, root)
-    return buildChangesEvent(key, time, files)
+    return null
+  }
+
+  if (event.type === 'app.imageGeneration' || event.type === 'app.imageView') {
+    return buildArtifactEvent(key, time, parseJsonText(event.text) || raw?.params?.item || raw?.item || {})
   }
 
   if (event.type === 'app.plan') {
@@ -1655,6 +2248,19 @@ function isLogNearBottom() {
 
 function maybeScrollLogs(shouldScroll) {
   if (shouldScroll) scrollLogs()
+}
+
+function updateComposerScrollSpace() {
+  const composer = composerEl.value
+  const workspace = composer?.closest?.('.codex-workspace')
+  if (!composer || !workspace) return
+  const rect = composer.getBoundingClientRect()
+  const bottom = Number.parseFloat(getComputedStyle(composer).bottom || '0') || 0
+  const terminalOffset = terminalOpen.value ? 260 : 0
+  const summaryHeight = workspace.querySelector?.('.composer-run-summary')?.getBoundingClientRect?.().height || 0
+  const space = Math.ceil(rect.height + summaryHeight + bottom + terminalOffset + 64)
+  workspace.style.setProperty('--composer-summary-bottom', `${Math.ceil(rect.height + bottom + 8)}px`)
+  workspace.style.setProperty('--composer-scroll-space', `${Math.max(220, space)}px`)
 }
 
 async function loadStatus() {
@@ -1916,6 +2522,11 @@ function selectTerminal(id) {
 }
 
 function handleGlobalTerminalShortcut(event) {
+  if (event.key === 'Escape' && imageLightboxOpen.value) {
+    event.preventDefault()
+    closeImageLightbox()
+    return
+  }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'j') {
     if (terminalOpen.value) {
       event.preventDefault()
@@ -2189,7 +2800,61 @@ function newThread() {
 }
 
 function removeAttachment(path) {
-  attachments.value = attachments.value.filter(item => item.path !== path)
+  attachments.value = attachments.value.filter(item => attachmentDisplayPath(item) !== path && item.path !== path)
+}
+
+function attachmentDisplayPath(attachment) {
+  return String(attachment?.relative_path || attachment?.relativePath || attachment?.path || '').trim()
+}
+
+function attachmentSendPath(attachment) {
+  return String(attachment?.path || attachment?.absolute_path || attachment?.absolutePath || attachmentDisplayPath(attachment)).trim()
+}
+
+async function uploadAttachmentFiles(files) {
+  const imageFiles = Array.from(files || []).filter(file => String(file?.type || '').startsWith('image/'))
+  if (!imageFiles.length) return
+  if (!activeProject.value) {
+    projectDialogOpen.value = true
+    toast.info('请先选择或新建项目，再上传图片')
+    return
+  }
+  const remaining = Math.max(0, 8 - attachments.value.length)
+  if (!remaining) {
+    toast.info('最多上传 8 张图片')
+    return
+  }
+  uploadingAttachment.value = true
+  try {
+    for (const file of imageFiles.slice(0, remaining)) {
+      const attachment = await codexAPI.uploadAttachment(activeProject.value.id, file)
+      attachments.value.push({
+        ...attachment,
+        path: attachmentDisplayPath(attachment),
+        absolute_path: attachment.path || attachment.absolute_path,
+      })
+    }
+  } catch (err) {
+    toast.error(err.message || '图片上传失败')
+  } finally {
+    uploadingAttachment.value = false
+  }
+}
+
+async function handleComposerPaste(event) {
+  const items = Array.from(event.clipboardData?.items || [])
+  const files = items
+    .filter(item => item.kind === 'file' && String(item.type || '').startsWith('image/'))
+    .map(item => item.getAsFile())
+    .filter(Boolean)
+    .map((file, index) => {
+      const ext = fileExt(file.name) || String(file.type || '').split('/')[1] || 'png'
+      const name = file.name || `screenshot-${Date.now()}-${index + 1}.${ext}`
+      return new File([file], name, { type: file.type || 'image/png' })
+    })
+  if (!files.length) return
+  event.preventDefault()
+  await uploadAttachmentFiles(files)
 }
 
 function selectLocalPath(path) {
@@ -2234,22 +2899,7 @@ async function handleAttachmentChange(event) {
   const input = event.target
   const files = Array.from(input.files || [])
   input.value = ''
-  if (!files.length) return
-  if (!activeProject.value) {
-    projectDialogOpen.value = true
-    return
-  }
-  uploadingAttachment.value = true
-  try {
-    for (const file of files.slice(0, 8 - attachments.value.length)) {
-      const attachment = await codexAPI.uploadAttachment(activeProject.value.id, file)
-      attachments.value.push(attachment)
-    }
-  } catch (err) {
-    toast.error(err.message || '图片上传失败')
-  } finally {
-    uploadingAttachment.value = false
-  }
+  await uploadAttachmentFiles(files)
 }
 
 async function openTask(id) {
@@ -2353,6 +3003,7 @@ async function startTask() {
     toast.info('当前线程还在运行，请等待完成或先停止任务')
     return
   }
+  const imagePaths = attachments.value.map(item => attachmentSendPath(item)).filter(Boolean)
   starting.value = true
   const optimisticMessage = {
     ts: new Date().toISOString(),
@@ -2360,13 +3011,13 @@ async function startTask() {
     type: 'user_message',
     role: 'user',
     text: prompt,
+    raw: imagePaths.length ? JSON.stringify({ images: imagePaths }) : undefined,
     optimistic: true,
   }
   pendingUserMessages.value = [optimisticMessage]
   scrollLogs()
   try {
     const resumeTask = activeTask.value?.thread_id ? activeTask.value : null
-    const imagePaths = attachments.value.map(item => item.path).filter(Boolean)
     const modelForTask = selectedModel.value || codexConfig.value.model || ''
     const selectedContext = selectedContextPayload()
     const task = resumeTask
@@ -2424,6 +3075,12 @@ onMounted(async () => {
     terminalPollTimer = window.setInterval(loadActiveTerminal, 1000)
     window.addEventListener('keydown', handleGlobalTerminalShortcut)
     window.addEventListener('resize', fitTerminal)
+    window.addEventListener('resize', updateComposerScrollSpace)
+    if (window.ResizeObserver) {
+      composerResizeObserver = new ResizeObserver(updateComposerScrollSpace)
+      if (composerEl.value) composerResizeObserver.observe(composerEl.value)
+    }
+    nextTick(updateComposerScrollSpace)
   } catch (err) {
     toast.error(err.message || 'Codex 工作台加载失败')
   }
@@ -2435,6 +3092,9 @@ onBeforeUnmount(() => {
   window.clearTimeout(terminalResizeTimer)
   window.removeEventListener('keydown', handleGlobalTerminalShortcut)
   window.removeEventListener('resize', fitTerminal)
+  window.removeEventListener('resize', updateComposerScrollSpace)
+  composerResizeObserver?.disconnect?.()
+  composerResizeObserver = null
   resetXterm()
 })
 </script>
@@ -4722,6 +5382,16 @@ button:disabled {
   overflow: hidden;
 }
 
+.codex-workspace {
+  --composer-scroll-space: 292px;
+  --composer-summary-bottom: 188px;
+}
+
+.codex-workspace.terminal-visible {
+  --composer-scroll-space: 548px;
+  --composer-summary-bottom: 446px;
+}
+
 .task-output {
   min-height: 0;
   overflow: hidden;
@@ -4732,7 +5402,8 @@ button:disabled {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-bottom: 16px;
+  padding-bottom: var(--composer-scroll-space);
+  scroll-padding-bottom: var(--composer-scroll-space);
   scrollbar-width: thin;
   scrollbar-color: rgba(32, 33, 36, 0.28) transparent;
 }
@@ -5227,6 +5898,39 @@ button:disabled {
   margin-right: auto;
 }
 
+.message-image-stack {
+  display: flex;
+  max-width: min(640px, 72%);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0 0 8px auto;
+}
+
+.message-image-thumb {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  overflow: hidden;
+  border: 1px solid #dedee3;
+  border-radius: 8px;
+  background: #f7f7f8;
+  padding: 0;
+  cursor: pointer;
+}
+
+.message-image-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.message-image-thumb:hover {
+  border-color: #b8b8c0;
+  background: #f5f5f6;
+}
+
 .message-bubble {
   max-width: min(820px, 100%);
   padding: 0;
@@ -5253,6 +5957,10 @@ button:disabled {
 .message-row.assistant .message-bubble {
   border: 0;
   background: transparent;
+}
+
+.message-row.user .message-bubble:empty {
+  display: none;
 }
 
 .markdown-body {
@@ -5311,13 +6019,154 @@ button:disabled {
 
 .activity-line,
 .tool-line,
+.editing-line,
 .changes-card,
+.artifact-card,
 .status-line {
   width: 100%;
   max-width: 100%;
   color: #96979d;
   font-size: 13px;
   line-height: 20px;
+}
+
+.editing-line {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 7px;
+  color: #76777e;
+  font-size: 13px;
+}
+
+.editing-line svg {
+  flex: 0 0 auto;
+  color: #85868d;
+}
+
+.editing-label {
+  color: #5f6067;
+  font-weight: 500;
+}
+
+.editing-file {
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: #0a66d8;
+  padding: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.editing-file:hover {
+  color: #004eb8;
+  text-decoration: underline;
+}
+
+.editing-extra {
+  flex: 0 0 auto;
+  color: #96979d;
+  font-size: 12px;
+}
+
+.artifact-card {
+  display: grid;
+  max-width: 420px;
+  grid-template-columns: 64px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #dedee3;
+  border-radius: 12px;
+  background: #fff;
+  padding: 8px;
+  color: #202124;
+}
+
+.artifact-card:hover {
+  background: #f8f8f9;
+  border-color: #d2d2d8;
+}
+
+.artifact-preview {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid #dedee3;
+  border-radius: 8px;
+  background: #f7f7f8;
+  color: #77787f;
+  padding: 0;
+  cursor: pointer;
+}
+
+.artifact-preview img,
+.artifact-preview video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.artifact-body {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.artifact-title,
+.artifact-subtitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-title {
+  color: #202124;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.artifact-subtitle {
+  color: #77787f;
+  font-size: 12px;
+}
+
+.artifact-open {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #85868d;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.artifact-card:hover .artifact-open,
+.artifact-card:focus-within .artifact-open {
+  opacity: 1;
+}
+
+.artifact-open:hover {
+  background: #ececef;
+  color: #202124;
 }
 
 .activity-line {
@@ -5361,19 +6210,20 @@ button:disabled {
 .changes-card {
   overflow: hidden;
   border: 1px solid #dedee3;
-  border-radius: 13px;
+  border-radius: 12px;
   background: #ffffff;
   color: #202124;
-  box-shadow: 0 1px 2px rgba(15, 15, 15, 0.04);
+  box-shadow: none;
 }
 
 .changes-card-head {
   display: flex;
-  min-height: 46px;
+  min-height: 44px;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 8px 10px 8px 13px;
+  border-bottom: 1px solid #eeeeef;
+  padding: 7px 10px 7px 13px;
 }
 
 .changes-card-title,
@@ -5386,8 +6236,23 @@ button:disabled {
 
 .changes-card-title {
   color: #202124;
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
+}
+
+.changes-card-title .spin {
+  color: #5f6067;
+}
+
+.changes-live-badge {
+  border-radius: 999px;
+  background: #f0f0f2;
+  color: #696a72;
+  padding: 1px 7px;
+  font-size: 11.5px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 18px;
 }
 
 .changes-card-title svg {
@@ -5401,11 +6266,11 @@ button:disabled {
 
 .changes-card-actions button {
   height: 28px;
-  border: 1px solid #d7d7dc;
-  border-radius: 8px;
-  background: #fff;
-  color: #3b3c42;
-  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #5f6067;
+  padding: 0 9px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -5415,23 +6280,32 @@ button:disabled {
   background: #f3f3f5;
 }
 
+.changes-card-actions button:disabled {
+  opacity: 0.58;
+  cursor: default;
+}
+
+.changes-file-block + .changes-file-block {
+  border-top: 1px solid #eeeeef;
+}
+
 .changes-file-row {
   display: grid;
   width: 100%;
-  grid-template-columns: minmax(0, 1fr) auto 52px 52px;
+  grid-template-columns: minmax(0, 1fr) auto 46px 46px 25px 18px;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   border: 0;
-  border-top: 1px solid #eeeeef;
   background: transparent;
-  padding: 9px 12px;
+  padding: 8px 10px 8px 13px;
   color: #3f4046;
   text-align: left;
   cursor: pointer;
 }
 
 .changes-file-row:hover,
-.changes-file-row.active {
+.changes-file-row.active,
+.changes-file-row.expanded {
   background: #f8f8f9;
 }
 
@@ -5444,10 +6318,68 @@ button:disabled {
   white-space: nowrap;
 }
 
+.changes-file-action {
+  border-radius: 999px;
+  background: #f0f0f2;
+  color: #74757c;
+  padding: 1px 7px;
+  font-size: 11.5px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
 .changes-file-meta {
   color: #8c8d94;
   font-size: 12px;
   white-space: nowrap;
+}
+
+.changes-open-btn {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #8b8c93;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.changes-file-row:hover .changes-open-btn,
+.changes-file-row:focus-within .changes-open-btn,
+.changes-file-row.expanded .changes-open-btn {
+  opacity: 1;
+}
+
+.changes-open-btn:hover {
+  background: #ececef;
+  color: #202124;
+}
+
+.changes-file-row > svg {
+  color: #85868d;
+  justify-self: center;
+}
+
+.changes-inline-diff {
+  max-height: 360px;
+  overflow: auto;
+  border-top: 1px solid #eeeeef;
+  background: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.changes-inline-diff .preview-code-line {
+  min-width: max-content;
+}
+
+.changes-inline-diff .preview-code-line code {
+  padding-right: 18px;
 }
 
 .change-stat {
@@ -5645,8 +6577,31 @@ button:disabled {
   margin-bottom: 8px;
 }
 
+.attachment-strip {
+  align-items: flex-start;
+}
+
 .selected-context-strip {
   margin-bottom: 4px;
+}
+
+.composer-run-summary {
+  display: flex;
+  position: absolute;
+  right: 0;
+  bottom: var(--composer-summary-bottom);
+  left: 0;
+  width: var(--codex-track-width);
+  min-height: 29px;
+  align-items: center;
+  gap: 8px;
+  margin: 0 auto 8px;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.codex-workspace.composing .composer-run-summary {
+  display: none;
 }
 
 .selected-context-chip {
@@ -5675,18 +6630,178 @@ button:disabled {
   white-space: nowrap;
 }
 
+.image-preview-chip {
+  position: relative;
+  display: block;
+  width: 112px;
+  max-width: none;
+  height: 112px;
+  max-height: none;
+  flex: 0 0 112px;
+  overflow: hidden;
+  border: 1px solid #dedee3;
+  border-radius: 12px;
+  background: #f7f7f8;
+  padding: 0;
+  color: inherit;
+}
+
+.image-preview-trigger {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: zoom-in;
+}
+
+.image-preview-trigger img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.image-preview-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(32, 33, 36, 0.86);
+  color: #fff;
+  padding: 0;
+  cursor: pointer;
+}
+
+.image-preview-remove:hover {
+  background: #111214;
+}
+
+.image-lightbox {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.9);
+  padding: 86px 96px 112px;
+}
+
+.image-lightbox-actions {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  display: inline-flex;
+  gap: 10px;
+}
+
+.image-lightbox-round,
+.image-lightbox-round:visited {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #f7f7f8;
+  color: #17181c;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.image-lightbox-round:hover {
+  background: #ffffff;
+}
+
+.image-lightbox-stage {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center center;
+  transition: transform 0.12s ease;
+}
+
+.image-lightbox-img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+.image-lightbox-zoom {
+  position: fixed;
+  left: 50%;
+  bottom: 42px;
+  display: inline-flex;
+  height: 58px;
+  min-width: 214px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: #f7f7f8;
+  padding: 4px;
+  color: #202124;
+  font-size: 17px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22);
+}
+
+.image-lightbox-zoom button {
+  display: grid;
+  width: 50px;
+  height: 50px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #dedfe2;
+  color: #202124;
+  padding: 0;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.image-lightbox-zoom button:hover {
+  background: #d2d3d6;
+}
+
 .change-summary {
   display: inline-flex;
-  height: 27px;
+  height: 39px;
+  min-width: min(100%, 560px);
   align-items: center;
   gap: 8px;
+  justify-content: flex-start;
   border: 1px solid #dedee3;
-  border-radius: 999px;
+  border-radius: 14px;
   background: #fff;
   color: #686970;
-  padding: 0 10px;
+  padding: 0 13px;
   font-size: 12px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
   white-space: nowrap;
+}
+
+.change-summary:hover {
+  background: #f7f7f8;
+  color: #202124;
 }
 
 .change-summary .additions {
@@ -5695,6 +6810,27 @@ button:disabled {
 
 .change-summary .deletions {
   color: #cf222e;
+}
+
+.change-summary em {
+  margin-left: auto;
+  color: #202124;
+  font-style: normal;
+  font-weight: 550;
+}
+
+.token-summary {
+  display: inline-flex;
+  height: 27px;
+  align-items: center;
+  border: 1px solid #e1e1e5;
+  border-radius: 999px;
+  background: #f7f7f8;
+  color: #77787f;
+  padding: 0 10px;
+  font-size: 12px;
+  pointer-events: auto;
+  white-space: nowrap;
 }
 
 .attachment-chip,
@@ -5853,6 +6989,7 @@ button:disabled {
   min-height: 0;
   flex: 1;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .preview-file-meta {
@@ -5865,6 +7002,132 @@ button:disabled {
   padding: 7px 12px;
   color: #77787f;
   font-size: 12px;
+}
+
+.preview-media-stage {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  place-items: center;
+  overflow: auto;
+  background: #f7f7f8;
+  padding: 18px;
+}
+
+.preview-media-stage.audio {
+  align-content: center;
+  gap: 16px;
+  color: #77787f;
+}
+
+.preview-media-stage.audio audio {
+  width: min(520px, 100%);
+}
+
+.preview-media-image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  object-fit: contain;
+}
+
+.preview-media-video {
+  width: min(100%, 920px);
+  max-height: 100%;
+  border-radius: 8px;
+  background: #000;
+}
+
+.preview-pdf-frame {
+  min-height: 0;
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: #f7f7f8;
+}
+
+.preview-markdown {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 18px 22px;
+  color: #202124;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.preview-table-wrap {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  background: #fff;
+}
+
+.preview-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  color: #303137;
+  font-size: 12px;
+}
+
+.preview-table td {
+  max-width: 280px;
+  border: 1px solid #ececef;
+  padding: 6px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-table tr:first-child td {
+  background: #fafafa;
+  color: #55565c;
+  font-weight: 600;
+}
+
+.preview-unsupported {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  place-content: center;
+  justify-items: center;
+  gap: 9px;
+  padding: 24px;
+  color: #77787f;
+  text-align: center;
+}
+
+.preview-unsupported strong {
+  color: #202124;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.preview-unsupported span {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.preview-unsupported button {
+  height: 30px;
+  border: 1px solid #dedee3;
+  border-radius: 7px;
+  background: #fff;
+  color: #202124;
+  padding: 0 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.preview-unsupported button:hover {
+  background: #f3f3f4;
 }
 
 .approval-dialog {
