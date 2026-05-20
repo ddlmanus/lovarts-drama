@@ -1,10 +1,11 @@
 import { db, schema } from '../db/index.js'
 import { eq } from 'drizzle-orm'
-import { getActiveConfig, getConfigById } from './ai.js'
+import { getConfigForModel } from './ai.js'
 import { now } from '../utils/response.js'
 import { downloadFile, readImageAsCompressedDataUrl } from '../utils/storage.js'
 import { getVideoAdapter } from './adapters/registry'
 import type { AIConfig } from './adapters/types'
+import { generateZenmuxVideoDirect, shouldUseZenmuxDirect } from './zenmux-direct.js'
 import { logTaskError, logTaskPayload, logTaskProgress, logTaskStart, logTaskSuccess, logTaskWarn, redactUrl } from '../utils/task-logger.js'
 
 interface GenerateVideoParams {
@@ -18,16 +19,32 @@ interface GenerateVideoParams {
   lastFrameUrl?: string
   referenceImageUrls?: string[]
   duration?: number
+  fps?: number
+  resolution?: string
   aspectRatio?: string
+  seed?: number
+  generateAudio?: boolean
+  negativePrompt?: string
+  enhancePrompt?: boolean
+  personGeneration?: string
+  numberOfVideos?: number
   configId?: number
+  userId?: string
+}
+
+interface VideoRuntimeOptions {
+  generateAudio?: boolean
+  negativePrompt?: string
+  enhancePrompt?: boolean
+  personGeneration?: string
+  numberOfVideos?: number
 }
 
 export async function generateVideo(params: GenerateVideoParams): Promise<number> {
   const ts = now()
-  const config = params.configId
-    ? getConfigById(params.configId)
-    : getActiveConfig('video')
+  const config = getConfigForModel('video', params.model, params.configId, params.userId)
   if (!config) throw new Error('No active video AI config')
+  const defaults = config.modelDefaults || {}
 
   const res = db.insert(schema.videoGenerations).values({
     storyboardId: params.storyboardId,
@@ -40,8 +57,11 @@ export async function generateVideo(params: GenerateVideoParams): Promise<number
     firstFrameUrl: params.firstFrameUrl,
     lastFrameUrl: params.lastFrameUrl,
     referenceImageUrls: params.referenceImageUrls ? JSON.stringify(params.referenceImageUrls) : null,
-    duration: params.duration || 5,
-    aspectRatio: params.aspectRatio || '16:9',
+    duration: params.duration || defaults.duration || 5,
+    fps: params.fps ?? defaults.fps ?? null,
+    resolution: params.resolution || defaults.resolution || '720p',
+    aspectRatio: params.aspectRatio || defaults.aspect_ratio || defaults.aspectRatio || '16:9',
+    seed: params.seed ?? defaults.seed ?? null,
     status: 'processing',
     createdAt: ts,
     updatedAt: ts,
@@ -54,7 +74,7 @@ export async function generateVideo(params: GenerateVideoParams): Promise<number
     storyboardId: params.storyboardId,
     dramaId: params.dramaId,
     referenceMode: params.referenceMode || 'none',
-    duration: params.duration || 5,
+    duration: params.duration || defaults.duration || 5,
   })
   logTaskPayload('VideoTask', 'enqueue params', {
     id: lastId,
@@ -65,14 +85,22 @@ export async function generateVideo(params: GenerateVideoParams): Promise<number
     },
     params,
   })
-  processVideoGeneration(lastId, config).catch(err => {
+  const runtimeOptions: VideoRuntimeOptions = {
+    generateAudio: params.generateAudio ?? defaults.generate_audio ?? defaults.generateAudio,
+    negativePrompt: params.negativePrompt || defaults.negative_prompt || defaults.negativePrompt,
+    enhancePrompt: params.enhancePrompt ?? defaults.enhance_prompt ?? defaults.enhancePrompt,
+    personGeneration: params.personGeneration || defaults.person_generation || defaults.personGeneration,
+    numberOfVideos: params.numberOfVideos ?? defaults.number_of_videos ?? defaults.numberOfVideos ?? defaults.sample_count ?? defaults.sampleCount,
+  }
+
+  processVideoGeneration(lastId, config, runtimeOptions).catch(err => {
     logTaskError('VideoTask', 'process', { id: lastId, error: err.message })
     console.error(`Video generation ${lastId} failed:`, err)
   })
   return lastId
 }
 
-async function processVideoGeneration(id: number, config: AIConfig) {
+async function processVideoGeneration(id: number, config: AIConfig, runtimeOptions: VideoRuntimeOptions = {}) {
   const adapter = getVideoAdapter(config.provider)
 
   try {
@@ -92,6 +120,34 @@ async function processVideoGeneration(id: number, config: AIConfig) {
     const resolvedLastFrameUrl = await normalizeVideoReferenceUrl(record.lastFrameUrl, prefersPublicImageUrls)
     const resolvedReferenceImageUrls = await normalizeVideoReferenceUrls(record.referenceImageUrls, prefersPublicImageUrls)
 
+    if (shouldUseZenmuxDirect('video', config, record.model)) {
+      logTaskProgress('VideoTask', 'zenmux-direct-start', {
+        id,
+        provider: config.provider,
+        model: record.model || config.model,
+      })
+      const result = await generateZenmuxVideoDirect(config, {
+        model: record.model,
+        prompt: record.prompt,
+        imageUrl: resolvedImageUrl,
+        firstFrameUrl: resolvedFirstFrameUrl,
+        lastFrameUrl: resolvedLastFrameUrl,
+        referenceImageUrls: resolvedReferenceImageUrls,
+        duration: record.duration,
+        aspectRatio: record.aspectRatio,
+        resolution: record.resolution,
+        fps: record.fps,
+        seed: record.seed,
+        generateAudio: runtimeOptions.generateAudio,
+        negativePrompt: runtimeOptions.negativePrompt,
+        enhancePrompt: runtimeOptions.enhancePrompt,
+        personGeneration: runtimeOptions.personGeneration,
+        numberOfVideos: runtimeOptions.numberOfVideos,
+      })
+      await handleVideoCompleteLocal(id, result.localPath, result.duration, record.storyboardId)
+      return
+    }
+
     // 使用 Adapter 构建请求
     const { url, method, headers, body } = adapter.buildGenerateRequest(config, {
       id: record.id,
@@ -103,7 +159,15 @@ async function processVideoGeneration(id: number, config: AIConfig) {
       lastFrameUrl: resolvedLastFrameUrl,
       referenceImageUrls: resolvedReferenceImageUrls ? JSON.stringify(resolvedReferenceImageUrls) : null,
       duration: record.duration,
+      fps: record.fps,
+      resolution: record.resolution,
       aspectRatio: record.aspectRatio,
+      seed: record.seed,
+      generateAudio: runtimeOptions.generateAudio,
+      negativePrompt: runtimeOptions.negativePrompt,
+      enhancePrompt: runtimeOptions.enhancePrompt,
+      personGeneration: runtimeOptions.personGeneration,
+      numberOfVideos: runtimeOptions.numberOfVideos,
     })
     logTaskProgress('VideoTask', 'request', {
       id,
@@ -210,7 +274,8 @@ async function pollVideoTask(id: number, config: AIConfig, taskId: string, story
   for (let i = 0; i < 300; i++) {
     await new Promise(r => setTimeout(r, 10000))
     try {
-      const { url, method, headers } = adapter.buildPollRequest(config, taskId)
+      const [record] = db.select().from(schema.videoGenerations).where(eq(schema.videoGenerations.id, id)).all()
+      const { url, method, headers, body } = adapter.buildPollRequest(config, taskId, record?.model)
       logTaskProgress('VideoTask', 'poll-request', {
         id,
         taskId,
@@ -219,7 +284,11 @@ async function pollVideoTask(id: number, config: AIConfig, taskId: string, story
         url: redactUrl(url),
         attempt: i + 1,
       })
-      const resp = await fetch(url, { method, headers })
+      const resp = await fetch(url, {
+        method,
+        headers,
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      })
       if (!resp.ok) continue
       const result = await resp.json() as any
 
@@ -255,6 +324,21 @@ async function handleVideoComplete(id: number, videoUrl: string, duration: numbe
     .where(eq(schema.videoGenerations.id, id))
     .run()
   logTaskSuccess('VideoTask', 'downloaded', { id, localPath, storyboardId, duration })
+
+  if (storyboardId) {
+    db.update(schema.storyboards)
+      .set({ videoUrl: localPath, duration: duration || undefined, updatedAt: now() })
+      .where(eq(schema.storyboards.id, storyboardId))
+      .run()
+  }
+}
+
+async function handleVideoCompleteLocal(id: number, localPath: string, duration: number | null | undefined, storyboardId?: number | null) {
+  db.update(schema.videoGenerations)
+    .set({ localPath, status: 'completed', completedAt: now(), updatedAt: now() })
+    .where(eq(schema.videoGenerations.id, id))
+    .run()
+  logTaskSuccess('VideoTask', 'saved-local', { id, localPath, storyboardId, duration })
 
   if (storyboardId) {
     db.update(schema.storyboards)

@@ -6,6 +6,7 @@ import { generateImage } from '../services/image-generation.js'
 import { splitGridImage } from '../services/grid-split.js'
 import { createAgent } from '../agents/index.js'
 import { logTaskError, logTaskPayload, logTaskProgress } from '../utils/task-logger.js'
+import { currentAuthUserId } from '../utils/auth.js'
 
 const app = new Hono()
 
@@ -525,6 +526,7 @@ app.post('/generate', async (c) => {
       size,
       frameType: `grid_${mode}_${actualRows}x${actualCols}`,
       referenceImages,
+      userId: currentAuthUserId(c),
     })
 
     logTaskProgress('GridGenerate', 'reference-images', {

@@ -1,7 +1,42 @@
 const BASE = '/api/v1'
+const TOKEN_KEY = 'huobao_auth_token'
+const USER_KEY = 'huobao_auth_user'
+
+export function getAuthToken() {
+  if (typeof localStorage === 'undefined') return ''
+  return localStorage.getItem(TOKEN_KEY) || ''
+}
+
+export function getAuthUser() {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    return JSON.parse(localStorage.getItem(USER_KEY) || 'null')
+  } catch {
+    return null
+  }
+}
+
+export function setAuthSession(token: string, user: any) {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(TOKEN_KEY, token)
+  localStorage.setItem(USER_KEY, JSON.stringify(user || null))
+  window.dispatchEvent(new CustomEvent('huobao-auth-change'))
+}
+
+export function clearAuthSession() {
+  if (typeof localStorage === 'undefined') return
+  localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(USER_KEY)
+  window.dispatchEvent(new CustomEvent('huobao-auth-change'))
+}
 
 async function req<T = any>(method: string, path: string, body?: any): Promise<T> {
-  const opts: RequestInit = { method, headers: { 'Content-Type': 'application/json' } }
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const token = getAuthToken()
+  const user = getAuthUser()
+  if (token) headers.Authorization = `Bearer ${token}`
+  if (user?.id) headers['x-user-id'] = user.id
+  const opts: RequestInit = { method, headers }
   if (body) opts.body = JSON.stringify(body)
 
   const start = performance.now()
@@ -55,6 +90,7 @@ export const uploadAPI = {
     form.append('file', file)
     const resp = await fetch(`${BASE}/upload/image`, {
       method: 'POST',
+      headers: getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : undefined,
       body: form,
     })
     const json = await resp.json()
@@ -63,6 +99,26 @@ export const uploadAPI = {
     }
     return json.data ?? json
   },
+}
+
+async function uploadCodexAttachment(projectId: string, file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  const headers: Record<string, string> = {}
+  const token = getAuthToken()
+  const user = getAuthUser()
+  if (token) headers.Authorization = `Bearer ${token}`
+  if (user?.id) headers['x-user-id'] = user.id
+  const resp = await fetch(`${BASE}/codex/projects/${encodeURIComponent(projectId)}/attachments`, {
+    method: 'POST',
+    headers,
+    body: form,
+  })
+  const json = await resp.json()
+  if (!resp.ok || (json.code && json.code >= 400)) {
+    throw new Error(json.message || `${resp.status}`)
+  }
+  return json.data ?? json
 }
 
 export const dramaAPI = {
@@ -131,6 +187,58 @@ export const videoAPI = {
   generate: (d: any) => api.post('/videos', d),
   get: (id: number) => api.get(`/videos/${id}`),
 }
+export const chatAPI = {
+  ask: (d: any) => api.post('/multimodal/analyze', d),
+  history: () => api.get('/chat-history'),
+  createHistory: (d: any) => api.post('/chat-history', d),
+  updateHistory: (id: string, d: any) => api.put(`/chat-history/${encodeURIComponent(id)}`, d),
+  deleteHistory: (id: string) => api.del(`/chat-history/${encodeURIComponent(id)}`),
+}
+export const codexAPI = {
+  status: () => api.get('/codex/status'),
+  config: () => api.get('/codex/config'),
+  skills: () => api.get('/codex/skills'),
+  deleteSkill: (id: string) => api.del(`/codex/skills?skill_id=${encodeURIComponent(id)}`),
+  approvals: () => api.get('/codex/approvals'),
+  respondApproval: (id: string, d: any) => api.post(`/codex/approvals/${encodeURIComponent(id)}/respond`, d),
+  testConfig: (d: any) => api.post('/codex/config/test', d),
+  updateConfig: (d: any) => api.put('/codex/config', d),
+  deleteConfig: () => api.del('/codex/config'),
+  projects: () => api.get('/codex/projects'),
+  directories: (path?: string) => api.get(`/codex/project-directories${path ? `?path=${encodeURIComponent(path)}` : ''}`),
+  pickDirectory: () => api.post('/codex/project-directories/pick', {}),
+  createProject: (d: any) => api.post('/codex/projects', d),
+  projectFile: (projectId: string, filePath: string) => api.get(`/codex/projects/${encodeURIComponent(projectId)}/files?path=${encodeURIComponent(filePath)}`),
+  openProjectFile: (projectId: string, filePath: string) => api.post(`/codex/projects/${encodeURIComponent(projectId)}/open-file`, { path: filePath }),
+  projectGitStatus: (projectId: string) => api.get(`/codex/projects/${encodeURIComponent(projectId)}/git`),
+  projectGitCommit: (projectId: string, d: any) => api.post(`/codex/projects/${encodeURIComponent(projectId)}/git/commit`, d),
+  projectGitPush: (projectId: string) => api.post(`/codex/projects/${encodeURIComponent(projectId)}/git/push`, {}),
+  projectTerminals: (projectId: string) => api.get(`/codex/projects/${encodeURIComponent(projectId)}/terminals`),
+  createTerminal: (projectId: string) => api.post(`/codex/projects/${encodeURIComponent(projectId)}/terminals`, {}),
+  terminal: (terminalId: string, afterSeq = 0) => api.get(`/codex/terminals/${encodeURIComponent(terminalId)}${afterSeq ? `?after_seq=${encodeURIComponent(String(afterSeq))}` : ''}`),
+  terminalInput: (terminalId: string, input: string) => api.post(`/codex/terminals/${encodeURIComponent(terminalId)}/input`, { input }),
+  terminalInterrupt: (terminalId: string) => api.post(`/codex/terminals/${encodeURIComponent(terminalId)}/interrupt`, {}),
+  terminalResize: (terminalId: string, cols: number, rows: number) => api.post(`/codex/terminals/${encodeURIComponent(terminalId)}/resize`, { cols, rows }),
+  deleteTerminal: (terminalId: string) => api.del(`/codex/terminals/${encodeURIComponent(terminalId)}`),
+  uploadAttachment: uploadCodexAttachment,
+  tasks: (params: Record<string, any> = {}) => {
+    const query = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') query.set(key, String(value))
+    })
+    return api.get(`/codex/tasks${query.toString() ? `?${query.toString()}` : ''}`)
+  },
+  task: (id: string) => api.get(`/codex/tasks/${encodeURIComponent(id)}`),
+  taskLogs: (id: string) => api.get(`/codex/tasks/${encodeURIComponent(id)}/logs`),
+  nativeThreads: () => api.get('/codex/threads/native'),
+  nativeThread: (threadId: string) => api.get(`/codex/threads/${encodeURIComponent(threadId)}/native`),
+  nativeThreadTurns: (threadId: string) => api.get(`/codex/threads/${encodeURIComponent(threadId)}/turns/native`),
+  createTask: (d: any) => api.post('/codex/tasks', d),
+  sendMessage: (id: string, d: any) => api.post(`/codex/tasks/${encodeURIComponent(id)}/messages`, d),
+  cancelTask: (id: string) => api.post(`/codex/tasks/${encodeURIComponent(id)}/cancel`, {}),
+  deleteTask: (id: string) => api.del(`/codex/tasks/${encodeURIComponent(id)}`),
+  deleteProject: (id: string) => api.del(`/codex/projects/${encodeURIComponent(id)}`),
+}
 export const composeAPI = {
   shot: (id: number) => api.post(`/compose/storyboards/${id}/compose`),
   all: (epId: number) => api.post(`/compose/episodes/${epId}/compose-all`),
@@ -147,6 +255,55 @@ export const aiConfigAPI = {
   del: (id: number) => api.del(`/ai-configs/${id}`),
   test: (d: any) => api.post('/ai-configs/test', d),
   huobaoPreset: (apiKey: string) => api.post('/ai-configs/huobao-preset', { api_key: apiKey }),
+}
+
+export const aiModelAPI = {
+  list: (params: Record<string, any> = {}) => {
+    const query = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') query.set(key, String(value))
+    })
+    return api.get(`/ai-models${query.toString() ? `?${query.toString()}` : ''}`)
+  },
+  options: (serviceType?: string) => api.get(`/ai-models/options${serviceType ? `?service_type=${encodeURIComponent(serviceType)}` : ''}`),
+  create: (d: any) => api.post('/ai-models', d),
+  update: (id: number, d: any) => api.put(`/ai-models/${id}`, d),
+  del: (id: number) => api.del(`/ai-models/${id}`),
+  seedFromConfigs: () => api.post('/ai-models/seed-from-configs', {}),
+  adminProviders: () => api.get('/ai-models/admin/providers?active=0'),
+  createAdminProvider: (d: any) => api.post('/ai-models/admin/providers', d),
+  updateAdminProvider: (id: number, d: any) => api.put(`/ai-models/admin/providers/${id}`, d),
+  deleteAdminProvider: (id: number) => api.del(`/ai-models/admin/providers/${id}`),
+  adminModels: (params: Record<string, any> = {}) => {
+    const query = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') query.set(key, String(value))
+    })
+    return api.get(`/ai-models/admin/models${query.toString() ? `?${query.toString()}` : ''}`)
+  },
+  createAdminModel: (d: any) => api.post('/ai-models/admin/models', d),
+  updateAdminModel: (id: number, d: any) => api.put(`/ai-models/admin/models/${id}`, d),
+  deleteAdminModel: (id: number) => api.del(`/ai-models/admin/models/${id}`),
+  adminParameters: () => api.get('/ai-models/admin/model-parameters'),
+  createAdminParameter: (d: any) => api.post('/ai-models/admin/model-parameters', d),
+  updateAdminParameter: (id: number, d: any) => api.put(`/ai-models/admin/model-parameters/${id}`, d),
+  deleteAdminParameter: (id: number) => api.del(`/ai-models/admin/model-parameters/${id}`),
+  parameterItems: (profileId: number) => api.get(`/ai-models/admin/model-parameters/${profileId}/items`),
+  createParameterItem: (profileId: number, d: any) => api.post(`/ai-models/admin/model-parameters/${profileId}/items`, d),
+  updateParameterItem: (itemId: number, d: any) => api.put(`/ai-models/admin/model-parameters/items/${itemId}`, d),
+  deleteParameterItem: (itemId: number) => api.del(`/ai-models/admin/model-parameters/items/${itemId}`),
+  users: () => api.get('/ai-models/admin/users'),
+  createUser: (d: any) => api.post('/ai-models/admin/users', d),
+  adminUserProviders: (userId?: string) => api.get(`/ai-models/admin/user-providers${userId ? `?user_id=${encodeURIComponent(userId)}` : ''}`),
+  deleteUserProvider: (id: number) => api.del(`/ai-models/admin/user-providers/${id}`),
+  userProviders: (userId?: string) => api.get(`/ai-models/user/providers${userId ? `?user_id=${encodeURIComponent(userId)}` : ''}`),
+  connectUserProvider: (d: any, userId?: string) => api.post(`/ai-models/user/providers/connect${userId ? `?user_id=${encodeURIComponent(userId)}` : ''}`, d),
+}
+
+export const authAPI = {
+  register: (d: any) => api.post('/auth/register', d),
+  login: (d: any) => api.post('/auth/login', d),
+  me: () => api.get('/auth/me'),
 }
 
 export const agentConfigAPI = {

@@ -5,6 +5,7 @@ import { success, created, badRequest, now } from '../utils/response.js'
 import { toSnakeCaseArray } from '../utils/transform.js'
 import { generateImage } from '../services/image-generation.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
+import { currentAuthUserId } from '../utils/auth.js'
 
 const app = new Hono()
 
@@ -147,6 +148,7 @@ app.post('/:id/generate-image', async (c) => {
       prompt,
       model: body.model,
       configId: body.config_id ?? ep.imageConfigId ?? undefined,
+      userId: currentAuthUserId(c),
     })
     logTaskSuccess('SceneImage', 'generate', { sceneId: id, generationId: genId })
     return success(c, { image_generation_id: genId })
@@ -182,6 +184,7 @@ app.post('/batch-generate-images', async (c) => {
         prompt,
         model: body.model,
         configId: body.config_id ?? ep.imageConfigId ?? undefined,
+        userId: currentAuthUserId(c),
       })
       results.push({ scene_id: sid, image_generation_id: genId })
     } catch (err: any) {

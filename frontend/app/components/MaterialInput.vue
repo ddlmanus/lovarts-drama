@@ -36,21 +36,39 @@
     </div>
     <div class="footer">
       <div class="action-buttons">
-        <button class="model-select-button" type="button">
+        <button class="model-select-button" type="button" @click="typeMenuOpen = !typeMenuOpen; modelMenuOpen = false; imageSizeMenuOpen = false; resolutionMenuOpen = false">
           <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="currentColor" d="M5 21q-.825 0-1.412-.587T3 19V5q0-.825.588-1.412T5 3h14q.825 0 1.413.588T21 5v14q0 .825-.587 1.413T19 21zm1-4h12l-3.75-5l-3 4L9 13z" />
           </svg>
-          <span>图片</span>
+          <span>{{ activeTypeLabel }}</span>
           <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="currentColor" d="m12 15.4l-6-6L7.4 8l4.6 4.6L16.6 8L18 9.4z" />
           </svg>
+          <div v-if="typeMenuOpen" class="select-popover">
+            <button v-for="item in typeOptions" :key="item.value" type="button" :class="{ active: activeType === item.value }" @click.stop="selectType(item.value)">
+              {{ item.label }}
+            </button>
+          </div>
         </button>
-        <button class="model-select-button" type="button">
+        <button class="model-select-button model-picker-button" type="button" @click="modelMenuOpen = !modelMenuOpen; typeMenuOpen = false; imageSizeMenuOpen = false; resolutionMenuOpen = false">
           <img src="https://ffile.chatfire.site/cf/chatfire-media/icon/dark/google-color.png" alt="" class="model-icon" />
-          <span>Nano-Banana-Pro</span>
+          <span>{{ selectedModelLabel }}</span>
           <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="currentColor" d="m12 15.4l-6-6L7.4 8l4.6 4.6L16.6 8L18 9.4z" />
           </svg>
+          <div v-if="modelMenuOpen" class="select-popover model-popover">
+            <button
+              v-for="item in activeModels"
+              :key="item.model_id || item.value"
+              type="button"
+              :class="{ active: selectedModel === (item.model_id || item.value) }"
+              @click.stop="selectModel(item.model_id || item.value)"
+            >
+              <span>{{ item.name || item.label || item.model_id }}</span>
+              <em>{{ item.model_id || item.value }}</em>
+            </button>
+            <div v-if="!activeModels.length" class="empty-option">当前用户没有可用{{ activeTypeLabel }}模型</div>
+          </div>
         </button>
         <button class="illustration-button" type="button" aria-label="风格设置">
           <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
@@ -59,11 +77,43 @@
         </button>
       </div>
       <div class="footer-right">
-        <button class="combined-config-button" type="button">
-          <span>1:1</span>
+        <button class="parameter-button" type="button" @click="imageSizeMenuOpen = !imageSizeMenuOpen; resolutionMenuOpen = false; typeMenuOpen = false; modelMenuOpen = false">
+          <span>{{ selectedImageSizeLabel }}</span>
           <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="currentColor" d="m12 15.4l-6-6L7.4 8l4.6 4.6L16.6 8L18 9.4z" />
           </svg>
+          <div v-if="imageSizeMenuOpen" class="select-popover size-popover">
+            <div v-if="imageSizeOptions.length" class="option-group-title">{{ imageSizeGroupTitle }}</div>
+            <button
+              v-for="item in imageSizeOptions"
+              :key="item.value"
+              type="button"
+              :class="{ active: selectedImageSize === item.value }"
+              @click.stop="selectImageSize(item.value)"
+            >
+              {{ item.label }}
+            </button>
+            <div v-if="!imageSizeOptions.length" class="empty-option">当前模型没有可选{{ imageSizeGroupTitle }}</div>
+          </div>
+        </button>
+        <button class="parameter-button" type="button" @click="resolutionMenuOpen = !resolutionMenuOpen; imageSizeMenuOpen = false; typeMenuOpen = false; modelMenuOpen = false">
+          <span>{{ selectedResolutionLabel }}</span>
+          <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="m12 15.4l-6-6L7.4 8l4.6 4.6L16.6 8L18 9.4z" />
+          </svg>
+          <div v-if="resolutionMenuOpen" class="select-popover size-popover">
+            <div v-if="resolutionOptions.length" class="option-group-title">分辨率</div>
+            <button
+              v-for="item in resolutionOptions"
+              :key="item.value"
+              type="button"
+              :class="{ active: selectedResolution === item.value }"
+              @click.stop="selectResolution(item.value)"
+            >
+              {{ item.label }}
+            </button>
+            <div v-if="!resolutionOptions.length" class="empty-option">当前模型没有可选分辨率</div>
+          </div>
         </button>
         <span class="credit-cost-display">
           <svg class="credit-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
@@ -83,12 +133,240 @@
 
 <script setup>
 import { toast } from 'vue-sonner'
+import { aiModelAPI, imageAPI, videoAPI } from '~/composables/useApi'
 
 const model = defineModel({ type: String, default: '' })
 const promptEditable = ref(null)
+const typeOptions = [
+  { label: '图片', value: 'image' },
+  { label: '视频', value: 'video' },
+]
+const activeType = ref('image')
+const selectedModel = ref('')
+const selectedImageSize = ref('')
+const selectedResolution = ref('')
+const typeMenuOpen = ref(false)
+const modelMenuOpen = ref(false)
+const imageSizeMenuOpen = ref(false)
+const resolutionMenuOpen = ref(false)
+const imageModels = ref([])
+const videoModels = ref([])
+const activeModels = computed(() => activeType.value === 'video' ? videoModels.value : imageModels.value)
+const activeTypeLabel = computed(() => typeOptions.find(item => item.value === activeType.value)?.label || '图片')
+const selectedModelLabel = computed(() => {
+  const found = activeModels.value.find(item => (item.model_id || item.value) === selectedModel.value)
+  return found?.name || found?.label || found?.model_id || '选择模型'
+})
+const selectedModelConfig = computed(() => activeModels.value.find(item => (item.model_id || item.value) === selectedModel.value) || null)
+const imageSizeOptions = computed(() => activeType.value === 'video' ? buildAspectRatioOptions(selectedModelConfig.value) : buildImageSizeOptions(selectedModelConfig.value))
+const resolutionOptions = computed(() => buildResolutionOptions(selectedModelConfig.value))
+const selectedImageSizeLabel = computed(() => imageSizeOptions.value.find(item => item.value === selectedImageSize.value)?.label || imageSizeOptions.value[0]?.label || imageSizeGroupTitle.value)
+const selectedResolutionLabel = computed(() => resolutionOptions.value.find(item => item.value === selectedResolution.value)?.label || resolutionOptions.value[0]?.label || '分辨率')
+const imageSizeGroupTitle = computed(() => activeType.value === 'video' ? '画面比例' : '图片尺寸')
 
 function handlePromptInput(event) {
   model.value = event.currentTarget?.textContent || ''
+}
+
+async function loadModels() {
+  const [images, videos] = await Promise.all([
+    aiModelAPI.options('image'),
+    aiModelAPI.options('video'),
+  ])
+  imageModels.value = images
+  videoModels.value = videos
+  ensureSelectedModel()
+}
+
+function ensureSelectedModel() {
+  const preferred = activeModels.value.find(item => item.is_default) || activeModels.value[0]
+  if (!selectedModel.value || !activeModels.value.some(item => (item.model_id || item.value) === selectedModel.value)) {
+    selectedModel.value = preferred?.model_id || preferred?.value || ''
+  }
+  ensureSelectedParams()
+}
+
+function modelIdOf(item) {
+  return item?.model_id || item?.value || ''
+}
+
+function uniqueOptions(items) {
+  const seen = new Set()
+  return items.filter((item) => {
+    if (!item?.value || seen.has(item.value)) return false
+    seen.add(item.value)
+    return true
+  })
+}
+
+function parameterItems(modelConfig) {
+  const params = modelConfig?.parameter_profile?.items || modelConfig?.parameter_profile?.parameters || modelConfig?.parameters?.items || []
+  return Array.isArray(params) ? params : []
+}
+
+function isDimensionValue(value) {
+  return /^\d+x\d+$/i.test(String(value || '').trim())
+}
+
+function isAspectRatioValue(value) {
+  return /^\d{1,2}\s*:\s*\d{1,2}$/.test(String(value || '').trim())
+}
+
+function isResolutionValue(value) {
+  return /^(\d+k|\d+p)$/i.test(String(value || '').trim())
+}
+
+function modelProtocol(modelConfig) {
+  return String(modelConfig?.capabilities?.protocol || modelConfig?.defaults?.protocol || '').toLowerCase()
+}
+
+function optionFromValue(value) {
+  const normalized = String(value || '').trim()
+  return normalized ? { label: normalized, value: normalized } : null
+}
+
+function profileOptions(modelConfig, predicate) {
+  return parameterItems(modelConfig)
+    .filter(item => predicate(String(item.value || '').trim(), String(item.type || '').toUpperCase()))
+    .map(item => ({ label: item.label || item.value, value: item.value }))
+}
+
+function buildImageSizeOptions(modelConfig) {
+  if (!modelConfig) return []
+  const fromProfile = profileOptions(modelConfig, (value, type) => {
+    if (type === 'ASPECT_RATIO' || type === 'SAMPLE_IMAGE_SIZE' || type === 'QUALITY' || type === 'MODE') return false
+    return isDimensionValue(value) || value.toLowerCase() === 'auto'
+  })
+  if (fromProfile.length) return uniqueOptions(fromProfile)
+
+  const defaults = modelConfig.defaults || {}
+  const capabilities = modelConfig.capabilities || {}
+  const modelId = modelIdOf(modelConfig)
+  const explicit = [
+    ...(Array.isArray(capabilities.sizes) ? capabilities.sizes : []),
+    defaults.size,
+    defaults.imageSize,
+    defaults.image_size,
+    defaults.resolution,
+  ]
+    .filter(value => isDimensionValue(value) || String(value || '').trim().toLowerCase() === 'auto')
+    .map(optionFromValue)
+    .filter(Boolean)
+  if (explicit.length) return uniqueOptions(explicit)
+  if (modelId.includes('gpt-image') || modelId.includes('qwen-image')) {
+    return [
+      { label: 'auto', value: 'auto' },
+      { label: '1024x1024', value: '1024x1024' },
+      { label: '1536x1024', value: '1536x1024' },
+      { label: '1024x1536', value: '1024x1536' },
+      { label: '1920x1080', value: '1920x1080' },
+      { label: '1080x1920', value: '1080x1920' },
+    ]
+  }
+  return [
+    { label: '1024x1024', value: '1024x1024' },
+    { label: '1536x1024', value: '1536x1024' },
+    { label: '1024x1536', value: '1024x1536' },
+  ]
+}
+
+function buildAspectRatioOptions(modelConfig) {
+  if (!modelConfig) return []
+  const fromProfile = profileOptions(modelConfig, (value, type) => type === 'ASPECT_RATIO' || isAspectRatioValue(value))
+  if (fromProfile.length) return uniqueOptions(fromProfile)
+
+  const defaults = modelConfig.defaults || {}
+  const explicit = [defaults.aspect_ratio, defaults.aspectRatio, defaults.ratio, ...(Array.isArray(modelConfig.capabilities?.aspectRatios) ? modelConfig.capabilities.aspectRatios : [])]
+    .filter(isAspectRatioValue)
+    .map(optionFromValue)
+    .filter(Boolean)
+  if (explicit.length) return uniqueOptions(explicit)
+  return [
+    { label: '1:1', value: '1:1' },
+    { label: '16:9', value: '16:9' },
+    { label: '9:16', value: '9:16' },
+  ]
+}
+
+function buildResolutionOptions(modelConfig) {
+  if (!modelConfig) return []
+  const fromProfile = profileOptions(modelConfig, (value, type) => {
+    if (type === 'SAMPLE_IMAGE_SIZE') return true
+    if (activeType.value === 'video' && type === 'RESOLUTION') return isResolutionValue(value)
+    return isResolutionValue(value)
+  })
+  if (fromProfile.length) return uniqueOptions(fromProfile)
+
+  const defaults = modelConfig.defaults || {}
+  const capabilities = modelConfig.capabilities || {}
+  const explicit = [
+    ...(Array.isArray(capabilities.resolutions) ? capabilities.resolutions : []),
+    defaults.sampleImageSize,
+    defaults.sample_image_size,
+    defaults.imageSizeLevel,
+    defaults.image_size_level,
+    defaults.resolution,
+  ]
+    .filter(isResolutionValue)
+    .map(optionFromValue)
+    .filter(Boolean)
+  if (explicit.length) return uniqueOptions(explicit)
+  if (activeType.value === 'video') {
+    return [
+      { label: '720p', value: '720p' },
+      { label: '1080p', value: '1080p' },
+    ]
+  }
+  if (modelProtocol(modelConfig).includes('openai-image')) return []
+  return [
+    { label: '1K', value: '1K' },
+    { label: '2K', value: '2K' },
+    { label: '4K', value: '4K' },
+  ]
+}
+
+function pickOption(options, preferredValues) {
+  for (const preferred of preferredValues) {
+    const found = options.find(item => item.value === preferred)
+    if (found) return found.value
+  }
+  return options[0]?.value || ''
+}
+
+function ensureSelectedParams() {
+  const defaults = selectedModelConfig.value?.defaults || {}
+  const sizeOptions = imageSizeOptions.value
+  const resOptions = resolutionOptions.value
+  if (!selectedImageSize.value || !sizeOptions.some(item => item.value === selectedImageSize.value)) {
+    selectedImageSize.value = pickOption(sizeOptions, activeType.value === 'video'
+      ? [defaults.aspect_ratio, defaults.aspectRatio, defaults.ratio]
+      : [defaults.size, defaults.imageSize, defaults.image_size, defaults.resolution])
+  }
+  if (!selectedResolution.value || !resOptions.some(item => item.value === selectedResolution.value)) {
+    selectedResolution.value = pickOption(resOptions, [defaults.sampleImageSize, defaults.sample_image_size, defaults.imageSizeLevel, defaults.image_size_level, defaults.resolution])
+  }
+}
+
+function selectType(value) {
+  activeType.value = value
+  typeMenuOpen.value = false
+  ensureSelectedModel()
+}
+
+function selectModel(value) {
+  selectedModel.value = value
+  modelMenuOpen.value = false
+  ensureSelectedParams()
+}
+
+function selectImageSize(value) {
+  selectedImageSize.value = value
+  imageSizeMenuOpen.value = false
+}
+
+function selectResolution(value) {
+  selectedResolution.value = value
+  resolutionMenuOpen.value = false
 }
 
 function syncPromptEditable() {
@@ -114,11 +392,29 @@ function submitPrompt() {
     toast.info('请输入提示词')
     return
   }
-  toast.success('生成入口已准备，后续可接入图片生成接口')
+  if (!selectedModel.value) {
+    toast.info(`当前用户没有可用${activeTypeLabel.value}模型，请先在后台配置供应商`)
+    return
+  }
+  const payload = {
+    prompt: model.value.trim(),
+    model: selectedModel.value,
+  }
+  const request = activeType.value === 'video'
+    ? videoAPI.generate({ ...payload, duration: 8, aspect_ratio: selectedImageSize.value || '16:9', resolution: selectedResolution.value || undefined })
+    : imageAPI.generate({ ...payload, size: selectedImageSize.value || '1024x1024', image_size: selectedResolution.value || undefined, sample_image_size: selectedResolution.value || undefined })
+  request
+    .then(() => toast.success('任务已提交'))
+    .catch((err) => toast.error(err.message || '提交失败'))
 }
 
 watch(model, syncPromptEditable)
-onMounted(syncPromptEditable)
+watch(activeType, ensureSelectedModel)
+watch(selectedModelConfig, ensureSelectedParams)
+onMounted(() => {
+  syncPromptEditable()
+  loadModels().catch(err => toast.error(err.message || '模型加载失败'))
+})
 </script>
 
 <style scoped>
@@ -257,8 +553,9 @@ onMounted(syncPromptEditable)
 }
 
 .model-select-button,
-.combined-config-button,
+.parameter-button,
 .illustration-button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -271,6 +568,88 @@ onMounted(syncPromptEditable)
   font: inherit;
   font-size: 13px;
   white-space: nowrap;
+}
+
+.parameter-button {
+  min-width: 78px;
+  justify-content: space-between;
+}
+
+.model-picker-button {
+  max-width: 260px;
+}
+
+.model-picker-button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.select-popover {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 20;
+  min-width: 136px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: #2b2b2d;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+}
+
+.select-popover button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.82);
+  text-align: left;
+}
+
+.select-popover button.active,
+.select-popover button:hover {
+  background: rgba(10, 132, 255, 0.22);
+  color: #fff;
+}
+
+.select-popover em {
+  max-width: 260px;
+  overflow: hidden;
+  color: #9ca3af;
+  font-size: 11px;
+  font-style: normal;
+  text-overflow: ellipsis;
+}
+
+.model-popover {
+  min-width: 280px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.size-popover {
+  right: 0;
+  left: auto;
+  min-width: 220px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.option-group-title {
+  padding: 10px 12px 4px;
+  color: #a1a1aa;
+  font-size: 12px;
+}
+
+.empty-option {
+  padding: 12px;
+  color: #9ca3af;
+  font-size: 12px;
 }
 
 .illustration-button {

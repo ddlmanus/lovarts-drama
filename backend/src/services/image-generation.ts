@@ -1,10 +1,11 @@
 import { db, schema } from '../db/index.js'
 import { eq } from 'drizzle-orm'
-import { getActiveConfig, getConfigById } from './ai.js'
+import { getConfigForModel } from './ai.js'
 import { now } from '../utils/response.js'
 import { downloadFile, readImageAsCompressedDataUrl, saveBase64Image } from '../utils/storage.js'
 import { getImageAdapter } from './adapters/registry'
 import type { AIConfig } from './adapters/types'
+import { generateZenmuxImageDirect, shouldUseZenmuxDirect } from './zenmux-direct.js'
 import { logTaskError, logTaskPayload, logTaskProgress, logTaskStart, logTaskSuccess, logTaskWarn, redactUrl } from '../utils/task-logger.js'
 
 interface GenerateImageParams {
@@ -15,9 +16,13 @@ interface GenerateImageParams {
   prompt: string
   model?: string
   size?: string
+  sampleImageSize?: string
+  quality?: string
+  style?: string
   referenceImages?: string[]
   frameType?: string
   configId?: number
+  userId?: string
 }
 
 const SERIAL_IMAGE_PROVIDERS = new Set(['zenmux'])
@@ -27,10 +32,9 @@ const IMAGE_FETCH_MAX_ATTEMPTS = 3
 
 export async function generateImage(params: GenerateImageParams): Promise<number> {
   const ts = now()
-  const config = params.configId
-    ? getConfigById(params.configId)
-    : getActiveConfig('image')
+  const config = getConfigForModel('image', params.model, params.configId, params.userId)
   if (!config) throw new Error('No active image AI config')
+  const defaults = config.modelDefaults || {}
 
   const res = db.insert(schema.imageGenerations).values({
     storyboardId: params.storyboardId,
@@ -40,7 +44,10 @@ export async function generateImage(params: GenerateImageParams): Promise<number
     prompt: params.prompt,
     model: params.model || config.model,
     provider: config.provider,
-    size: params.size || '1920x1080',
+    size: params.size || defaults.size || defaults.aspect_ratio || '1920x1080',
+    sampleImageSize: params.sampleImageSize || defaults.sampleImageSize || defaults.sample_image_size || defaults.imageSizeLevel || defaults.image_size_level || null,
+    quality: params.quality || defaults.quality || null,
+    style: params.style || defaults.style || null,
     frameType: params.frameType,
     referenceImages: params.referenceImages ? JSON.stringify(params.referenceImages) : null,
     status: 'processing',
@@ -97,6 +104,28 @@ async function processImageGenerationNow(id: number, config: AIConfig) {
     const rows = db.select().from(schema.imageGenerations).where(eq(schema.imageGenerations.id, id)).all()
     const record = rows[0]
     if (!record) return
+    const resolvedReferenceImages = await normalizeReferenceImages(record.referenceImages)
+    if (shouldUseZenmuxDirect('image', config, record.model)) {
+      logTaskProgress('ImageTask', 'zenmux-direct-start', {
+        id,
+        provider: config.provider,
+        model: record.model || config.model,
+      })
+      const result = await generateZenmuxImageDirect(config, {
+        model: record.model,
+        prompt: record.prompt,
+        negativePrompt: record.negativePrompt,
+        size: record.size,
+        sampleImageSize: record.sampleImageSize,
+        quality: record.quality,
+        style: record.style,
+        seed: record.seed,
+        cfgScale: record.cfgScale,
+        referenceImages: resolvedReferenceImages,
+      })
+      await handleImageCompleteLocal(id, config.provider, result.localPath)
+      return
+    }
     logTaskProgress('ImageTask', 'build-request', {
       id,
       provider: config.provider,
@@ -107,12 +136,17 @@ async function processImageGenerationNow(id: number, config: AIConfig) {
     })
 
     // 使用 Adapter 构建请求
-    const resolvedReferenceImages = await normalizeReferenceImages(record.referenceImages)
     const { url, method, headers, body } = adapter.buildGenerateRequest(config, {
       id: record.id,
       model: record.model,
       prompt: record.prompt,
+      negativePrompt: record.negativePrompt,
       size: record.size,
+      sampleImageSize: record.sampleImageSize,
+      quality: record.quality,
+      style: record.style,
+      seed: record.seed,
+      cfgScale: record.cfgScale,
       frameType: record.frameType,
       referenceImages: resolvedReferenceImages ? JSON.stringify(resolvedReferenceImages) : null,
     })
@@ -401,6 +435,32 @@ async function handleImageCompleteBase64(id: number, provider: string, base64Dat
   logTaskSuccess('ImageTask', 'saved-base64', { id, provider, mimeType, localPath })
 
   // 更新关联表
+  if (record?.storyboardId) {
+    const sbUpdate: Record<string, any> = { updatedAt: now() }
+    if (record.frameType === 'first_frame') sbUpdate.firstFrameImage = localPath
+    else if (record.frameType === 'last_frame') sbUpdate.lastFrameImage = localPath
+    else if (record.frameType === 'key_frame' || record.frameType === 'action_sequence') sbUpdate.composedImage = localPath
+    else sbUpdate.composedImage = localPath
+    db.update(schema.storyboards).set(sbUpdate).where(eq(schema.storyboards.id, record.storyboardId)).run()
+  }
+  if (record?.characterId) {
+    db.update(schema.characters).set({ imageUrl: localPath, updatedAt: now() }).where(eq(schema.characters.id, record.characterId)).run()
+  }
+  if (record?.sceneId) {
+    db.update(schema.scenes).set({ imageUrl: localPath, status: 'completed', updatedAt: now() }).where(eq(schema.scenes.id, record.sceneId)).run()
+  }
+}
+
+async function handleImageCompleteLocal(id: number, provider: string, localPath: string) {
+  const rows = db.select().from(schema.imageGenerations).where(eq(schema.imageGenerations.id, id)).all()
+  const record = rows[0]
+
+  db.update(schema.imageGenerations)
+    .set({ localPath, status: 'completed', updatedAt: now() })
+    .where(eq(schema.imageGenerations.id, id))
+    .run()
+  logTaskSuccess('ImageTask', 'saved-local', { id, provider, localPath })
+
   if (record?.storyboardId) {
     const sbUpdate: Record<string, any> = { updatedAt: now() }
     if (record.frameType === 'first_frame') sbUpdate.firstFrameImage = localPath

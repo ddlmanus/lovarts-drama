@@ -117,6 +117,72 @@
         </div>
       </div>
 
+      <!-- ===== 模型配置 ===== -->
+      <div v-else-if="tab === 'models'" class="settings-scroll">
+        <div class="settings-head">
+          <div class="settings-brand">
+            <div class="settings-brand-mark">
+              <img v-if="showBrandImage" :src="brandLogo" alt="火宝短剧" class="settings-brand-logo" @error="showBrandImage = false" />
+              <span v-else class="settings-brand-fallback">火</span>
+            </div>
+            <div class="settings-brand-copy">
+              <div class="settings-brand-kicker">Model Registry</div>
+              <div class="settings-brand-name">模型注册表</div>
+            </div>
+          </div>
+          <h2 class="settings-title">模型配置</h2>
+          <p class="settings-desc">统一维护前端可选模型、供应商、端点与参数。创作页面和 Agent 配置会优先读取这里的模型。</p>
+        </div>
+        <section class="setup-panel card">
+          <div class="setup-panel-head">
+            <div>
+              <div class="setup-title">数据库模型来源</div>
+              <div class="setup-desc">服务配置只保存 API Key 与 Base URL；模型和模型参数在这里独立维护，便于接入不同供应商。</div>
+            </div>
+            <div class="model-toolbar">
+              <button class="btn btn-ghost btn-sm" @click="seedModelsFromConfigs">从服务配置导入</button>
+              <button class="btn btn-primary btn-sm" @click="startAddModel('text')"><Plus :size="13" /> 添加模型</button>
+            </div>
+          </div>
+        </section>
+        <div class="sections">
+          <section v-for="st in serviceTypes" :key="`models-${st.type}`">
+            <div class="section-head">
+              <div>
+                <span class="section-title">{{ st.label }}模型</span>
+                <div class="section-subtitle">{{ serviceMeta[st.type].desc }}</div>
+              </div>
+              <span class="tag tag-accent">{{ modelsByType(st.type).length }} 个</span>
+              <button class="btn btn-ghost btn-sm ml-auto" @click="startAddModel(st.type)"><Plus :size="13" /> 添加</button>
+            </div>
+            <div class="model-config-grid">
+              <article v-for="m in modelsByType(st.type)" :key="m.id" class="card model-config-card">
+                <div class="model-card-head">
+                  <div class="model-card-main">
+                    <div class="model-name">{{ m.name || m.model_id }}</div>
+                    <div class="model-id mono">{{ m.model_id }}</div>
+                  </div>
+                  <span v-if="m.is_default" class="tag tag-success">默认</span>
+                  <span :class="['tag', m.is_active ? 'tag-accent' : '']">{{ m.is_active ? '启用' : '停用' }}</span>
+                </div>
+                <div class="model-meta">
+                  <span>{{ m.provider }}</span>
+                  <span v-if="m.cost">成本 {{ m.cost }}</span>
+                  <span>优先级 {{ m.priority || 0 }}</span>
+                </div>
+                <div v-if="m.base_url" class="model-base mono">{{ m.base_url }}</div>
+                <div v-if="m.description" class="model-desc">{{ m.description }}</div>
+                <div class="model-card-actions">
+                  <button class="btn btn-ghost btn-icon" @click="startEditModel(m)"><Pencil :size="13" /></button>
+                  <button class="btn btn-ghost btn-icon" @click="deleteModel(m.id)"><Trash2 :size="13" /></button>
+                </div>
+              </article>
+              <p v-if="!modelsByType(st.type).length" class="config-empty">暂无模型配置</p>
+            </div>
+          </section>
+        </div>
+      </div>
+
       <!-- ===== Agent 配置 ===== -->
       <div v-else-if="tab === 'agents'" class="settings-scroll">
         <div class="settings-head">
@@ -270,6 +336,91 @@
       </div>
     </div>
 
+    <!-- AI Model Dialog -->
+    <div v-if="modelDialog" class="overlay" @click.self="modelDialog = false">
+      <form class="modal card config-modal" @submit.prevent="saveModel">
+        <div class="config-modal-head">
+          <div>
+            <div class="setup-kicker">{{ modelEditId ? 'Edit Model' : 'New Model' }}</div>
+            <h2 class="modal-title">{{ modelEditId ? '编辑模型配置' : '添加模型配置' }}</h2>
+            <div class="modal-note">参数字段使用 JSON，前端会把 defaults / parameters / capabilities 一并读取。</div>
+          </div>
+          <span class="tag tag-accent">{{ serviceMeta[modelForm.service_type].label }}</span>
+        </div>
+        <div class="field-row">
+          <label class="field">
+            <span class="field-label">服务类型</span>
+            <BaseSelect v-model="modelForm.service_type" :options="serviceTypeOptions" placeholder="服务类型" />
+          </label>
+          <label class="field">
+            <span class="field-label">供应商</span>
+            <input v-model="modelForm.provider" class="input" placeholder="如 openai / gemini / your-provider" list="model-provider-list" />
+            <datalist id="model-provider-list">
+              <option v-for="p in providerSelectOptions" :key="p.value" :value="p.value">{{ p.label }}</option>
+            </datalist>
+          </label>
+        </div>
+        <div class="field-row">
+          <label class="field">
+            <span class="field-label">模型 ID</span>
+            <input v-model="modelForm.model_id" class="input" placeholder="如 gemini-3.1-pro-preview" />
+          </label>
+          <label class="field">
+            <span class="field-label">显示名称</span>
+            <input v-model="modelForm.name" class="input" placeholder="如 Gemini 3.1 Pro" />
+          </label>
+        </div>
+        <label class="field">
+          <span class="field-label">描述</span>
+          <input v-model="modelForm.description" class="input" placeholder="简短说明模型用途" />
+        </label>
+        <label class="field">
+          <span class="field-label">Base URL <span class="dim">(可选，留空走服务配置)</span></span>
+          <input v-model="modelForm.base_url" class="input" placeholder="https://..." />
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span class="field-label">生成端点</span>
+            <input v-model="modelForm.endpoint" class="input" placeholder="/v1/images/generations" />
+          </label>
+          <label class="field">
+            <span class="field-label">查询端点</span>
+            <input v-model="modelForm.query_endpoint" class="input" placeholder="/v1/tasks/{id}" />
+          </label>
+        </div>
+        <div class="field-row">
+          <label class="field">
+            <span class="field-label">成本</span>
+            <input v-model.number="modelForm.cost" class="input" type="number" min="0" step="0.01" />
+          </label>
+          <label class="field">
+            <span class="field-label">优先级</span>
+            <input v-model.number="modelForm.priority" class="input" type="number" min="0" max="999" />
+          </label>
+        </div>
+        <div class="model-switches">
+          <label class="check-row"><input v-model="modelForm.is_default" type="checkbox" /> 默认模型</label>
+          <label class="check-row"><input v-model="modelForm.is_active" type="checkbox" /> 启用</label>
+        </div>
+        <label class="field">
+          <span class="field-label">参数定义 parameters</span>
+          <textarea v-model="modelForm.parameters" class="textarea mono" rows="5" placeholder='{"aspect_ratios":["1:1","16:9"],"sizes":["1024x1024"]}' />
+        </label>
+        <label class="field">
+          <span class="field-label">默认参数 defaults</span>
+          <textarea v-model="modelForm.defaults" class="textarea mono" rows="5" placeholder='{"size":"1024x1024","quality":"high"}' />
+        </label>
+        <label class="field">
+          <span class="field-label">能力 capabilities</span>
+          <textarea v-model="modelForm.capabilities" class="textarea mono" rows="4" placeholder='{"image_to_image":true,"text_to_image":true}' />
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn" @click="modelDialog = false">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+
     <!-- AI Config Dialog -->
     <div v-if="cfgDialog" class="overlay" @click.self="cfgDialog = false">
       <form class="modal card config-modal" @submit.prevent="saveCfg">
@@ -397,7 +548,7 @@
 import { Plus, Pencil, Trash2, FileText, ChevronDown, Check, Loader2, Bot, Cpu, Sparkles } from 'lucide-vue-next'
 import BaseSelect from '~/components/BaseSelect.vue'
 import { toast } from 'vue-sonner'
-import { aiConfigAPI, agentConfigAPI, skillsAPI } from '~/composables/useApi'
+import { aiConfigAPI, aiModelAPI, agentConfigAPI, skillsAPI } from '~/composables/useApi'
 import brandLogo from '~/assets/huobao-logo.png'
 import { apimartMultimodalChatModels } from '~/utils/apimartModels'
 
@@ -427,8 +578,12 @@ const cfgTestResult = ref(null)
 const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', modelStr: '', service_type: 'text', priority: 0 })
 const huobaoForm = reactive({ apiKey: '' })
 const serviceTypes = [{ type: 'text', label: '文本' }, { type: 'image', label: '图片' }, { type: 'video', label: '视频' }, { type: 'audio', label: '音频' }]
+const serviceTypeOptions = computed(() => serviceTypes.map(s => ({ label: s.label, value: s.type })))
 const providers = ['ali', 'anthropic', 'apimart', 'chatfire', 'deepseek', 'gemini', 'minimax', 'openai', 'openrouter', 'vidu', 'volcengine', 'zenmux']
-const providerSelectOptions = computed(() => providers.map(p => ({ label: p, value: p })))
+const providerSelectOptions = computed(() => {
+  const dbProviders = models.value.map(m => m.provider).filter(Boolean)
+  return Array.from(new Set([...providers, ...dbProviders])).map(p => ({ label: p, value: p }))
+})
 const serviceMeta = {
   text: { label: '文本', desc: '剧本改写、角色场景提取、分镜拆解等 Agent 文本能力' },
   image: { label: '图片', desc: '角色图、场景图、镜头图与首尾帧等静态图像生成' },
@@ -491,9 +646,11 @@ const endpointHint = computed(() => {
 })
 
 const cfgModelSelectOptions = computed(() => {
-  if (cfgForm.service_type === 'text' && cfgForm.provider === 'apimart') {
-    return apimartMultimodalChatModels
-  }
+  const dbModels = models.value
+    .filter(m => m.service_type === cfgForm.service_type && (!cfgForm.provider || m.provider === cfgForm.provider))
+    .map(m => ({ label: `${m.name || m.model_id} (${m.provider})`, value: m.model_id }))
+  if (dbModels.length) return dbModels
+  if (cfgForm.service_type === 'text' && cfgForm.provider === 'apimart') return apimartMultimodalChatModels
   const presetModels = providerPresets[cfgForm.service_type]?.[cfgForm.provider]?.models || []
   const currentModels = cfgForm.modelStr
     ? cfgForm.modelStr.split(',').map(s => s.trim()).filter(Boolean)
@@ -501,6 +658,142 @@ const cfgModelSelectOptions = computed(() => {
   return Array.from(new Set([...presetModels, ...currentModels]))
     .map(model => ({ label: model, value: model }))
 })
+
+// ===== AI Model Configs =====
+const models = ref([])
+const modelDialog = ref(false)
+const modelEditId = ref(null)
+const emptyJson = '{}'
+const modelForm = reactive({
+  service_type: 'text',
+  provider: '',
+  model_id: '',
+  name: '',
+  description: '',
+  base_url: '',
+  endpoint: '',
+  query_endpoint: '',
+  parameters: emptyJson,
+  defaults: emptyJson,
+  capabilities: emptyJson,
+  cost: 0,
+  priority: 0,
+  is_default: false,
+  is_active: true,
+})
+
+function prettyJson(value, fallback = emptyJson) {
+  if (value === undefined || value === null || value === '') return fallback
+  if (typeof value === 'string') {
+    try { return JSON.stringify(JSON.parse(value), null, 2) } catch { return value }
+  }
+  return JSON.stringify(value, null, 2)
+}
+
+function parseModelJsonField(value, field) {
+  if (!value || !String(value).trim()) return {}
+  try { return JSON.parse(value) } catch { throw new Error(`${field} 不是合法 JSON`) }
+}
+
+function modelsByType(type) {
+  return models.value.filter(m => m.service_type === type)
+}
+
+async function loadModels() {
+  try {
+    models.value = await aiModelAPI.list({ active: 0 })
+  } catch (e) {
+    toast.error(e.message)
+  }
+}
+
+function startAddModel(type = 'text') {
+  modelEditId.value = null
+  Object.assign(modelForm, {
+    service_type: type,
+    provider: '',
+    model_id: '',
+    name: '',
+    description: '',
+    base_url: '',
+    endpoint: '',
+    query_endpoint: '',
+    parameters: emptyJson,
+    defaults: emptyJson,
+    capabilities: emptyJson,
+    cost: 0,
+    priority: 0,
+    is_default: false,
+    is_active: true,
+  })
+  modelDialog.value = true
+}
+
+function startEditModel(model) {
+  modelEditId.value = model.id
+  Object.assign(modelForm, {
+    service_type: model.service_type,
+    provider: model.provider,
+    model_id: model.model_id,
+    name: model.name || '',
+    description: model.description || '',
+    base_url: model.base_url || '',
+    endpoint: model.endpoint || '',
+    query_endpoint: model.query_endpoint || '',
+    parameters: prettyJson(model.parameters),
+    defaults: prettyJson(model.defaults),
+    capabilities: prettyJson(model.capabilities),
+    cost: model.cost || 0,
+    priority: model.priority || 0,
+    is_default: Boolean(model.is_default),
+    is_active: Boolean(model.is_active),
+  })
+  modelDialog.value = true
+}
+
+async function saveModel() {
+  if (!modelForm.service_type || !modelForm.provider || !modelForm.model_id) {
+    toast.warning('请填写服务类型、供应商和模型 ID')
+    return
+  }
+  try {
+    const payload = {
+      ...modelForm,
+      name: modelForm.name || modelForm.model_id,
+      parameters: parseModelJsonField(modelForm.parameters, 'parameters'),
+      defaults: parseModelJsonField(modelForm.defaults, 'defaults'),
+      capabilities: parseModelJsonField(modelForm.capabilities, 'capabilities'),
+    }
+    if (modelEditId.value) await aiModelAPI.update(modelEditId.value, payload)
+    else await aiModelAPI.create(payload)
+    modelDialog.value = false
+    await loadModels()
+    toast.success('模型配置已保存')
+  } catch (e) {
+    toast.error(e.message)
+  }
+}
+
+async function deleteModel(id) {
+  if (!confirm('确定删除这个模型配置？')) return
+  try {
+    await aiModelAPI.del(id)
+    await loadModels()
+    toast.success('已删除')
+  } catch (e) {
+    toast.error(e.message)
+  }
+}
+
+async function seedModelsFromConfigs() {
+  try {
+    const res = await aiModelAPI.seedFromConfigs()
+    await loadModels()
+    toast.success(`已导入 ${res.created || 0} 个模型`)
+  } catch (e) {
+    toast.error(e.message)
+  }
+}
 
 function byType(t) { return cfgs.value.filter(c => c.service_type === t) }
 function countActive(t) { return byType(t).filter(c => c.is_active).length }
@@ -758,6 +1051,14 @@ function getAgentCfg(type) {
 }
 
 const textModelGroups = computed(() => {
+  const registryGroups = models.value
+    .filter(m => m.service_type === 'text' && m.is_active)
+    .map(c => ({
+      label: `${c.provider} — ${c.name || c.model_id}`,
+      models: [c.model_id],
+    }))
+    .filter(g => g.models.length > 0)
+  if (registryGroups.length) return registryGroups
   return cfgs.value
     .filter(c => c.service_type === 'text' && c.is_active && c.api_key)
     .map(c => ({
@@ -914,7 +1215,7 @@ async function saveSkill(id) {
   }
 }
 
-onMounted(() => { loadCfgs(); loadAgents(); loadAllSkills() })
+onMounted(() => { loadCfgs(); loadModels(); loadAgents(); loadAllSkills() })
 </script>
 
 <style scoped>
@@ -1114,6 +1415,23 @@ onMounted(() => { loadCfgs(); loadAgents(); loadAllSkills() })
 .config-base { font-size: 11px; color: var(--text-3); }
 .config-empty { font-size: 12px; color: var(--text-3); padding: 12px 0; }
 
+/* Model Registry */
+.model-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.model-config-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.model-config-card { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.model-card-head { display: flex; align-items: flex-start; gap: 8px; }
+.model-card-main { flex: 1; min-width: 0; }
+.model-name { font-size: 14px; font-weight: 700; color: var(--text-0); }
+.model-id { margin-top: 3px; font-size: 11px; color: var(--text-3); word-break: break-all; }
+.model-meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; color: var(--text-2); }
+.model-meta span { padding: 3px 7px; border-radius: 999px; background: var(--bg-2); border: 1px solid var(--border); }
+.model-base { font-size: 11px; color: var(--text-3); word-break: break-all; }
+.model-desc { font-size: 12px; color: var(--text-2); line-height: 1.45; }
+.model-card-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: auto; }
+.model-switches { display: flex; gap: 14px; align-items: center; }
+.check-row { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2); }
+.check-row input { accent-color: var(--accent); }
+
 .toggle { position: relative; width: 30px; height: 17px; cursor: pointer; flex-shrink: 0; }
 .toggle input { opacity: 0; width: 0; height: 0; }
 .toggle span { position: absolute; inset: 0; background: var(--bg-3); border-radius: 99px; transition: 0.2s; }
@@ -1258,7 +1576,8 @@ onMounted(() => { loadCfgs(); loadAgents(); loadAllSkills() })
 
 @media (max-width: 900px) {
   .preset-grid,
-  .preset-grid.compact {
+  .preset-grid.compact,
+  .model-config-grid {
     grid-template-columns: 1fr;
   }
 }

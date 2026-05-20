@@ -2092,7 +2092,7 @@ import { toast } from 'vue-sonner'
 import {
   Download, FileText, FolderKanban, ImageIcon, Layers, MapPin, Mic2, Users, Video, Clapperboard,
 } from 'lucide-vue-next'
-import { dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, imageAPI, videoAPI, composeAPI, mergeAPI, gridAPI, aiConfigAPI, voicesAPI, uploadAPI, taskAPI } from '~/composables/useApi'
+import { dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, imageAPI, videoAPI, composeAPI, mergeAPI, gridAPI, aiConfigAPI, aiModelAPI, voicesAPI, uploadAPI, taskAPI } from '~/composables/useApi'
 import { useAgent } from '~/composables/useAgent'
 import BaseSelect from '~/components/BaseSelect.vue'
 import { apimartMultimodalChatModels } from '~/utils/apimartModels'
@@ -2130,12 +2130,16 @@ const mergeUrl = computed(() => mergeData.value?.merged_url || mergeData.value?.
 const scriptStep = ref(0)
 const initialRouteResolved = ref(false)
 const scriptModel = ref('gemini-3.1-pro-preview')
-const scriptModelOptions = apimartMultimodalChatModels
+const dbTextModelOptions = ref([])
+const dbImageModelOptions = ref([])
+const fallbackScriptModelOptions = apimartMultimodalChatModels
+const scriptModelOptions = computed(() => dbTextModelOptions.value.length ? dbTextModelOptions.value : fallbackScriptModelOptions)
 const imageModel = ref('gemini-3-pro-image-preview')
-const imageModelOptions = [
+const fallbackImageModelOptions = [
   { label: 'GPT-Image-2', value: 'gpt-image-2', group: 'APIMart' },
   { label: 'Nano-Banana-Pro', value: 'gemini-3-pro-image-preview', group: 'APIMart' },
 ]
+const imageModelOptions = computed(() => dbImageModelOptions.value.length ? dbImageModelOptions.value : fallbackImageModelOptions)
 const roleAgeOptions = [
   { label: '婴儿', value: '婴儿' },
   { label: '幼儿', value: '幼儿' },
@@ -4837,15 +4841,27 @@ function getRefs(sb) {
 
 async function loadConfigs() {
   try {
-    const [imgCfgs, vidCfgs, audCfgs] = await Promise.all([
+    const [imgCfgs, vidCfgs, audCfgs, textModels, imageModels] = await Promise.all([
       aiConfigAPI.list('image'),
       aiConfigAPI.list('video'),
       aiConfigAPI.list('audio'),
+      aiModelAPI.options('text'),
+      aiModelAPI.options('image'),
     ])
     const byPriority = (a, b) => (b.priority || 0) - (a.priority || 0)
     imageConfigs.value = [...(imgCfgs || [])].sort(byPriority)
     videoConfigs.value = [...(vidCfgs || [])].sort(byPriority)
     audioConfigs.value = [...(audCfgs || [])].sort(byPriority)
+    dbTextModelOptions.value = Array.isArray(textModels) ? textModels : []
+    dbImageModelOptions.value = Array.isArray(imageModels) ? imageModels : []
+    if (dbTextModelOptions.value.length && !dbTextModelOptions.value.some(m => m.value === scriptModel.value)) {
+      const preferred = dbTextModelOptions.value.find(m => m.is_default) || dbTextModelOptions.value[0]
+      scriptModel.value = preferred.value
+    }
+    if (dbImageModelOptions.value.length && !dbImageModelOptions.value.some(m => m.value === imageModel.value)) {
+      const preferred = dbImageModelOptions.value.find(m => m.is_default) || dbImageModelOptions.value[0]
+      imageModel.value = preferred.value
+    }
   } catch (e) { console.error('Failed to load AI configs', e) }
 }
 

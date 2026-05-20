@@ -213,12 +213,102 @@ sqlite.exec(`
     service_type TEXT NOT NULL,
     provider TEXT NOT NULL,
     default_url TEXT,
+    icon TEXT,
+    website TEXT,
+    rank INTEGER DEFAULT 0,
+    is_third_party INTEGER DEFAULT 0,
+    support_open_ai INTEGER DEFAULT 0,
     preset_models TEXT,
     description TEXT,
     is_active INTEGER DEFAULT 1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_service_providers_provider
+    ON ai_service_providers (provider);
+
+  CREATE TABLE IF NOT EXISTS ai_model_configs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT,
+    provider_id INTEGER,
+    source_model_id INTEGER,
+    parameter_profile_id INTEGER,
+    service_type TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    base_url TEXT,
+    endpoint TEXT,
+    query_endpoint TEXT,
+    parameters TEXT,
+    defaults TEXT,
+    capabilities TEXT,
+    cost REAL DEFAULT 0,
+    priority INTEGER DEFAULT 0,
+    is_default INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_ai_model_configs_service_active_priority
+    ON ai_model_configs (service_type, is_active, priority);
+
+  CREATE TABLE IF NOT EXISTS ai_model_parameter_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    service_type TEXT NOT NULL,
+    description TEXT,
+    parameters TEXT,
+    is_builtin INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_model_parameter_profiles_key
+    ON ai_model_parameter_profiles (key);
+
+  CREATE TABLE IF NOT EXISTS ai_model_parameter_profile_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    label TEXT NOT NULL,
+    value TEXT NOT NULL,
+    config TEXT,
+    rank INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_ai_model_parameter_profile_items_profile_rank
+    ON ai_model_parameter_profile_items (profile_id, rank, updated_at);
+
+  CREATE TABLE IF NOT EXISTS ai_users (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    account TEXT,
+    email TEXT,
+    password_hash TEXT,
+    invite_code TEXT,
+    role TEXT DEFAULT 'user',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS ai_user_provider_configs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    provider_id INTEGER NOT NULL,
+    provider TEXT NOT NULL,
+    name TEXT NOT NULL,
+    base_url TEXT NOT NULL,
+    api_key TEXT NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_user_provider_configs_unique
+    ON ai_user_provider_configs (user_id, provider_id);
 
   CREATE TABLE IF NOT EXISTS ai_voices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -260,6 +350,7 @@ sqlite.exec(`
     negative_prompt TEXT,
     model TEXT,
     size TEXT,
+    sample_image_size TEXT,
     quality TEXT,
     style TEXT,
     steps INTEGER,
@@ -392,6 +483,34 @@ ensureColumn('episodes', 'video_config_id', 'INTEGER')
 ensureColumn('episodes', 'audio_config_id', 'INTEGER')
 ensureColumn('characters', 'age', 'TEXT')
 ensureColumn('characters', 'gender', 'TEXT')
+ensureColumn('ai_model_configs', 'user_id', 'TEXT')
+ensureColumn('ai_model_configs', 'provider_id', 'INTEGER')
+ensureColumn('ai_model_configs', 'source_model_id', 'INTEGER')
+ensureColumn('ai_model_configs', 'parameter_profile_id', 'INTEGER')
+ensureColumn('ai_service_providers', 'icon', 'TEXT')
+ensureColumn('ai_service_providers', 'website', 'TEXT')
+ensureColumn('ai_service_providers', 'rank', 'INTEGER DEFAULT 0')
+ensureColumn('ai_service_providers', 'is_third_party', 'INTEGER DEFAULT 0')
+ensureColumn('ai_service_providers', 'support_open_ai', 'INTEGER DEFAULT 0')
+ensureColumn('ai_users', 'account', 'TEXT')
+ensureColumn('ai_users', 'password_hash', 'TEXT')
+ensureColumn('ai_users', 'invite_code', 'TEXT')
+ensureColumn('image_generations', 'sample_image_size', 'TEXT')
+sqlite.exec(`
+  DROP INDEX IF EXISTS idx_ai_model_configs_unique;
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_model_configs_scope_unique
+    ON ai_model_configs (COALESCE(user_id, ''), service_type, provider, model_id);
+  CREATE INDEX IF NOT EXISTS idx_ai_model_configs_user_service_active_priority
+    ON ai_model_configs (user_id, service_type, is_active, priority);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_users_account
+    ON ai_users (account);
+`)
+
+const bootNow = new Date().toISOString()
+sqlite.prepare(`
+  INSERT OR IGNORE INTO ai_users (id, name, email, role, is_active, created_at, updated_at)
+  VALUES ('default', '默认用户', '', 'user', 1, ?, ?)
+`).run(bootNow, bootNow)
 
 export const db = drizzle(sqlite, { schema })
 export { schema }

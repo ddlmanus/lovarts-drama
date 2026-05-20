@@ -7,7 +7,7 @@ import { Agent } from '@mastra/core/agent'
 import { createOpenAI } from '@ai-sdk/openai'
 import { eq, isNull, and } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
-import { getTextConfig, getTextProviderBaseUrl } from '../services/ai.js'
+import { getConfigForModel, getTextConfig, getTextProviderBaseUrl } from '../services/ai.js'
 import { logTaskProgress } from '../utils/task-logger.js'
 import { createScriptTools } from './tools/script-tools.js'
 import { createExtractTools } from './tools/extract-tools.js'
@@ -204,9 +204,12 @@ function getAgentConfig(agentType: string) {
 }
 
 function getModel(dbConfig: any, overrideModel?: string) {
-  const textConfig = getTextConfig()
+  const selectedModel = overrideModel || dbConfig?.model || ''
+  const textConfig = selectedModel
+    ? getConfigForModel('text', selectedModel) || getTextConfig()
+    : getTextConfig()
   const resolvedBaseURL = getTextProviderBaseUrl(textConfig)
-  const modelName = overrideModel || dbConfig?.model || textConfig.model
+  const modelName = selectedModel || textConfig.model
   logTaskProgress('AIConfig', 'text-model-endpoint', {
     provider: textConfig.provider,
     baseUrl: resolvedBaseURL,

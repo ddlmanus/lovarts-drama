@@ -22,11 +22,11 @@
         </button>
 
         <nav class="menu-list" aria-label="主导航">
-          <p class="menu-category">问答</p>
-          <button class="menu-item" type="button" @click="comingSoon('问答')">
+          <p class="menu-category">Codex</p>
+          <a href="/chat" target="_blank" rel="noopener noreferrer" class="menu-item" :class="{ active: route.path === '/chat' }" @click="sidebarOpen = false">
             <MessageSquareText :size="20" />
-            <span>问答</span>
-          </button>
+            <span>Codex</span>
+          </a>
 
           <p class="menu-category">AI 创作</p>
           <NuxtLink to="/home" class="menu-item" :class="{ active: route.path === '/home' }" @click="sidebarOpen = false">
@@ -55,6 +55,10 @@
           </NuxtLink>
 
           <p class="menu-category">账户管理</p>
+          <a href="/admin" target="_blank" rel="noopener noreferrer" class="menu-item" @click="sidebarOpen = false">
+            <FileCode2 :size="20" />
+            <span>后台管理</span>
+          </a>
           <button class="menu-item" type="button" @click="comingSoon('套餐')">
             <CircleUserRound :size="20" />
             <span>套餐</span>
@@ -83,9 +87,9 @@
             <CircleHelp :size="20" />
             <span>联系我们</span>
           </button>
-          <button class="bottom-item" type="button">
+          <button class="bottom-item" type="button" @click="openAuthDialog">
             <CircleUserRound :size="20" />
-            <span>用户3184_937</span>
+            <span>{{ currentUser?.name || '登录 / 注册' }}</span>
           </button>
         </div>
       </div>
@@ -98,6 +102,65 @@
         </div>
       </div>
     </main>
+
+    <div v-if="authDialogOpen" class="auth-overlay" @click.self="closeAuthDialog">
+      <div class="auth-dialog">
+        <button class="auth-close" type="button" @click="closeAuthDialog">×</button>
+        <form v-if="authMode === 'register'" class="login-form register" @submit.prevent="submitRegister">
+          <div class="form-header"><h2 class="form-title">注册账号</h2></div>
+          <div class="form-content">
+            <div class="form-group"><div class="input-prefix"><UserRound :size="18" /><input v-model="registerForm.account" type="text" placeholder="输入账号" maxlength="32" /></div></div>
+            <div class="form-group"><div class="input-prefix"><LockKeyhole :size="18" /><input v-model="registerForm.password" type="password" placeholder="设置密码（不少于6位）" /></div></div>
+            <div class="form-group"><div class="input-prefix"><ShieldCheck :size="18" /><input v-model="registerForm.confirmPassword" type="password" placeholder="确认密码" /></div></div>
+            <div class="form-group verification-code">
+              <div class="input-prefix"><Hash :size="18" /><input v-model="registerForm.captcha" type="text" placeholder="输入图形验证码" maxlength="4" /></div>
+              <button class="captcha-image" type="button" @click="refreshCaptcha">{{ captchaText }}</button>
+            </div>
+            <div class="form-group"><div class="input-prefix"><Ticket :size="18" /><input v-model="registerForm.inviteCode" type="text" placeholder="邀请码（可选）" maxlength="8" /></div></div>
+            <div class="agreement"><label>注册即表示您已同意<span class="link">用户协议</span>和<span class="link">隐私政策</span></label></div>
+            <button class="login-btn" type="submit" :disabled="authLoading">{{ authLoading ? '注册中...' : '注册' }}</button>
+            <div class="actions"><button type="button" @click="authMode = 'login'">返回登录</button></div>
+          </div>
+        </form>
+
+        <form v-else-if="authMode === 'provider'" class="login-form provider-form" @submit.prevent="saveProvider">
+          <div class="form-header">
+            <h2 class="form-title">选择供应商</h2>
+            <p class="form-subtitle">填写你的 Base URL 和 API Key，后续模型调用会优先使用你的密钥。</p>
+          </div>
+          <div class="form-content">
+            <div class="form-group">
+              <select v-model.number="providerForm.providerId">
+                <option disabled :value="0">选择供应商</option>
+                <option v-for="p in activeProviders" :key="p.id" :value="p.id">{{ p.display_name || p.name }}</option>
+              </select>
+            </div>
+            <div class="form-group"><div class="input-prefix"><LinkIcon :size="18" /><input v-model="providerForm.baseUrl" type="text" placeholder="Base URL，例如 https://zenmux.ai/api/v1" /></div></div>
+            <div class="form-group"><div class="input-prefix"><KeyRound :size="18" /><input v-model="providerForm.apiKey" type="password" placeholder="API Key" /></div></div>
+            <button class="login-btn" type="submit" :disabled="authLoading">{{ authLoading ? '保存中...' : '保存并开始使用' }}</button>
+            <div class="actions"><button type="button" @click="closeAuthDialog">稍后设置</button></div>
+          </div>
+        </form>
+
+        <form v-else class="login-form" @submit.prevent="submitLogin">
+          <div class="tabs">
+            <div class="tab">验证码登录</div>
+            <div class="tab active">密码登录 <div class="tab__line"></div></div>
+          </div>
+          <div class="form-content">
+            <div class="form-group"><div class="input-prefix"><UserRound :size="18" /><input v-model="loginForm.account" type="text" placeholder="输入账号" /></div></div>
+            <div class="form-group"><div class="input-prefix"><LockKeyhole :size="18" /><input v-model="loginForm.password" type="password" placeholder="输入密码" /></div></div>
+            <div class="form-group verification-code">
+              <div class="input-prefix"><Hash :size="18" /><input v-model="loginForm.captcha" type="text" placeholder="输入图形验证码" maxlength="4" /></div>
+              <button class="captcha-image" type="button" @click="refreshCaptcha">{{ captchaText }}</button>
+            </div>
+            <div class="agreement"><label>登录即表示您已同意<span class="link">用户协议</span>和<span class="link">隐私政策</span>，未注册的手机号将自动注册</label></div>
+            <button class="login-btn" type="submit" :disabled="authLoading">{{ authLoading ? '登录中...' : '登录' }}</button>
+            <div class="actions"><span></span><button type="button" @click="authMode = 'register'">立即注册</button></div>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -108,23 +171,54 @@ import {
   FileCode2,
   Folder,
   Gift,
+  Hash,
   House,
+  KeyRound,
   Lightbulb,
+  LinkIcon,
+  LockKeyhole,
   Menu,
   MessageSquareText,
   Mountain,
   PanelLeftClose,
   Presentation,
   ScrollText,
+  ShieldCheck,
   SquarePlay,
+  Ticket,
   UserRound,
 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import brandLogo from '~/assets/huobao-logo.png'
+import { aiModelAPI, authAPI, getAuthUser, setAuthSession } from '~/composables/useApi'
 
 const route = useRoute()
 const sidebarOpen = ref(false)
 const showBrandImage = ref(true)
+const authDialogOpen = ref(false)
+const authMode = ref('login')
+const authLoading = ref(false)
+const currentUser = ref(null)
+const captchaText = ref('')
+const providers = ref([])
+const loginForm = reactive({ account: '', password: '', captcha: '' })
+const registerForm = reactive({ account: '', password: '', confirmPassword: '', captcha: '', inviteCode: '' })
+const providerForm = reactive({ providerId: 0, baseUrl: 'https://zenmux.ai/api/v1', apiKey: '' })
+const activeProviders = computed(() => providers.value.filter(p => p.is_active !== false))
+
+onMounted(() => {
+  currentUser.value = getAuthUser()
+  refreshCaptcha()
+  window.addEventListener('huobao-auth-change', syncAuthUser)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('huobao-auth-change', syncAuthUser)
+})
+
+function syncAuthUser() {
+  currentUser.value = getAuthUser()
+}
 
 function goHome() {
   sidebarOpen.value = false
@@ -139,6 +233,93 @@ function openModelConfig() {
 function comingSoon(name) {
   sidebarOpen.value = false
   toast.info(`${name}模块即将开放`)
+}
+
+function refreshCaptcha() {
+  captchaText.value = String(Math.floor(1000 + Math.random() * 9000))
+}
+
+async function loadProviders() {
+  if (providers.value.length) return
+  providers.value = await aiModelAPI.adminProviders()
+  const zenmux = providers.value.find(p => p.key === 'zenmux' || p.provider === 'zenmux')
+  if (zenmux) providerForm.providerId = zenmux.id
+}
+
+async function openAuthDialog() {
+  sidebarOpen.value = false
+  authMode.value = currentUser.value ? 'provider' : 'login'
+  refreshCaptcha()
+  if (currentUser.value) await loadProviders()
+  authDialogOpen.value = true
+}
+
+function closeAuthDialog() {
+  authDialogOpen.value = false
+}
+
+function assertCaptcha(value) {
+  if (String(value || '').trim() !== captchaText.value) {
+    refreshCaptcha()
+    throw new Error('验证码错误')
+  }
+}
+
+async function submitLogin() {
+  try {
+    authLoading.value = true
+    assertCaptcha(loginForm.captcha)
+    const result = await authAPI.login({ ...loginForm, captcha_id: captchaText.value })
+    setAuthSession(result.token, result.user)
+    currentUser.value = result.user
+    toast.success('登录成功')
+    closeAuthDialog()
+  } catch (err) {
+    toast.error(err.message || '登录失败')
+  } finally {
+    authLoading.value = false
+  }
+}
+
+async function submitRegister() {
+  try {
+    authLoading.value = true
+    assertCaptcha(registerForm.captcha)
+    const result = await authAPI.register({
+      account: registerForm.account,
+      password: registerForm.password,
+      confirm_password: registerForm.confirmPassword,
+      captcha: registerForm.captcha,
+      captcha_id: captchaText.value,
+      invite_code: registerForm.inviteCode,
+    })
+    setAuthSession(result.token, result.user)
+    currentUser.value = result.user
+    await loadProviders()
+    toast.success('注册成功，请配置供应商')
+    authMode.value = 'provider'
+  } catch (err) {
+    toast.error(err.message || '注册失败')
+  } finally {
+    authLoading.value = false
+  }
+}
+
+async function saveProvider() {
+  try {
+    authLoading.value = true
+    await aiModelAPI.connectUserProvider({
+      provider_id: providerForm.providerId,
+      base_url: providerForm.baseUrl,
+      api_key: providerForm.apiKey,
+    })
+    toast.success('供应商已保存')
+    closeAuthDialog()
+  } catch (err) {
+    toast.error(err.message || '保存失败')
+  } finally {
+    authLoading.value = false
+  }
 }
 
 </script>
@@ -354,6 +535,209 @@ function comingSoon(name) {
 .mobile-menu,
 .mobile-backdrop {
   display: none;
+}
+
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(8px);
+}
+
+.auth-dialog {
+  position: relative;
+  width: min(420px, calc(100vw - 32px));
+}
+
+.auth-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #737373;
+  font-size: 22px;
+}
+
+.login-form {
+  width: 100%;
+  padding: 30px;
+  border-radius: 8px;
+  background: #fff;
+  color: #171717;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+}
+
+.login-form.register,
+.provider-form {
+  padding-top: 34px;
+}
+
+.form-header {
+  text-align: center;
+  margin-bottom: 22px;
+}
+
+.form-title {
+  margin: 0;
+  color: #171717;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.form-subtitle {
+  margin: 8px 0 0;
+  color: #737373;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.tabs {
+  display: flex;
+  height: 44px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid #ededed;
+}
+
+.tab {
+  position: relative;
+  flex: 1;
+  display: grid;
+  place-items: center;
+  color: #737373;
+  font-size: 15px;
+}
+
+.tab.active {
+  color: #111;
+  font-weight: 700;
+}
+
+.tab__line {
+  position: absolute;
+  left: 50%;
+  bottom: -1px;
+  width: 42px;
+  height: 3px;
+  border-radius: 4px;
+  background: #111;
+  transform: translateX(-50%);
+}
+
+.form-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.form-group {
+  height: 46px;
+}
+
+.input-prefix,
+.form-group select {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 46px;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.form-group select {
+  padding: 0 12px;
+  color: #171717;
+  font-size: 14px;
+}
+
+.input-prefix svg {
+  flex: 0 0 auto;
+  margin-left: 13px;
+  color: #737373;
+}
+
+.input-prefix input {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  padding: 0 13px 0 10px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #171717;
+  font-size: 14px;
+}
+
+.verification-code {
+  display: grid;
+  grid-template-columns: 1fr 116px;
+  gap: 10px;
+}
+
+.captcha-image {
+  display: grid;
+  place-items: center;
+  height: 46px;
+  border: 0;
+  border-radius: 8px;
+  background: repeating-linear-gradient(135deg, #f5f5f5 0 8px, #ededed 8px 16px);
+  color: #1f1f1f;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 4px;
+}
+
+.agreement {
+  color: #737373;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.agreement .link {
+  color: #111;
+  font-weight: 600;
+}
+
+.login-btn {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 46px;
+  border: 0;
+  border-radius: 8px;
+  background: #111;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.login-btn:disabled {
+  opacity: .65;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #737373;
+  font-size: 13px;
+}
+
+.actions button {
+  border: 0;
+  background: transparent;
+  color: #171717;
+  font-size: 13px;
 }
 
 @media (max-width: 768px) {

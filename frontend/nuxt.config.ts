@@ -21,6 +21,7 @@ export default defineNuxtConfig({
     '@vue-flow/core/dist/style.css',
     '@vue-flow/core/dist/theme-default.css',
     '@vue-flow/minimap/dist/style.css',
+    '@xterm/xterm/css/xterm.css',
     '~/assets/canvas.css',
   ],
   vite: {

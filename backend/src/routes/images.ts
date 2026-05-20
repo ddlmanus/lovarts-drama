@@ -4,6 +4,7 @@ import { db, schema } from '../db/index.js'
 import { success, created, now, badRequest } from '../utils/response.js'
 import { generateImage } from '../services/image-generation.js'
 import { logTaskError, logTaskPayload, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
+import { currentAuthUserId } from '../utils/auth.js'
 
 const app = new Hono()
 
@@ -38,9 +39,13 @@ app.post('/', async (c) => {
       prompt: body.prompt,
       model: body.model,
       size: body.size,
+      sampleImageSize: body.sample_image_size ?? body.sampleImageSize ?? body.image_size ?? body.imageSize,
+      quality: body.quality,
+      style: body.style,
       referenceImages: body.reference_images,
       frameType: body.frame_type,
       configId,
+      userId: currentAuthUserId(c),
     })
 
     const [record] = db.select().from(schema.imageGenerations)

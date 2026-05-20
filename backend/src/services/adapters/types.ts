@@ -22,7 +22,7 @@ export interface ImageProviderAdapter {
    * @param config AI 配置
    * @param taskId 任务 ID
    */
-  buildPollRequest(config: AIConfig, taskId: string): ProviderRequest
+  buildPollRequest(config: AIConfig, taskId: string, model?: string | null): ProviderRequest
 
   /**
    * 解析轮询响应
@@ -52,7 +52,7 @@ export interface VideoProviderAdapter {
 
   parseGenerateResponse(result: any): VideoGenResponse
 
-  buildPollRequest(config: AIConfig, taskId: string): ProviderRequest
+  buildPollRequest(config: AIConfig, taskId: string, model?: string | null): ProviderRequest
 
   parsePollResponse(result: any): VideoPollResponse
 
@@ -73,13 +73,30 @@ export interface AIConfig {
   baseUrl: string
   apiKey: string
   model: string
+  modelDefaults?: Record<string, any>
+  modelParameters?: Record<string, any>
+  modelCapabilities?: Record<string, any>
 }
 
 export interface ImageGenerationRecord {
   id: number
   model?: string | null
   prompt?: string | null
+  negativePrompt?: string | null
   size?: string | null
+  sampleImageSize?: string | null
+  quality?: string | null
+  style?: string | null
+  seed?: number | null
+  cfgScale?: number | null
+  outputFormat?: string | null
+  outputCompression?: number | null
+  background?: string | null
+  moderation?: string | null
+  inputFidelity?: string | null
+  partialImages?: number | null
+  stream?: boolean | null
+  mask?: string | null
   frameType?: string | null
   referenceImages?: string | null
   // ... 其他字段
@@ -95,7 +112,15 @@ export interface VideoGenerationRecord {
   lastFrameUrl?: string | null
   referenceImageUrls?: string | null
   duration?: number | null
+  fps?: number | null
+  resolution?: string | null
   aspectRatio?: string | null
+  seed?: number | null
+  generateAudio?: boolean | null
+  negativePrompt?: string | null
+  enhancePrompt?: boolean | null
+  personGeneration?: string | null
+  numberOfVideos?: number | null
   // ... 其他字段
 }
 

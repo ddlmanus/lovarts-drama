@@ -4,6 +4,7 @@ import { db, schema } from '../db/index.js'
 import { success, created, badRequest } from '../utils/response.js'
 import { generateVideo } from '../services/video-generation.js'
 import { logTaskError, logTaskPayload, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
+import { currentAuthUserId } from '../utils/auth.js'
 
 const app = new Hono()
 
@@ -40,8 +41,17 @@ app.post('/', async (c) => {
       lastFrameUrl: body.last_frame_url,
       referenceImageUrls: body.reference_image_urls,
       duration: body.duration,
+      fps: body.fps,
+      resolution: body.resolution,
       aspectRatio: body.aspect_ratio,
+      seed: body.seed,
+      generateAudio: body.generate_audio ?? body.generateAudio,
+      negativePrompt: body.negative_prompt ?? body.negativePrompt,
+      enhancePrompt: body.enhance_prompt ?? body.enhancePrompt,
+      personGeneration: body.person_generation ?? body.personGeneration,
+      numberOfVideos: body.number_of_videos ?? body.numberOfVideos ?? body.sample_count ?? body.sampleCount,
       configId,
+      userId: currentAuthUserId(c),
     })
 
     const [record] = db.select().from(schema.videoGenerations)
