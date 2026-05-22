@@ -14,7 +14,7 @@ export function createScriptTools(episodeId: number) {
     description: 'Read the script content of the current episode.',
     inputSchema: z.object({}),
     execute: async () => {
-      const [ep] = db.select().from(schema.episodes)
+      const [ep] = await db.select().from(schema.episodes)
         .where(eq(schema.episodes.id, episodeId)).execute()
       if (!ep) return { error: `Episode not found (id=${episodeId})` }
       const content = ep.content || ep.scriptContent
@@ -30,7 +30,7 @@ export function createScriptTools(episodeId: number) {
       instructions: z.string().optional().describe('Additional rewrite instructions'),
     }),
     execute: async ({ instructions }) => {
-      const [ep] = db.select().from(schema.episodes)
+      const [ep] = await db.select().from(schema.episodes)
         .where(eq(schema.episodes.id, episodeId)).execute()
       if (!ep) return { error: `Episode not found` }
       const source = ep.content || ep.scriptContent
@@ -61,7 +61,7 @@ ${source}`,
       content: z.string().describe('The formatted screenplay content to save'),
     }),
     execute: async ({ content }) => {
-      db.update(schema.episodes)
+      await db.update(schema.episodes)
         .set({ scriptContent: content, updatedAt: now() })
         .where(eq(schema.episodes.id, episodeId))
         .execute()

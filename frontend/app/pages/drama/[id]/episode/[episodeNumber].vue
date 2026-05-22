@@ -241,7 +241,7 @@
                 <span>编辑剧本</span>
               </button>
               <BaseSelect v-model="scriptModel" :options="scriptModelOptions" placeholder="选择模型" searchable class="script-model-select" />
-              <button class="target-action-btn secondary-action small" type="button" :disabled="rn" @click="doExtract">
+              <button class="target-action-btn secondary-action small" type="button" :disabled="rn" @click="startExtractToCharacters">
                 <Loader2 v-if="rn && rt === 'extractor'" :size="14" class="animate-spin" />
                 <svg v-else class="svg-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
                   <path fill="currentColor" d="m19 9l-1.25-2.75L15 5l2.75-1.25L19 1l1.25 2.75L23 5l-2.75 1.25L19 9Zm0 14l-1.25-2.75L15 19l2.75-1.25L19 15l1.25 2.75L23 19l-2.75 1.25L19 23ZM9 20l-2.5-5.5L1 12l5.5-2.5L9 4l2.5 5.5L17 12l-5.5 2.5L9 20Z"></path>
@@ -323,103 +323,6 @@
               </div>
             </div>
           </section>
-        </div>
-
-        <!-- Step 2: Extract -->
-        <div v-else-if="scriptStep === 2" class="step-editor">
-          <div class="step-toolbar">
-            <div class="toolbar-left">
-              <div class="step-indicator">
-                <span class="step-num">03</span>
-                <span class="step-name">提取角色与场景</span>
-              </div>
-            </div>
-            <div class="toolbar-right">
-              <span v-if="chars.length" class="char-count">{{ chars.length }} 角色 · {{ scenes.length }} 场景</span>
-              <button v-if="chars.length" class="btn btn-sm" @click="doExtract" :disabled="rn">
-                <Loader2 v-if="rn && rt === 'extractor'" :size="11" class="animate-spin" />
-                <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                重新提取
-              </button>
-            </div>
-          </div>
-
-          <div v-if="!chars.length && !rn" class="step-empty">
-            <div class="empty-visual">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            </div>
-            <div class="empty-title">从剧本提取角色与场景</div>
-            <div class="empty-desc">AI 自动分析剧本，提取角色信息和场景列表，与项目已有数据智能去重合并</div>
-            <button class="btn btn-primary" :disabled="rn" @click="doExtract">
-              <Loader2 v-if="rn && rt === 'extractor'" :size="13" class="animate-spin" />
-              <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-              {{ rn && rt === 'extractor' ? '提取中...' : '开始提取' }}
-            </button>
-          </div>
-          <div v-else-if="rn && rt === 'extractor'" class="step-loading">
-            <Loader2 :size="24" class="animate-spin" style="color:var(--accent)" />
-            <div class="loading-text">正在提取角色和场景...</div>
-          </div>
-          <div v-else class="extract-stage">
-            <aside class="card extract-summary">
-              <div class="extract-summary-kicker">Extraction Board</div>
-              <div class="extract-summary-title">角色与场景结果</div>
-              <div class="extract-summary-desc">从剧本里提取出的角色和场景已经入库。这里先确认命名、定位和描述是否可直接进入后续制作。</div>
-              <div class="extract-summary-stats">
-                <div class="extract-summary-stat">
-                  <span>角色</span>
-                  <strong>{{ chars.length }}</strong>
-                </div>
-                <div class="extract-summary-stat">
-                  <span>场景</span>
-                  <strong>{{ scenes.length }}</strong>
-                </div>
-              </div>
-              <div class="extract-summary-note">如果角色描述过于简短，后续分配音色和生成形象时建议先补充人物特征。</div>
-            </aside>
-
-            <div class="card extract-card">
-              <div class="extract-card-head">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                <span>角色</span>
-                <span class="tag tag-accent">{{ chars.length }}</span>
-              </div>
-              <div class="extract-list">
-                <div v-for="c in chars" :key="c.id" class="extract-row">
-                  <div class="char-avatar">{{ c.name?.[0] || '?' }}</div>
-                  <div class="extract-info">
-                    <div class="extract-name-row">
-                      <div class="extract-name">{{ c.name }}</div>
-                      <span class="tag">{{ c.role || '角色' }}</span>
-                    </div>
-                    <div class="extract-meta wrap">{{ c.description || c.appearance || c.personality || '暂无描述' }}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="card extract-card" v-if="scenes.length">
-              <div class="extract-card-head">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                <span>场景</span>
-                <span class="tag tag-accent">{{ scenes.length }}</span>
-              </div>
-              <div class="extract-list">
-                <div v-for="s in scenes" :key="s.id" class="extract-row">
-                  <div class="scene-icon">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  </div>
-                  <div class="extract-info">
-                    <div class="extract-name-row">
-                      <div class="extract-name">{{ s.location }}</div>
-                      <span v-if="s.time" class="tag">{{ s.time }}</span>
-                    </div>
-                    <div class="extract-meta wrap">{{ s.description || s.time || '等待补充场景描述' }}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
         <!-- Step 3: Voice Assignment -->
@@ -2735,7 +2638,7 @@ function goNextProd() {
 }
 
 // Script step navigation
-const stepLabels = ['原始内容', 'AI 改写', '提取', '音色', '分镜']
+const stepLabels = ['原始内容', 'AI 改写', '', '音色', '分镜']
 const prevStepLabel = computed(() => scriptStep.value > 0 ? stepLabels[scriptStep.value - 1] : '')
 const nextStepLabel = computed(() => {
   if (scriptStep.value === 4) return '进入制作'
@@ -2744,7 +2647,6 @@ const nextStepLabel = computed(() => {
 const canGoNext = computed(() => {
   if (scriptStep.value === 0) return !!localRaw.value.trim()
   if (scriptStep.value === 1) return !!localScript.value.trim() || !!scriptContent.value
-  if (scriptStep.value === 2) return chars.value.length > 0
   if (scriptStep.value === 3) return charsVoiced.value > 0
   if (scriptStep.value === 4) return sbs.value.length > 0
   return false
@@ -2753,6 +2655,15 @@ function goPrevStep() { if (scriptStep.value > 0) scriptStep.value-- }
 function goNextStep() {
   if (scriptStep.value === 0 && localRaw.value.trim()) { saveRaw() }
   if (scriptStep.value === 1 && localScript.value.trim()) { saveScr() }
+  if (scriptStep.value === 1) {
+    if (chars.value.length) {
+      panel.value = 'production'
+      prodTab.value = 'chars'
+    } else {
+      startExtractToCharacters()
+    }
+    return
+  }
   if (scriptStep.value === 4) {
     panel.value = 'production'
     prodTab.value = 'shots'
@@ -3152,7 +3063,6 @@ function lockSequentialSteps(steps, baseUnlocked = true) {
 function isSubStepLocked(key) {
   if (key === 'script:raw') return false
   if (key === 'script:rewrite') return !rawContent.value && !scriptContent.value
-  if (key === 'script:extract') return !scriptContent.value && !rawContent.value && !chars.value.length
   if (key === 'script:voice') return !chars.value.length
   if (key === 'script:storyboard') return isFlowStepLocked('storyboard')
   if (key === 'prod:chars') return isFlowStepLocked('characters')
@@ -3181,7 +3091,6 @@ const sidebarSections = computed(() => ([
     items: lockSequentialSteps([
       { key: 'script:raw', label: '原始内容', desc: '', icon: FileText, done: !!rawContent.value },
       { key: 'script:rewrite', label: 'AI 改写', desc: '', icon: FileText, done: !!scriptContent.value },
-      { key: 'script:extract', label: '提取', desc: '', icon: Users, done: !!chars.value.length },
       { key: 'script:voice', label: '音色', desc: '', icon: Mic2, done: !!chars.value.length && charsVoiced.value === chars.value.length },
       { key: 'script:storyboard', label: '分镜', desc: '', icon: Clapperboard, done: !!sbs.value.length },
     ]),
@@ -3213,7 +3122,7 @@ const activeMainStage = computed(() => {
     return ['chars', 'scenes'].includes(prodTab.value) ? 'assets' : 'storyboard'
   }
   if (scriptStep.value <= 1) return 'script'
-  if (scriptStep.value <= 3) return 'assets'
+  if (scriptStep.value === 3) return 'assets'
   return 'storyboard'
 })
 
@@ -3253,7 +3162,7 @@ function goMainStage(stageId) {
       return
     }
     panel.value = 'script'
-    scriptStep.value = chars.value.length ? 3 : 2
+    scriptStep.value = 3
     return
   }
   if (stageId === 'storyboard') {
@@ -3277,7 +3186,6 @@ const activeSubSteps = computed(() => {
   }
   if (activeMainStage.value === 'assets') {
     return [
-      { key: 'script:extract', label: '提取角色场景', done: !!chars.value.length },
       { key: 'script:voice', label: '分配音色', done: !!chars.value.length && charsVoiced.value === chars.value.length },
       { key: 'prod:chars', label: '角色形象', done: prodStepDone('chars'), locked: isSubStepLocked('prod:chars') },
       { key: 'prod:scenes', label: '场景图片', done: prodStepDone('scenes'), locked: isSubStepLocked('prod:scenes') },
@@ -3301,7 +3209,6 @@ const activeSubStepKey = computed(() => {
   if (panel.value === 'script') {
     if (scriptStep.value === 0) return 'script:raw'
     if (scriptStep.value === 1) return 'script:rewrite'
-    if (scriptStep.value === 2) return 'script:extract'
     if (scriptStep.value === 3) return 'script:voice'
     return 'script:storyboard'
   }
@@ -3319,7 +3226,6 @@ const bubbleSteps = computed(() => {
     return [
       { key: 'script:raw', label: '原始内容', done: !!rawContent.value },
       { key: 'script:rewrite', label: 'AI 改写', done: !!scriptContent.value },
-      { key: 'script:extract', label: '提取', done: !!chars.value.length },
       { key: 'script:voice', label: '音色', done: !!chars.value.length && charsVoiced.value === chars.value.length },
       { key: 'script:storyboard', label: '分镜', done: !!sbs.value.length },
     ]
@@ -3405,7 +3311,6 @@ function goSubStep(key) {
     const stepMap = {
       'script:raw': 0,
       'script:rewrite': 1,
-      'script:extract': 2,
       'script:voice': 3,
       'script:storyboard': 4,
     }
@@ -3859,7 +3764,7 @@ async function refresh() {
         if (epHasScript && chars.value.length) {
           panel.value = 'production'
           prodTab.value = 'chars'
-          scriptStep.value = epHasSbs ? 4 : 2
+          scriptStep.value = epHasSbs ? 4 : 1
         } else if (epHasSbs) scriptStep.value = 4
         else if (epHasScript || epHasContent) scriptStep.value = 1
         else scriptStep.value = 0
@@ -3867,7 +3772,11 @@ async function refresh() {
       } else if (panel.value === 'script') {
         if (epHasSbs) scriptStep.value = 4
         else if (epHasScript && chars.value.some(c => c.voice_style || c.voiceStyle)) scriptStep.value = 3
-        else if (epHasScript && chars.value.length) scriptStep.value = 2
+        else if (epHasScript && chars.value.length) {
+          panel.value = 'production'
+          prodTab.value = 'chars'
+          scriptStep.value = 1
+        }
         else if (epHasScript || epHasContent) scriptStep.value = Math.min(scriptStep.value || 1, 1)
         else scriptStep.value = 0
       }
@@ -3914,13 +3823,12 @@ async function doRewrite() {
   runAgent('script_rewriter', '请读取剧本并改写为格式化剧本，然后保存', dramaId, epId.value, refresh, { model: scriptModel.value })
 }
 async function startExtractFromRaw() {
-  const currentStep = scriptStep.value
   await saveRaw()
   if (!scriptContent.value && localRaw.value.trim()) {
     localScript.value = localRaw.value
     await saveScr()
   }
-  await doExtract({ keepStep: currentStep })
+  await startExtractToCharacters()
 }
 function skipRewrite() {
   const raw = (localRaw.value || rawContent.value || '').trim()
@@ -3931,7 +3839,13 @@ function skipRewrite() {
   localScript.value = raw
   saveScr()
   toast.success('已跳过 AI 改写，当前将直接使用原始内容')
-  scriptStep.value = 2
+  startExtractToCharacters()
+}
+async function startExtractToCharacters() {
+  await doExtract({ keepStep: 1 })
+  panel.value = 'production'
+  prodTab.value = 'chars'
+  scriptStep.value = 1
 }
 function startExtractProgress() {
   stopExtractProgress()
@@ -3974,10 +3888,10 @@ async function reExtractCharacters() {
   failedCharImageMessages.value = {}
   panel.value = 'production'
   prodTab.value = 'chars'
-  await doExtract({ keepStep: 2 })
+  await doExtract({ keepStep: 1 })
   panel.value = 'production'
   prodTab.value = 'chars'
-  scriptStep.value = 2
+  scriptStep.value = 1
 }
 async function reExtractScenes() {
   pendingSceneImageIds.value = []
@@ -3985,10 +3899,10 @@ async function reExtractScenes() {
   failedSceneImageMessages.value = {}
   panel.value = 'production'
   prodTab.value = 'scenes'
-  await doExtract({ keepStep: 2 })
+  await doExtract({ keepStep: 1 })
   panel.value = 'production'
   prodTab.value = 'scenes'
-  scriptStep.value = 2
+  scriptStep.value = 1
 }
 function doVoice() { runAgent('voice_assigner', '请为所有角色分配合适的音色', dramaId, epId.value, refresh) }
 async function batchGenSamples() {

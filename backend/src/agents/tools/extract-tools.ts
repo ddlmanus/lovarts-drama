@@ -49,7 +49,7 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
         message: '正在读取剧本内容...',
         progress: 12,
       })
-      const [ep] = db.select().from(schema.episodes)
+      const [ep] = await db.select().from(schema.episodes)
         .where(eq(schema.episodes.id, episodeId)).execute()
       if (!ep) return { error: 'Episode not found' }
       const content = ep.scriptContent || ep.content
@@ -76,13 +76,11 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
         message: '正在读取项目已有角色用于去重...',
         progress: 32,
       })
-      const linkedIds = new Set(
-        db.select().from(schema.episodeCharacters)
-          .where(eq(schema.episodeCharacters.episodeId, episodeId)).execute()
-          .map(link => link.characterId),
-      )
-      const chars = db.select().from(schema.characters)
-        .where(eq(schema.characters.dramaId, dramaId)).execute()
+      const links = await db.select().from(schema.episodeCharacters)
+        .where(eq(schema.episodeCharacters.episodeId, episodeId)).execute()
+      const linkedIds = new Set(links.map(link => link.characterId))
+      const chars = (await db.select().from(schema.characters)
+        .where(eq(schema.characters.dramaId, dramaId)).execute())
         .filter(c => !c.deletedAt)
       const payload = {
         count: chars.length,
@@ -116,13 +114,11 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
         message: '正在读取项目已有场景用于去重...',
         progress: 52,
       })
-      const linkedIds = new Set(
-        db.select().from(schema.episodeScenes)
-          .where(eq(schema.episodeScenes.episodeId, episodeId)).execute()
-          .map(link => link.sceneId),
-      )
-      const scenes = db.select().from(schema.scenes)
-        .where(eq(schema.scenes.dramaId, dramaId)).execute()
+      const links = await db.select().from(schema.episodeScenes)
+        .where(eq(schema.episodeScenes.episodeId, episodeId)).execute()
+      const linkedIds = new Set(links.map(link => link.sceneId))
+      const scenes = (await db.select().from(schema.scenes)
+        .where(eq(schema.scenes.dramaId, dramaId)).execute())
         .filter(s => !s.deletedAt)
       const payload = {
         count: scenes.length,
@@ -177,14 +173,14 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
       })
 
       for (const char of characters) {
-        const existing = db.select().from(schema.characters)
-          .where(eq(schema.characters.dramaId, dramaId)).execute()
+        const existing = (await db.select().from(schema.characters)
+          .where(eq(schema.characters.dramaId, dramaId)).execute())
           .filter(c => !c.deletedAt)
           .find(c => c.name === char.name)
 
         if (existing) {
           // 已存在：合并信息，保留 ID
-          db.update(schema.characters).set({
+          await db.update(schema.characters).set({
             age: char.age || existing.age,
             gender: char.gender || existing.gender,
             role: char.role || existing.role,
@@ -198,7 +194,7 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
           results.merged++
         } else {
           // 新增角色
-          const res = db.insert(schema.characters).values({
+          const res = await db.insert(schema.characters).values({
             name: char.name,
             age: char.age || '',
             gender: char.gender || '',
@@ -217,7 +213,7 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
         }
       }
 
-      const currentLinks = db.select().from(schema.episodeCharacters)
+      const currentLinks = await db.select().from(schema.episodeCharacters)
         .where(eq(schema.episodeCharacters.episodeId, episodeId)).execute()
       for (const link of currentLinks) {
         if (!savedIds.includes(link.characterId)) {
@@ -268,8 +264,8 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
 
       for (const scene of scenes) {
         // 按地点+时间段精确匹配
-        const existing = db.select().from(schema.scenes)
-          .where(eq(schema.scenes.dramaId, dramaId)).execute()
+        const existing = (await db.select().from(schema.scenes)
+          .where(eq(schema.scenes.dramaId, dramaId)).execute())
           .filter(s => !s.deletedAt)
           .find(s => s.location === scene.location && s.time === (scene.time || ''))
 
@@ -279,12 +275,12 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
           results.reused++
         } else {
           // 检查是否有同地点不同时段（保留现有，新增独立场景）
-          const sameLocation = db.select().from(schema.scenes)
-            .where(eq(schema.scenes.dramaId, dramaId)).execute()
+          const sameLocation = (await db.select().from(schema.scenes)
+            .where(eq(schema.scenes.dramaId, dramaId)).execute())
             .filter(s => !s.deletedAt)
             .find(s => s.location === scene.location)
 
-          const res = db.insert(schema.scenes).values({
+          const res = await db.insert(schema.scenes).values({
             dramaId,
             location: scene.location,
             time: scene.time || '',
