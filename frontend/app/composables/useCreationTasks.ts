@@ -73,8 +73,10 @@ export function creationAssetUrl(value?: string | null) {
   const raw = String(value || '').trim()
   if (!raw) return ''
   if (/^(https?:|data:|blob:)/.test(raw)) return raw
-  if (raw.startsWith('/')) return raw
-  return `/${raw}`
+  const path = raw.startsWith('/') ? raw : `/${raw}`
+  const assetBaseUrl = String(useRuntimeConfig().public.assetBaseUrl || '').replace(/\/+$/, '')
+  if (assetBaseUrl && path.startsWith('/static/')) return `${assetBaseUrl}${path}`
+  return path
 }
 
 function parseServerTime(value?: string | null) {

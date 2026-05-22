@@ -23,7 +23,14 @@
                 :aria-hidden="index === activeBanner ? 'false' : 'true'"
               >
                 <div class="banner-item">
-                  <img :src="banner.image" :alt="banner.title" class="banner-img" />
+                  <img
+                    :src="banner.image"
+                    :alt="banner.title"
+                    class="banner-img"
+                    decoding="async"
+                    :loading="index === activeBanner ? 'eager' : 'lazy'"
+                    :fetchpriority="index === activeBanner ? 'high' : 'low'"
+                  />
                 </div>
               </div>
             </div>
@@ -85,7 +92,7 @@
               class="idea-card"
               :style="{ height: `${item.height}px` }"
             >
-              <img :src="item.image" :alt="item.prompt" />
+              <img :src="item.image" :alt="item.prompt" loading="lazy" decoding="async" />
               <div class="idea-overlay">
                 <p>{{ item.prompt }}</p>
                 <div class="idea-actions">

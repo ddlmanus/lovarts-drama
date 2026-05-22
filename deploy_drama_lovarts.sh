@@ -151,8 +151,33 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 10m;
+    gzip on;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/javascript application/json application/xml image/svg+xml;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
     location ^~ /.well-known/acme-challenge/ { root ${REMOTE_DIR}/acme; }
+    location ^~ /_nuxt/ {
+        alias ${REMOTE_DIR}/current/frontend/.output/public/_nuxt/;
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000, immutable";
+        access_log off;
+        try_files \$uri =404;
+    }
+    location ^~ /inspiration/ {
+        alias ${REMOTE_DIR}/current/frontend/.output/public/inspiration/;
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800";
+        access_log off;
+        try_files \$uri =404;
+    }
+    location ^~ /static/ {
+        alias ${REMOTE_DIR}/current/data/static/;
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800";
+        access_log off;
+        try_files \$uri =404;
+    }
     location / {
         proxy_pass http://127.0.0.1:${APP_PORT};
         proxy_http_version 1.1;
@@ -179,6 +204,33 @@ server {
     server_name ${DOMAIN};
 
     client_max_body_size 200m;
+
+    gzip on;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/javascript application/json application/xml image/svg+xml;
+
+    location ^~ /_nuxt/ {
+        alias ${REMOTE_DIR}/current/frontend/.output/public/_nuxt/;
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000, immutable";
+        access_log off;
+        try_files \$uri =404;
+    }
+    location ^~ /inspiration/ {
+        alias ${REMOTE_DIR}/current/frontend/.output/public/inspiration/;
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800";
+        access_log off;
+        try_files \$uri =404;
+    }
+    location ^~ /static/ {
+        alias ${REMOTE_DIR}/current/data/static/;
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800";
+        access_log off;
+        try_files \$uri =404;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:${APP_PORT};

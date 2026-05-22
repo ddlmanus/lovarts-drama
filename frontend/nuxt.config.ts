@@ -5,6 +5,11 @@ export default defineNuxtConfig({
   experimental: {
     appManifest: false,
   },
+  runtimeConfig: {
+    public: {
+      assetBaseUrl: process.env.NUXT_PUBLIC_ASSET_BASE_URL || '',
+    },
+  },
   app: {
     head: {
       title: 'Lovarts短剧平台',
