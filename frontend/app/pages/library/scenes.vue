@@ -160,50 +160,62 @@ onMounted(load)
 }
 .library-panel {
   min-height: calc(100vh - 28px);
-  border-radius: 18px;
+  border-radius: 10px;
   background: #151a20;
-  padding: 38px 36px 44px;
+  padding: 18px 22px 28px;
   overflow: hidden;
 }
 .library-hero {
-  height: 126px;
-  border-radius: 14px;
-  background: #2b2e36;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 42px;
+  gap: 18px;
+  padding: 4px 2px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 .library-title-wrap {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 12px;
+}
+.library-title-wrap > svg {
+  width: 22px;
+  height: 22px;
+  color: rgba(255,255,255,0.78);
 }
 .library-title-wrap h1 {
   margin: 0;
-  font-size: clamp(24px, 2vw, 28px);
+  font-size: 20px;
   line-height: 1.2;
+  font-weight: 700;
 }
 .library-title-wrap p,
 .library-stat span {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   color: rgba(255,255,255,0.52);
-  font-size: 14px;
+  font-size: 13px;
 }
 .library-stat {
-  display: flex;
-  flex-direction: column;
+  display: inline-flex;
+  flex-direction: row;
   align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  background: rgba(255,255,255,0.04);
 }
 .library-stat strong {
-  margin-top: 6px;
-  font-size: 28px;
+  margin-top: 0;
+  font-size: 16px;
+  line-height: 1;
 }
 .library-search {
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-top: 28px;
+  margin-top: 18px;
 }
 .search-input {
   width: min(690px, 100%);
@@ -269,7 +281,7 @@ onMounted(load)
   to { transform: rotate(360deg); }
 }
 .library-grid {
-  margin-top: 28px;
+  margin-top: 18px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 28px;
@@ -431,9 +443,10 @@ onMounted(load)
     border-radius: 14px;
   }
   .library-hero {
-    height: auto;
-    padding: 22px;
-    gap: 18px;
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 2px 0 14px;
+    gap: 12px;
   }
   .library-search {
     align-items: stretch;

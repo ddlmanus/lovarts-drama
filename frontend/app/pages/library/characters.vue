@@ -94,49 +94,61 @@ onMounted(load)
 <style scoped>
 .library-page {
   min-height: 100%;
-  padding: 32px;
+  padding: 14px;
   background: var(--chatfire-bg-primary);
   color: var(--chatfire-text-primary);
 }
 .library-hero {
-  height: 128px;
-  border-radius: 16px;
-  background: #2b2e36;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 42px;
+  gap: 18px;
+  padding: 4px 2px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 .library-title-wrap {
   display: flex;
   align-items: center;
-  gap: 22px;
+  gap: 12px;
+}
+.library-title-wrap > svg {
+  width: 22px;
+  height: 22px;
+  color: rgba(255,255,255,0.78);
 }
 .library-title-wrap h1 {
   margin: 0;
-  font-size: 28px;
+  font-size: 20px;
   line-height: 1.2;
+  font-weight: 700;
 }
 .library-title-wrap p,
 .library-stat span {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   color: rgba(255,255,255,0.52);
-  font-size: 14px;
+  font-size: 13px;
 }
 .library-stat {
-  display: flex;
-  flex-direction: column;
+  display: inline-flex;
+  flex-direction: row;
   align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  background: rgba(255,255,255,0.04);
 }
 .library-stat strong {
-  margin-top: 8px;
-  font-size: 30px;
+  margin-top: 0;
+  font-size: 16px;
+  line-height: 1;
 }
 .library-search {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-top: 28px;
+  margin-top: 18px;
 }
 .search-input {
   width: min(690px, 100%);
@@ -219,7 +231,7 @@ onMounted(load)
   to { transform: rotate(360deg); }
 }
 .library-grid {
-  margin-top: 28px;
+  margin-top: 18px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 18px;
