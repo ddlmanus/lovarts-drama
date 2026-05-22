@@ -5,9 +5,9 @@
     </header>
 
     <div class="tab-navigation" role="tablist" aria-label="账单类型">
-      <button :class="{ active: tab === 'orders' }" type="button" @click="switchTab('orders')">充值记录</button>
-      <button :class="{ active: tab === 'points' }" type="button" @click="switchTab('points')">消费记录</button>
       <button :class="{ active: tab === 'details' }" type="button" @click="switchTab('details')">积分明细</button>
+      <button :class="{ active: tab === 'points' }" type="button" @click="switchTab('points')">消费记录</button>
+      <button :class="{ active: tab === 'orders' }" type="button" @click="switchTab('orders')">充值记录</button>
     </div>
 
     <section class="table-panel">
@@ -107,7 +107,7 @@ import { ChevronLeft, ChevronRight, PackageX } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { billingAPI } from '~/composables/useApi'
 
-const tab = ref('orders')
+const tab = ref('details')
 const loading = ref(false)
 const orders = ref([])
 const logs = ref([])
