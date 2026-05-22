@@ -253,10 +253,9 @@ deploy_release() {
 
   cd "${REMOTE_DIR}/current/backend"
   if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
-    PORT="$APP_PORT" NODE_ENV=production PUBLIC_URL="https://${DOMAIN}" API_PUBLIC_URL="https://${DOMAIN}" pm2 restart "$APP_NAME" --update-env
-  else
-    PORT="$APP_PORT" NODE_ENV=production PUBLIC_URL="https://${DOMAIN}" API_PUBLIC_URL="https://${DOMAIN}" pm2 start npm --name "$APP_NAME" -- run start
+    pm2 delete "$APP_NAME"
   fi
+  PORT="$APP_PORT" NODE_ENV=production PUBLIC_URL="https://${DOMAIN}" API_PUBLIC_URL="https://${DOMAIN}" pm2 start npm --name "$APP_NAME" -- run start
   pm2 save
 }
 
