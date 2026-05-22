@@ -184,6 +184,15 @@ export const storyboardAPI = {
   del: (id: number) => api.del(`/storyboards/${id}`),
 }
 
+function modelPayload(model?: any) {
+  if (!model || typeof model !== 'object') return { model }
+  return {
+    model: model.model_id || model.model || model.value,
+    model_config_id: model.model_config_id || model.id,
+    user_provider_id: model.user_provider_id,
+  }
+}
+
 export const characterAPI = {
   create: (data: any) => api.post('/characters', data),
   update: (id: number, data: any) => api.put(`/characters/${id}`, data),
@@ -192,8 +201,8 @@ export const characterAPI = {
   saveToLibrary: (id: number) => api.post(`/characters/${id}/save-to-library`),
   applyFromLibrary: (id: number, data: any) => api.post(`/characters/library/${id}/apply`, data),
   voiceSample: (id: number, episodeId: number) => api.post(`/characters/${id}/generate-voice-sample`, { episode_id: episodeId }),
-  generateImage: (id: number, episodeId: number, model?: string) => api.post(`/characters/${id}/generate-image`, { episode_id: episodeId, model }),
-  batchImages: (ids: number[], episodeId: number, model?: string) => api.post('/characters/batch-generate-images', { character_ids: ids, episode_id: episodeId, model }),
+  generateImage: (id: number, episodeId: number, model?: any) => api.post(`/characters/${id}/generate-image`, { episode_id: episodeId, ...modelPayload(model) }),
+  batchImages: (ids: number[], episodeId: number, model?: any) => api.post('/characters/batch-generate-images', { character_ids: ids, episode_id: episodeId, ...modelPayload(model) }),
 }
 
 export const sceneAPI = {
@@ -203,8 +212,8 @@ export const sceneAPI = {
   library: (q = '') => api.get(`/scenes/library${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   saveToLibrary: (id: number) => api.post(`/scenes/${id}/save-to-library`),
   applyFromLibrary: (id: number, data: any) => api.post(`/scenes/library/${id}/apply`, data),
-  generateImage: (id: number, episodeId: number, model?: string) => api.post(`/scenes/${id}/generate-image`, { episode_id: episodeId, model }),
-  batchImages: (ids: number[], episodeId: number, model?: string) => api.post('/scenes/batch-generate-images', { scene_ids: ids, episode_id: episodeId, model }),
+  generateImage: (id: number, episodeId: number, model?: any) => api.post(`/scenes/${id}/generate-image`, { episode_id: episodeId, ...modelPayload(model) }),
+  batchImages: (ids: number[], episodeId: number, model?: any) => api.post('/scenes/batch-generate-images', { scene_ids: ids, episode_id: episodeId, ...modelPayload(model) }),
 }
 
 export const imageAPI = {

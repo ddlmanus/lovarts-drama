@@ -17,13 +17,13 @@ const long = (name: string) => text(name)
 const veryLong = (name: string) => longtext(name)
 
 export const dramas = mysqlTable('dramas', {
-  id, title: str('title').notNull(), description: long('description'), genre: str('genre'), style: str('style').default('realistic'),
+  id, userId: str('user_id', 64), title: str('title').notNull(), description: long('description'), genre: str('genre'), style: str('style').default('realistic'),
   totalEpisodes: int('total_episodes').default(1), totalDuration: int('total_duration').default(0), status: str('status').notNull().default('draft'),
   thumbnail: str('thumbnail', 1000), tags: long('tags'), metadata: long('metadata'), ...audit,
 })
 
 export const episodes = mysqlTable('episodes', {
-  id, dramaId: bigint('drama_id', { mode: 'number' }).notNull(), episodeNumber: int('episode_number').notNull(), title: str('title').notNull(),
+  id, userId: str('user_id', 64), dramaId: bigint('drama_id', { mode: 'number' }).notNull(), episodeNumber: int('episode_number').notNull(), title: str('title').notNull(),
   content: long('content'), scriptContent: long('script_content'), description: long('description'), duration: int('duration').default(0),
   status: str('status').default('draft'), videoUrl: str('video_url', 1000), thumbnail: str('thumbnail', 1000),
   imageConfigId: bigint('image_config_id', { mode: 'number' }), videoConfigId: bigint('video_config_id', { mode: 'number' }), audioConfigId: bigint('audio_config_id', { mode: 'number' }),
@@ -31,14 +31,14 @@ export const episodes = mysqlTable('episodes', {
 })
 
 export const characters = mysqlTable('characters', {
-  id, dramaId: bigint('drama_id', { mode: 'number' }).notNull(), name: str('name').notNull(), age: str('age'), gender: str('gender'), role: str('role'),
+  id, userId: str('user_id', 64), dramaId: bigint('drama_id', { mode: 'number' }).notNull(), name: str('name').notNull(), age: str('age'), gender: str('gender'), role: str('role'),
   description: long('description'), appearance: long('appearance'), personality: long('personality'), voiceStyle: str('voice_style'),
   imageUrl: str('image_url', 1000), referenceImages: long('reference_images'), seedValue: str('seed_value'), sortOrder: int('sort_order'),
   localPath: str('local_path', 1000), voiceSampleUrl: str('voice_sample_url', 1000), voiceProvider: str('voice_provider'), ...audit,
 })
 
 export const characterLibrary = mysqlTable('character_library', {
-  id, name: str('name').notNull(), age: str('age'), gender: str('gender'), role: str('role'), description: long('description'),
+  id, userId: str('user_id', 64), name: str('name').notNull(), age: str('age'), gender: str('gender'), role: str('role'), description: long('description'),
   appearance: long('appearance'), personality: long('personality'), voiceStyle: str('voice_style'), imageUrl: str('image_url', 1000),
   referenceImages: long('reference_images'), sourceCharacterId: bigint('source_character_id', { mode: 'number' }), ...audit,
 })
@@ -52,18 +52,18 @@ export const episodeScenes = mysqlTable('episode_scenes', {
 })
 
 export const scenes = mysqlTable('scenes', {
-  id, dramaId: bigint('drama_id', { mode: 'number' }).notNull(), episodeId: bigint('episode_id', { mode: 'number' }),
+  id, userId: str('user_id', 64), dramaId: bigint('drama_id', { mode: 'number' }).notNull(), episodeId: bigint('episode_id', { mode: 'number' }),
   location: str('location').notNull(), time: str('time').notNull(), prompt: long('prompt').notNull(), storyboardCount: int('storyboard_count').default(1),
   imageUrl: str('image_url', 1000), status: str('status').default('pending'), localPath: str('local_path', 1000), ...audit,
 })
 
 export const sceneLibrary = mysqlTable('scene_library', {
-  id, location: str('location').notNull(), time: str('time'), prompt: long('prompt'), imageUrl: str('image_url', 1000),
+  id, userId: str('user_id', 64), location: str('location').notNull(), time: str('time'), prompt: long('prompt'), imageUrl: str('image_url', 1000),
   sourceSceneId: bigint('source_scene_id', { mode: 'number' }), ...audit,
 })
 
 export const storyboards = mysqlTable('storyboards', {
-  id, episodeId: bigint('episode_id', { mode: 'number' }).notNull(), sceneId: bigint('scene_id', { mode: 'number' }),
+  id, userId: str('user_id', 64), episodeId: bigint('episode_id', { mode: 'number' }).notNull(), sceneId: bigint('scene_id', { mode: 'number' }),
   storyboardNumber: int('storyboard_number').notNull(), title: str('title'), location: str('location'), time: str('time'),
   shotType: str('shot_type'), angle: str('angle'), movement: str('movement'), action: long('action'), result: long('result'),
   atmosphere: long('atmosphere'), imagePrompt: long('image_prompt'), videoPrompt: long('video_prompt'), bgmPrompt: long('bgm_prompt'),

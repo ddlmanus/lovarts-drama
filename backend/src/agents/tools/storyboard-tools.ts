@@ -456,9 +456,12 @@ export function createStoryboardTools(episodeId: number, dramaId: number, taskId
       await db.delete(schema.storyboards).where(eq(schema.storyboards.episodeId, episodeId)).execute()
 
       let totalDuration = 0
+      const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId)).execute()
+      const userId = ep?.userId || ep?.createdBy || 'system'
       for (const sb of storyboards) {
         await validateStoryboardBindings(episodeId, sb.scene_id, sb.character_ids)
         const res = await db.insert(schema.storyboards).values({
+          userId,
           episodeId,
           storyboardNumber: sb.shot_number,
           title: sb.title, shotType: sb.shot_type,
@@ -470,7 +473,7 @@ export function createStoryboardTools(episodeId: number, dramaId: number, taskId
           videoPrompt: sb.video_prompt, bgmPrompt: sb.bgm_prompt,
           soundEffect: sb.sound_effect,
           sceneId: sb.scene_id, duration: sb.duration || 10,
-          createdAt: ts, updatedAt: ts,
+          createdBy: userId, createdAt: ts, updatedBy: userId, updatedAt: ts,
         }).execute()
         await syncStoryboardCharacters(Number(res.insertId), sb.character_ids || [])
         totalDuration += sb.duration || 10

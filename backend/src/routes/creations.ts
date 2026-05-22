@@ -45,6 +45,7 @@ function normalizeCount(value: unknown, model: string, defaults: Record<string, 
 function serializeTask(row: typeof schema.creationTasks.$inferSelect, historyRows: Array<typeof schema.creationHistory.$inferSelect>) {
   return {
     id: row.id,
+    userId: row.userId,
     type: row.type,
     provider: row.provider,
     model: row.model,
@@ -489,18 +490,24 @@ app.get('/', async (c) => {
     .where(isNull(schema.creationTasks.deletedAt))
     .orderBy(desc(schema.creationTasks.createdAt))
     .execute())
-    .filter(row => !row.userId || row.userId === userId)
+    .filter(row => row.userId === userId)
     .slice(0, 80)
   return success(c, (await Promise.all(rows.map(row => getTask(row.id)))).filter(Boolean))
 })
 
 app.get('/:id', async (c) => {
   const id = Number(c.req.param('id'))
-  return success(c, await getTask(id))
+  const userId = currentAuthUserId(c)
+  const task = await getTask(id)
+  if (!task || task.userId !== userId) return success(c, null)
+  return success(c, task)
 })
 
 app.delete('/:id', async (c) => {
   const id = Number(c.req.param('id'))
+  const userId = currentAuthUserId(c)
+  const task = await getTask(id)
+  if (!task || task.userId !== userId) return success(c)
   await updateTask(id, { deletedAt: now() })
   return success(c)
 })

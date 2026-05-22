@@ -2,7 +2,17 @@
   <div class="base-select" ref="rootEl">
     <!-- Trigger -->
     <button type="button" class="base-select-trigger" :class="{ open: isOpen }" @click="toggle">
-      <span :class="selectedLabel ? '' : 'placeholder'" class="base-select-label">{{ selectedLabel || placeholder }}</span>
+      <span :class="selectedOption ? '' : 'placeholder'" class="base-select-label">
+        <template v-if="selectedOption">
+          <span class="base-select-label-text">{{ selectedOption.label }}</span>
+          <span v-if="hasModelBadges(selectedOption)" class="base-select-badges">
+            <span v-if="isUserApiModel(selectedOption)" class="model-badge user">自有</span>
+            <span v-if="isOfficialModel(selectedOption)" class="model-badge official">官网</span>
+            <span v-if="isVipModel(selectedOption)" class="model-badge vip">VIP</span>
+          </span>
+        </template>
+        <template v-else>{{ placeholder }}</template>
+      </span>
       <ChevronDown :size="13" class="base-select-arrow" />
     </button>
 
@@ -28,12 +38,22 @@
               <div v-if="group.label" class="base-select-group-label">{{ group.label }}</div>
               <button
                 v-for="(opt, oi) in group.options"
-                :key="opt.value"
+                :key="optionKey(opt, oi)"
                 type="button"
                 :class="['base-select-option', { selected: opt.value === modelValue, highlighted: highlightedIdx === getGlobalIdx(gi, oi) }]"
                 @click="pick(opt)"
                 @mousemove="highlightedIdx = getGlobalIdx(gi, oi)"
-              >{{ opt.label }}</button>
+              >
+                <span class="base-select-option-main">
+                  <span class="base-select-option-label">{{ opt.label }}</span>
+                  <span v-if="hasModelBadges(opt)" class="base-select-badges">
+                    <span v-if="isUserApiModel(opt)" class="model-badge user">自有</span>
+                    <span v-if="isOfficialModel(opt)" class="model-badge official">官网</span>
+                    <span v-if="isVipModel(opt)" class="model-badge vip">VIP</span>
+                  </span>
+                </span>
+                <span v-if="optionDescription(opt)" class="base-select-option-desc">{{ optionDescription(opt) }}</span>
+              </button>
             </template>
           </template>
           <div v-else class="base-select-empty">无匹配结果</div>
@@ -70,6 +90,17 @@ const optionsEl = ref()
 const highlightedIdx = ref(-1)
 const dropdownStyle = ref({})
 
+function normalizeOption(o) {
+  if (o && typeof o === 'object') {
+    return {
+      ...o,
+      label: o.label ?? o.name ?? o.model_id ?? o.value ?? '',
+      value: o.value ?? o.model_id ?? o.id ?? '',
+    }
+  }
+  return { label: o, value: o }
+}
+
 // Normalize options: support both flat list and grouped format
 const normalizedGroups = computed(() => {
   if (!props.options.length) return []
@@ -77,7 +108,7 @@ const normalizedGroups = computed(() => {
   if (props.options[0]?.options) {
     return props.options.map(g => ({
       label: g.label || '',
-      options: g.options.map(o => ({ label: o.label ?? o, value: o.value ?? o })),
+      options: g.options.map(normalizeOption),
     }))
   }
   // Flat list with optional group property
@@ -85,7 +116,7 @@ const normalizedGroups = computed(() => {
   for (const o of props.options) {
     const label = o.group || ''
     if (!map.has(label)) map.set(label, [])
-    map.get(label).push({ label: o.label ?? o, value: o.value ?? o })
+    map.get(label).push(normalizeOption(o))
   }
   return Array.from(map.entries()).map(([label, options]) => ({ label, options }))
 })
@@ -97,7 +128,7 @@ const filteredGroups = computed(() => {
   return normalizedGroups.value
     .map(g => ({
       label: g.label,
-      options: g.options.filter(o => o.label.toLowerCase().includes(q)),
+      options: g.options.filter(o => String(o.label || '').toLowerCase().includes(q)),
     }))
     .filter(g => g.options.length > 0)
 })
@@ -120,13 +151,49 @@ function resolveIdx(globalIdx) {
   return [0, 0]
 }
 
-const selectedLabel = computed(() => {
+const selectedOption = computed(() => {
   for (const g of normalizedGroups.value) {
     const found = g.options.find(o => o.value === props.modelValue)
-    if (found) return found.label
+    if (found) return found
   }
-  return ''
+  return null
 })
+
+const selectedLabel = computed(() => selectedOption.value?.label || '')
+
+function isUserApiModel(item) {
+  return String(item?.resource_mode || '').toLowerCase() === 'user_api' || Boolean(item?.user_provider_id)
+}
+
+function isOfficialModel(item) {
+  return !isUserApiModel(item) && (
+    String(item?.resource_mode || '').toLowerCase() === 'platform' ||
+    Boolean(item?.is_platform_model)
+  )
+}
+
+function isVipModel(item) {
+  return Boolean(item?.member_only || item?.memberOnly)
+}
+
+function hasModelBadges(item) {
+  return Boolean(item?.model_config_id || item?.model_id || item?.resource_mode || item?.user_provider_id) &&
+    (isUserApiModel(item) || isOfficialModel(item) || isVipModel(item))
+}
+
+function optionDescription() {
+  return ''
+}
+
+function optionKey(opt, index) {
+  return [
+    opt?.resource_mode || '',
+    opt?.user_provider_id || '',
+    opt?.model_config_id || opt?.id || '',
+    opt?.value || '',
+    index,
+  ].join(':')
+}
 
 function toggle() {
   isOpen.value ? close() : open()
@@ -237,12 +304,19 @@ onBeforeUnmount(() => {
   font-weight: 300;
 }
 .base-select-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
   min-width: 0;
   text-align: left;
+}
+.base-select-label-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .base-select-arrow {
@@ -307,7 +381,9 @@ onBeforeUnmount(() => {
 }
 
 .base-select-option {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   width: 100%;
   padding: 7px 10px;
   font-size: 13px;
@@ -319,7 +395,55 @@ onBeforeUnmount(() => {
   cursor: pointer;
   text-align: left;
   transition: background 0.1s;
-  word-break: break-all;
+  word-break: normal;
+}
+.base-select-option-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.base-select-option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.base-select-option-desc {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 400;
+}
+.base-select-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+.model-badge {
+  flex: 0 0 auto;
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.model-badge.user {
+  background: rgba(34, 197, 94, 0.16);
+  color: #22c55e;
+}
+.model-badge.official {
+  background: rgba(10, 132, 255, 0.16);
+  color: #60a5fa;
+}
+.model-badge.vip {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
 }
 .base-select-option:hover,
 .base-select-option.highlighted {
@@ -330,6 +454,10 @@ onBeforeUnmount(() => {
   background: var(--accent-bg);
   color: var(--accent-dark);
   font-weight: 600;
+}
+.base-select-option.selected .base-select-option-desc {
+  color: inherit;
+  opacity: 0.72;
 }
 
 .base-select-empty {

@@ -1,7 +1,9 @@
 import { Hono } from 'hono'
+import { eq } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
 import { success } from '../utils/response.js'
 import { listAgentTasks } from '../agents/task-progress.js'
+import { requestUserId } from '../utils/dramaAccess.js'
 
 const app = new Hono()
 
@@ -78,12 +80,13 @@ app.get('/', async (c) => {
   const dramaId = c.req.query('drama_id') ? Number(c.req.query('drama_id')) : null
   const episodeId = c.req.query('episode_id') ? Number(c.req.query('episode_id')) : null
   const limit = Math.max(1, Math.min(200, Number(c.req.query('limit') || 100)))
+  const userId = requestUserId(c)
 
-  const dramas = await db.select().from(schema.dramas).execute() as any[]
-  const episodes = await db.select().from(schema.episodes).execute() as any[]
-  const storyboards = await db.select().from(schema.storyboards).execute() as any[]
-  const scenes = await db.select().from(schema.scenes).execute() as any[]
-  const characters = await db.select().from(schema.characters).execute() as any[]
+  const dramas = ((await db.select().from(schema.dramas).where(eq(schema.dramas.userId, userId)).execute()) as any[]).filter(item => !item.deletedAt)
+  const episodes = ((await db.select().from(schema.episodes).where(eq(schema.episodes.userId, userId)).execute()) as any[]).filter(item => !item.deletedAt)
+  const storyboards = ((await db.select().from(schema.storyboards).where(eq(schema.storyboards.userId, userId)).execute()) as any[]).filter(item => !item.deletedAt)
+  const scenes = ((await db.select().from(schema.scenes).where(eq(schema.scenes.userId, userId)).execute()) as any[]).filter(item => !item.deletedAt)
+  const characters = ((await db.select().from(schema.characters).where(eq(schema.characters.userId, userId)).execute()) as any[]).filter(item => !item.deletedAt)
 
   const dramaById = new Map<number, any>(dramas.map(item => [item.id, item]))
   const episodeById = new Map<number, any>(episodes.map(item => [item.id, item]))
@@ -96,6 +99,7 @@ app.get('/', async (c) => {
   for (const task of listAgentTasks()) {
     const ep = task.episodeId ? episodeById.get(task.episodeId) : (episodeId ? episodeById.get(episodeId) : episodes.find(item => item.dramaId === dramaId) || null)
     const drama = ep ? dramaById.get(ep.dramaId) : (dramaId ? dramaById.get(dramaId) : null)
+    if (!ep && !drama) continue
     const taskCategoryLabel = AGENT_TASK_LABELS[task.agentType] || task.agentType
     tasks.push(withLabels({
       id: `agent-${task.taskId}`,
@@ -181,7 +185,7 @@ app.get('/', async (c) => {
     }
   }
 
-  for (const row of await db.select().from(schema.imageGenerations).execute()) {
+  for (const row of (await db.select().from(schema.imageGenerations).where(eq(schema.imageGenerations.createdBy, userId)).execute())) {
     const sb = row.storyboardId ? storyboardById.get(row.storyboardId) : null
     const scene = row.sceneId ? sceneById.get(row.sceneId) : (sb?.sceneId ? sceneById.get(sb.sceneId) : null)
     const char = row.characterId ? characterById.get(row.characterId) : null
@@ -207,7 +211,7 @@ app.get('/', async (c) => {
     }))
   }
 
-  for (const row of await db.select().from(schema.videoGenerations).execute()) {
+  for (const row of (await db.select().from(schema.videoGenerations).where(eq(schema.videoGenerations.createdBy, userId)).execute())) {
     const sb = row.storyboardId ? storyboardById.get(row.storyboardId) : null
     const ep = sb ? episodeById.get(sb.episodeId) : null
     const drama = (ep ? dramaById.get(ep.dramaId) : null) || (row.dramaId ? dramaById.get(row.dramaId) : null)
@@ -277,7 +281,7 @@ app.get('/', async (c) => {
     }))
   }
 
-  for (const row of await db.select().from(schema.videoMerges).execute()) {
+  for (const row of (await db.select().from(schema.videoMerges).where(eq(schema.videoMerges.createdBy, userId)).execute())) {
     const ep = row.episodeId ? episodeById.get(row.episodeId) : null
     const drama = (ep ? dramaById.get(ep.dramaId) : null) || (row.dramaId ? dramaById.get(row.dramaId) : null)
     tasks.push(withLabels({

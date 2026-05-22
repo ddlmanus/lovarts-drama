@@ -1,12 +1,12 @@
 import { Hono } from 'hono'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
 import { success, badRequest, now } from '../utils/response.js'
 import { toSnakeCaseArray } from '../utils/transform.js'
 import { generateVoiceSample } from '../services/tts-generation.js'
 import { generateImage } from '../services/image-generation.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
-import { currentAuthUserId } from '../utils/auth.js'
+import { ensureOwnedDrama, ensureOwnedEpisode, ownedRow, requestUserId } from '../utils/dramaAccess.js'
 
 const app = new Hono()
 
@@ -31,8 +31,9 @@ function buildCharacterImagePrompt(char: typeof schema.characters.$inferSelect) 
 // GET /characters/library
 app.get('/library', async (c) => {
   const q = String(c.req.query('q') || '').trim().toLowerCase()
+  const userId = requestUserId(c)
   const rows = (await db.select().from(schema.characterLibrary).execute())
-    .filter(row => !row.deletedAt)
+    .filter(row => row.userId === userId && !row.deletedAt)
     .filter(row => {
       if (!q) return true
       return [row.name, row.role, row.description, row.appearance, row.personality]
@@ -48,12 +49,15 @@ app.post('/', async (c) => {
   const dramaId = Number(body.drama_id ?? body.dramaId)
   const episodeId = Number(body.episode_id ?? body.episodeId)
   const name = String(body.name || '').trim()
+  const userId = requestUserId(c)
   if (!dramaId) return badRequest(c, 'drama_id is required')
   if (!episodeId) return badRequest(c, 'episode_id is required')
   if (!name) return badRequest(c, 'name is required')
+  if (!(await ensureOwnedDrama(c, dramaId)) || !(await ensureOwnedEpisode(c, episodeId))) return badRequest(c, 'Project not found')
 
   const ts = now()
   const result = await db.insert(schema.characters).values({
+    userId,
     dramaId,
     name,
     age: body.age || '',
@@ -62,7 +66,9 @@ app.post('/', async (c) => {
     description: body.description || '',
     appearance: body.appearance || '',
     personality: body.personality || '',
+    createdBy: userId,
     createdAt: ts,
+    updatedBy: userId,
     updatedAt: ts,
   }).execute()
   const characterId = Number(result.insertId)
@@ -77,11 +83,13 @@ app.post('/', async (c) => {
 // POST /characters/:id/save-to-library
 app.post('/:id/save-to-library', async (c) => {
   const id = Number(c.req.param('id'))
+  const userId = requestUserId(c)
   const [char] = await db.select().from(schema.characters).where(eq(schema.characters.id, id)).execute()
-  if (!char || char.deletedAt) return badRequest(c, 'Character not found')
+  if (!ownedRow(char, userId)) return badRequest(c, 'Character not found')
 
   const ts = now()
   const result = await db.insert(schema.characterLibrary).values({
+    userId,
     name: char.name,
     age: char.age || '',
     gender: char.gender || '',
@@ -93,7 +101,9 @@ app.post('/:id/save-to-library', async (c) => {
     imageUrl: char.imageUrl || '',
     referenceImages: char.referenceImages || '',
     sourceCharacterId: char.id,
+    createdBy: userId,
     createdAt: ts,
+    updatedBy: userId,
     updatedAt: ts,
   }).execute()
   return success(c, { id: Number(result.insertId) })
@@ -105,14 +115,17 @@ app.post('/library/:id/apply', async (c) => {
   const body = await c.req.json()
   const dramaId = Number(body.drama_id ?? body.dramaId)
   const episodeId = Number(body.episode_id ?? body.episodeId)
+  const userId = requestUserId(c)
   if (!dramaId) return badRequest(c, 'drama_id is required')
   if (!episodeId) return badRequest(c, 'episode_id is required')
+  if (!(await ensureOwnedDrama(c, dramaId)) || !(await ensureOwnedEpisode(c, episodeId))) return badRequest(c, 'Project not found')
 
   const [item] = await db.select().from(schema.characterLibrary).where(eq(schema.characterLibrary.id, libraryId)).execute()
-  if (!item || item.deletedAt) return badRequest(c, 'Library character not found')
+  if (!ownedRow(item, userId)) return badRequest(c, 'Library character not found')
 
   const ts = now()
   const result = await db.insert(schema.characters).values({
+    userId,
     dramaId,
     name: item.name,
     age: item.age || '',
@@ -124,7 +137,9 @@ app.post('/library/:id/apply', async (c) => {
     voiceStyle: item.voiceStyle || '',
     imageUrl: item.imageUrl || '',
     referenceImages: item.referenceImages || '',
+    createdBy: userId,
     createdAt: ts,
+    updatedBy: userId,
     updatedAt: ts,
   }).execute()
   const characterId = Number(result.insertId)
@@ -140,7 +155,8 @@ app.post('/library/:id/apply', async (c) => {
 app.put('/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json()
-  const updates: Record<string, any> = { updatedAt: now() }
+  const userId = requestUserId(c)
+  const updates: Record<string, any> = { updatedAt: now(), updatedBy: userId }
   for (const key of ['name', 'age', 'gender', 'role', 'description', 'appearance', 'personality', 'voiceStyle', 'voiceProvider', 'imageUrl', 'localPath']) {
     const snakeKey = key.replace(/[A-Z]/g, m => '_' + m.toLowerCase())
     if (snakeKey in body) updates[key] = body[snakeKey]
@@ -149,14 +165,15 @@ app.put('/:id', async (c) => {
   if ('voice_style' in body || 'voiceStyle' in body) {
     updates.voiceSampleUrl = null
   }
-  await db.update(schema.characters).set(updates).where(eq(schema.characters.id, id)).execute()
+  await db.update(schema.characters).set(updates).where(and(eq(schema.characters.id, id), eq(schema.characters.userId, userId))).execute()
   return success(c)
 })
 
 // DELETE /characters/:id
 app.delete('/:id', async (c) => {
   const id = Number(c.req.param('id'))
-  await db.update(schema.characters).set({ deletedAt: now() }).where(eq(schema.characters.id, id)).execute()
+  const userId = requestUserId(c)
+  await db.update(schema.characters).set({ deletedAt: now(), deletedBy: userId, updatedAt: now(), updatedBy: userId }).where(and(eq(schema.characters.id, id), eq(schema.characters.userId, userId))).execute()
   return success(c)
 })
 
@@ -164,8 +181,9 @@ app.delete('/:id', async (c) => {
 app.post('/:id/generate-voice-sample', async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json().catch(() => ({}))
+  const userId = requestUserId(c)
   const [char] = await db.select().from(schema.characters).where(eq(schema.characters.id, id)).execute()
-  if (!char) return badRequest(c, 'Character not found')
+  if (!ownedRow(char, userId)) return badRequest(c, 'Character not found')
   if (!char.voiceStyle) return badRequest(c, '请先分配音色')
   if (!body.episode_id) return badRequest(c, 'episode_id is required')
 
@@ -174,7 +192,7 @@ app.post('/:id/generate-voice-sample', async (c) => {
 
   try {
     logTaskStart('VoiceSample', 'generate', { characterId: id, characterName: char.name, episodeId: ep.id, voice: char.voiceStyle })
-    const audioPath = await generateVoiceSample(char.name, char.voiceStyle, ep.audioConfigId ?? undefined, currentAuthUserId(c), id)
+    const audioPath = await generateVoiceSample(char.name, char.voiceStyle, ep.audioConfigId ?? undefined, userId, id)
     await db.update(schema.characters)
       .set({ voiceSampleUrl: audioPath, updatedAt: now() })
       .where(eq(schema.characters.id, id)).execute()
@@ -190,8 +208,9 @@ app.post('/:id/generate-voice-sample', async (c) => {
 app.post('/:id/generate-image', async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json()
+  const userId = requestUserId(c)
   const [char] = await db.select().from(schema.characters).where(eq(schema.characters.id, id)).execute()
-  if (!char) return badRequest(c, 'Character not found')
+  if (!ownedRow(char, userId)) return badRequest(c, 'Character not found')
   if (!body.episode_id) return badRequest(c, 'episode_id is required')
 
   const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, Number(body.episode_id))).execute()
@@ -205,8 +224,9 @@ app.post('/:id/generate-image', async (c) => {
       dramaId: char.dramaId,
       prompt,
       model: body.model,
-      configId: body.config_id ?? ep.imageConfigId ?? undefined,
-      userId: currentAuthUserId(c),
+      configId: body.model_config_id ?? body.modelConfigId ?? body.config_id ?? ep.imageConfigId ?? undefined,
+      userProviderId: body.user_provider_id ?? body.userProviderId ?? undefined,
+      userId,
     })
     logTaskSuccess('CharacterImage', 'generate', { characterId: id, generationId: genId })
     return success(c, { image_generation_id: genId })
@@ -220,6 +240,7 @@ app.post('/:id/generate-image', async (c) => {
 app.post('/batch-generate-images', async (c) => {
   const body = await c.req.json()
   const ids: number[] = body.character_ids || []
+  const userId = requestUserId(c)
   if (!body.episode_id) return badRequest(c, 'episode_id is required')
   const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, Number(body.episode_id))).execute()
   if (!ep) return badRequest(c, 'Episode not found')
@@ -227,7 +248,7 @@ app.post('/batch-generate-images', async (c) => {
   const failed: Array<{ character_id: number; message: string }> = []
   for (const cid of ids) {
     const [char] = await db.select().from(schema.characters).where(eq(schema.characters.id, cid)).execute()
-    if (!char) {
+    if (!ownedRow(char, userId)) {
       failed.push({ character_id: cid, message: 'Character not found' })
       continue
     }
@@ -238,8 +259,9 @@ app.post('/batch-generate-images', async (c) => {
         dramaId: char.dramaId,
         prompt,
         model: body.model,
-        configId: body.config_id ?? ep.imageConfigId ?? undefined,
-        userId: currentAuthUserId(c),
+        configId: body.model_config_id ?? body.modelConfigId ?? body.config_id ?? ep.imageConfigId ?? undefined,
+        userProviderId: body.user_provider_id ?? body.userProviderId ?? undefined,
+        userId,
       })
       results.push({ character_id: cid, image_generation_id: genId })
     } catch (err: any) {

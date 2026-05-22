@@ -37,6 +37,10 @@ async function linkSceneToEpisode(episodeId: number, sceneId: number) {
 }
 
 export function createExtractTools(episodeId: number, dramaId: number, taskId?: string) {
+  async function ownerUserId() {
+    const [drama] = await db.select().from(schema.dramas).where(eq(schema.dramas.id, dramaId)).execute()
+    return drama?.userId || drama?.createdBy || 'system'
+  }
 
   // 1. 读取剧本内容
   const readScriptForExtraction = createTool({
@@ -158,6 +162,7 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
     }),
     execute: async ({ characters }) => {
       const ts = now()
+      const userId = await ownerUserId()
       const results = { created: 0, merged: 0 }
       const savedIds: number[] = []
       updateAgentTask(taskId, {
@@ -195,6 +200,7 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
         } else {
           // 新增角色
           const res = await db.insert(schema.characters).values({
+            userId,
             name: char.name,
             age: char.age || '',
             gender: char.gender || '',
@@ -203,7 +209,9 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
             appearance: char.appearance || '',
             personality: char.personality || '',
             dramaId,
+            createdBy: userId,
             createdAt: ts,
+            updatedBy: userId,
             updatedAt: ts,
           }).execute()
           const charId = Number(res.insertId)
@@ -249,6 +257,7 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
     }),
     execute: async ({ scenes }) => {
       const ts = now()
+      const userId = await ownerUserId()
       const results = { created: 0, reused: 0 }
       updateAgentTask(taskId, {
         step: 'save_dedup_scenes',
@@ -281,11 +290,14 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
             .find(s => s.location === scene.location)
 
           const res = await db.insert(schema.scenes).values({
+            userId,
             dramaId,
             location: scene.location,
             time: scene.time || '',
             prompt: scene.prompt || scene.location,
+            createdBy: userId,
             createdAt: ts,
+            updatedBy: userId,
             updatedAt: ts,
           }).execute()
           const sceneId = Number(res.insertId)

@@ -24,7 +24,7 @@ function toAbsPath(relativePath: string): string {
 /**
  * 拼接一集的所有合成镜头视频
  */
-export async function mergeEpisodeVideos(episodeId: number, dramaId: number): Promise<number> {
+export async function mergeEpisodeVideos(episodeId: number, dramaId: number, userId?: string): Promise<number> {
   const storyboards = await db.select().from(schema.storyboards)
     .where(eq(schema.storyboards.episodeId, episodeId))
     .orderBy(schema.storyboards.storyboardNumber)
@@ -52,7 +52,10 @@ export async function mergeEpisodeVideos(episodeId: number, dramaId: number): Pr
     model: 'ffmpeg-concat-h264-aac',
     status: 'processing',
     scenes: JSON.stringify(videos),
+    createdBy: userId || 'system',
     createdAt: ts,
+    updatedBy: userId || 'system',
+    updatedAt: ts,
   }).execute()
   const mergeId = Number(res.insertId)
 

@@ -84,8 +84,8 @@ app.get('/:id', async (c) => {
   const userId = currentAuthUserId(c)
   const [row] = await db.select().from(schema.imageGenerations)
     .where(eq(schema.imageGenerations.id, id)).execute()
-  if (row && row.createdBy && row.createdBy !== userId) return notFound(c, 'image not found')
-  return success(c, row || null)
+  if (!row || row.createdBy !== userId) return notFound(c, 'image not found')
+  return success(c, row)
 })
 
 // GET /images — List by storyboard_id or drama_id
@@ -95,7 +95,7 @@ app.get('/', async (c) => {
   const userId = currentAuthUserId(c)
 
   let rows = await db.select().from(schema.imageGenerations).execute()
-  rows = rows.filter(r => !r.createdBy || r.createdBy === userId)
+  rows = rows.filter(r => r.createdBy === userId)
 
   if (storyboardId) rows = rows.filter(r => r.storyboardId === Number(storyboardId))
   if (dramaId) rows = rows.filter(r => r.dramaId === Number(dramaId))
@@ -109,7 +109,7 @@ app.delete('/:id', async (c) => {
   const userId = currentAuthUserId(c)
   const [row] = await db.select().from(schema.imageGenerations)
     .where(eq(schema.imageGenerations.id, id)).execute()
-  if (!row || (row.createdBy && row.createdBy !== userId)) return notFound(c, 'image not found')
+  if (!row || row.createdBy !== userId) return notFound(c, 'image not found')
   await db.delete(schema.imageGenerations).where(eq(schema.imageGenerations.id, id)).execute()
   return success(c)
 })

@@ -1,5 +1,5 @@
 <template>
-  <div class="studio" v-if="drama">
+  <div class="studio" v-if="drama && initialRouteResolved">
     <input ref="assetUploadInput" class="asset-upload-input" type="file" accept="image/*" @change="handleAssetUploadChange" />
     <header class="navbar-wrapper">
       <div class="navbar">
@@ -2034,13 +2034,15 @@ const scriptModel = ref('gemini-3.1-pro-preview')
 const dbTextModelOptions = ref([])
 const dbImageModelOptions = ref([])
 const fallbackScriptModelOptions = apimartMultimodalChatModels
-const scriptModelOptions = computed(() => dbTextModelOptions.value.length ? dbTextModelOptions.value : fallbackScriptModelOptions)
+const scriptModelOptions = computed(() => normalizeSelectableModelOptions(dbTextModelOptions.value.length ? dbTextModelOptions.value : fallbackScriptModelOptions))
 const imageModel = ref('gemini-3-pro-image-preview')
 const fallbackImageModelOptions = [
   { label: 'GPT-Image-2', value: 'gpt-image-2', group: 'APIMart' },
   { label: 'Nano-Banana-Pro', value: 'gemini-3-pro-image-preview', group: 'APIMart' },
 ]
-const imageModelOptions = computed(() => dbImageModelOptions.value.length ? dbImageModelOptions.value : fallbackImageModelOptions)
+const imageModelOptions = computed(() => normalizeSelectableModelOptions(dbImageModelOptions.value.length ? dbImageModelOptions.value : fallbackImageModelOptions))
+const selectedScriptModelOption = computed(() => findSelectableModelOption(scriptModelOptions.value, scriptModel.value))
+const selectedImageModelOption = computed(() => findSelectableModelOption(imageModelOptions.value, imageModel.value))
 const roleAgeOptions = [
   { label: '婴儿', value: '婴儿' },
   { label: '幼儿', value: '幼儿' },
@@ -2254,6 +2256,33 @@ function normalizeModelConfig(config) {
 
 function normalizeModelConfigs(configs) {
   return Array.isArray(configs) ? configs.map(normalizeModelConfig) : []
+}
+
+function selectableModelValue(config) {
+  const base = String(config?.model_id || config?.value || config?.id || '')
+  if (config?.user_provider_id) return `user:${config.user_provider_id}:${config.model_config_id || config.id || base}`
+  if (config?.model_config_id || config?.id) return `platform:${config.model_config_id || config.id}:${base}`
+  return base
+}
+
+function normalizeSelectableModelOption(config) {
+  const modelId = config?.model_id || config?.value || ''
+  return {
+    ...config,
+    model_id: modelId,
+    value: selectableModelValue({ ...config, model_id: modelId }),
+  }
+}
+
+function normalizeSelectableModelOptions(configs) {
+  return Array.isArray(configs) ? configs.map(normalizeSelectableModelOption) : []
+}
+
+function findSelectableModelOption(options, value) {
+  const target = String(value || '')
+  return options.find(item => String(item.value || '') === target)
+    || options.find(item => String(item.model_id || '') === target)
+    || null
 }
 
 function isPendingCharImage(id) {
@@ -3029,7 +3058,7 @@ const flowStepDefs = [
 
 function isFlowStepDone(id) {
   if (id === 'script') return !!(rawContent.value || scriptContent.value)
-  if (id === 'characters') return visualCharTotal.value > 0 && charImgCount.value === visualCharTotal.value
+  if (id === 'characters') return chars.value.length > 0
   if (id === 'scenes') return scenes.value.length > 0 && sceneImgCount.value === scenes.value.length
   if (id === 'storyboard') return !!sbs.value.length
   if (id === 'production') return !!sbs.value.length && composedCount.value === sbs.value.length
@@ -3820,7 +3849,7 @@ async function saveScriptEdit() {
 }
 async function doRewrite() {
   await saveRaw()
-  runAgent('script_rewriter', '请读取剧本并改写为格式化剧本，然后保存', dramaId, epId.value, refresh, { model: scriptModel.value })
+  runAgent('script_rewriter', '请读取剧本并改写为格式化剧本，然后保存', dramaId, epId.value, refresh, { model: selectedScriptModelOption.value?.model_id || scriptModel.value })
 }
 async function startExtractFromRaw() {
   await saveRaw()
@@ -3874,7 +3903,7 @@ async function doExtract(options = {}) {
       scriptStep.value = keepStep
       stopExtractProgress(true)
       extractInlineVisible.value = true
-    }, { model: scriptModel.value })
+    }, { model: selectedScriptModelOption.value?.model_id || scriptModel.value })
   } catch (e) {
     scriptStep.value = keepStep
     throw e
@@ -3924,7 +3953,7 @@ function doBreakdown() {
   runAgent('storyboard_breaker', `请把当前剧本转换成生产级结构化分镜脚本，并调用 save_storyboards 保存。每条分镜必须包含 shotNumber、title、shotType、cameraAngle、cameraMovement、durationSeconds、visualDescription、action、dialogue、soundEffects、backgroundMusic、atmosphere、charactersInShot、sceneId、image_prompt、video_prompt。shotType/cameraAngle/cameraMovement 使用标准英文枚举；角色和场景必须来自 read_storyboard_context。视频模型：${label}，请同时生成适配该模型的 video_prompt。`, dramaId, epId.value, async () => {
     await refresh()
     scriptStep.value = 4
-  }, { model: scriptModel.value })
+  }, { model: selectedScriptModelOption.value?.model_id || scriptModel.value })
 }
 async function genSample(id) { try { await characterAPI.voiceSample(id, epId.value); toast.success('试听已生成'); refresh() } catch (e) { toast.error(e.message) } }
 async function addShot() { await insertShotAt(sbs.value.length) }
@@ -4365,7 +4394,7 @@ async function genCharImg(id) {
   try {
     if (!isPendingCharImage(id)) pendingCharImageIds.value.push(id)
     clearFailedCharImage(id)
-    const res = await characterAPI.generateImage(id, epId.value, imageModel.value)
+    const res = await characterAPI.generateImage(id, epId.value, selectedImageModelOption.value || imageModel.value)
     toast.success('角色图片生成中')
     await refresh()
     if (res?.image_generation_id) {
@@ -4390,7 +4419,7 @@ function batchCharImages() {
   batchCharImageRunning.value = true
   pendingCharImageIds.value = [...new Set([...pendingCharImageIds.value, ...ids])]
   ids.forEach(clearFailedCharImage)
-  characterAPI.batchImages(ids, epId.value, imageModel.value).then(async (res) => {
+  characterAPI.batchImages(ids, epId.value, selectedImageModelOption.value || imageModel.value).then(async (res) => {
     const startedIds = (res?.items || []).map(item => item.character_id).filter(Boolean)
     const failedItems = res?.failed || []
     const failedIds = failedItems.map(item => item.character_id).filter(Boolean)
@@ -4421,7 +4450,7 @@ async function genSceneImg(id) {
   try {
     if (!isPendingSceneImage(id)) pendingSceneImageIds.value.push(id)
     clearFailedSceneImage(id)
-    const res = await sceneAPI.generateImage(id, epId.value, imageModel.value)
+    const res = await sceneAPI.generateImage(id, epId.value, selectedImageModelOption.value || imageModel.value)
     toast.success('场景图片生成中')
     await refresh()
     if (res?.image_generation_id) {
@@ -4446,7 +4475,7 @@ function batchSceneImages() {
   batchSceneImageRunning.value = true
   pendingSceneImageIds.value = [...new Set([...pendingSceneImageIds.value, ...ids])]
   ids.forEach(clearFailedSceneImage)
-  sceneAPI.batchImages(ids, epId.value, imageModel.value).then(async (res) => {
+  sceneAPI.batchImages(ids, epId.value, selectedImageModelOption.value || imageModel.value).then(async (res) => {
     const startedIds = (res?.items || []).map(item => item.scene_id).filter(Boolean)
     const failedItems = res?.failed || []
     const failedIds = failedItems.map(item => item.scene_id).filter(Boolean)
@@ -4851,12 +4880,14 @@ async function loadConfigs() {
     audioConfigs.value = normalizeModelConfigs(audioModels)
     dbTextModelOptions.value = Array.isArray(textModels) ? textModels : []
     dbImageModelOptions.value = Array.isArray(imageModels) ? imageModels : []
-    if (dbTextModelOptions.value.length && !dbTextModelOptions.value.some(m => m.value === scriptModel.value)) {
-      const preferred = dbTextModelOptions.value.find(m => m.is_default) || dbTextModelOptions.value[0]
+    if (scriptModelOptions.value.length) {
+      const current = findSelectableModelOption(scriptModelOptions.value, scriptModel.value)
+      const preferred = current || scriptModelOptions.value.find(m => m.is_default) || scriptModelOptions.value[0]
       scriptModel.value = preferred.value
     }
-    if (dbImageModelOptions.value.length && !dbImageModelOptions.value.some(m => m.value === imageModel.value)) {
-      const preferred = dbImageModelOptions.value.find(m => m.is_default) || dbImageModelOptions.value[0]
+    if (imageModelOptions.value.length) {
+      const current = findSelectableModelOption(imageModelOptions.value, imageModel.value)
+      const preferred = current || imageModelOptions.value.find(m => m.is_default) || imageModelOptions.value[0]
       imageModel.value = preferred.value
     }
   } catch (e) { console.error('Failed to load AI configs', e) }

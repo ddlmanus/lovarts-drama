@@ -5,7 +5,7 @@ import { success, created, badRequest, now } from '../utils/response.js'
 import { toSnakeCaseArray } from '../utils/transform.js'
 import { generateImage } from '../services/image-generation.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
-import { currentAuthUserId } from '../utils/auth.js'
+import { ensureOwnedDrama, ensureOwnedEpisode, ownedRow, requestUserId } from '../utils/dramaAccess.js'
 
 const app = new Hono()
 
@@ -26,8 +26,9 @@ function buildSceneImagePrompt(scene: typeof schema.scenes.$inferSelect) {
 // GET /scenes/library
 app.get('/library', async (c) => {
   const q = String(c.req.query('q') || '').trim().toLowerCase()
+  const userId = requestUserId(c)
   const rows = (await db.select().from(schema.sceneLibrary).execute())
-    .filter(row => !row.deletedAt)
+    .filter(row => row.userId === userId && !row.deletedAt)
     .filter(row => {
       if (!q) return true
       return [row.location, row.time, row.prompt]
@@ -41,19 +42,28 @@ app.get('/library', async (c) => {
 app.post('/', async (c) => {
   const body = await c.req.json()
   const ts = now()
+  const userId = requestUserId(c)
+  const dramaId = Number(body.drama_id ?? body.dramaId)
+  const episodeId = Number(body.episode_id ?? body.episodeId)
+  if (!dramaId) return badRequest(c, 'drama_id is required')
+  if (!(await ensureOwnedDrama(c, dramaId))) return badRequest(c, 'Project not found')
+  if (episodeId && !(await ensureOwnedEpisode(c, episodeId))) return badRequest(c, 'Episode not found')
   const res = await db.insert(schema.scenes).values({
-    dramaId: body.drama_id,
-    episodeId: body.episode_id,
+    userId,
+    dramaId,
+    episodeId,
     location: body.location,
     time: body.time || '',
     prompt: body.prompt || body.location,
+    createdBy: userId,
     createdAt: ts,
+    updatedBy: userId,
     updatedAt: ts,
   }).execute()
   const sceneId = Number(res.insertId)
-  if (body.episode_id) {
+  if (episodeId) {
     await db.insert(schema.episodeScenes).values({
-      episodeId: Number(body.episode_id),
+      episodeId,
       sceneId,
       createdAt: ts,
     }).execute()
@@ -66,17 +76,21 @@ app.post('/', async (c) => {
 // POST /scenes/:id/save-to-library
 app.post('/:id/save-to-library', async (c) => {
   const id = Number(c.req.param('id'))
+  const userId = requestUserId(c)
   const [scene] = await db.select().from(schema.scenes).where(eq(schema.scenes.id, id)).execute()
-  if (!scene || scene.deletedAt) return badRequest(c, 'Scene not found')
+  if (!ownedRow(scene, userId)) return badRequest(c, 'Scene not found')
 
   const ts = now()
   const result = await db.insert(schema.sceneLibrary).values({
+    userId,
     location: scene.location,
     time: scene.time || '',
     prompt: scene.prompt || '',
     imageUrl: scene.imageUrl || '',
     sourceSceneId: scene.id,
+    createdBy: userId,
     createdAt: ts,
+    updatedBy: userId,
     updatedAt: ts,
   }).execute()
   return success(c, { id: Number(result.insertId) })
@@ -88,21 +102,26 @@ app.post('/library/:id/apply', async (c) => {
   const body = await c.req.json()
   const dramaId = Number(body.drama_id ?? body.dramaId)
   const episodeId = Number(body.episode_id ?? body.episodeId)
+  const userId = requestUserId(c)
   if (!dramaId) return badRequest(c, 'drama_id is required')
   if (!episodeId) return badRequest(c, 'episode_id is required')
+  if (!(await ensureOwnedDrama(c, dramaId)) || !(await ensureOwnedEpisode(c, episodeId))) return badRequest(c, 'Project not found')
 
   const [item] = await db.select().from(schema.sceneLibrary).where(eq(schema.sceneLibrary.id, libraryId)).execute()
-  if (!item || item.deletedAt) return badRequest(c, 'Library scene not found')
+  if (!ownedRow(item, userId)) return badRequest(c, 'Library scene not found')
 
   const ts = now()
   const result = await db.insert(schema.scenes).values({
+    userId,
     dramaId,
     episodeId,
     location: item.location,
     time: item.time || '',
     prompt: item.prompt || item.location,
     imageUrl: item.imageUrl || '',
+    createdBy: userId,
     createdAt: ts,
+    updatedBy: userId,
     updatedAt: ts,
   }).execute()
   const sceneId = Number(result.insertId)
@@ -118,13 +137,14 @@ app.post('/library/:id/apply', async (c) => {
 app.put('/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json()
-  const updates: Record<string, any> = { updatedAt: now() }
+  const userId = requestUserId(c)
+  const updates: Record<string, any> = { updatedAt: now(), updatedBy: userId }
   if (body.location !== undefined) updates.location = body.location
   if (body.time !== undefined) updates.time = body.time
   if (body.prompt !== undefined) updates.prompt = body.prompt
   if (body.image_url !== undefined) updates.imageUrl = body.image_url
   else if (body.imageUrl !== undefined) updates.imageUrl = body.imageUrl
-  await db.update(schema.scenes).set(updates).where(eq(schema.scenes.id, id)).execute()
+  await db.update(schema.scenes).set(updates).where(and(eq(schema.scenes.id, id), eq(schema.scenes.userId, userId))).execute()
   return success(c)
 })
 
@@ -132,8 +152,9 @@ app.put('/:id', async (c) => {
 app.post('/:id/generate-image', async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json()
+  const userId = requestUserId(c)
   const [scene] = await db.select().from(schema.scenes).where(eq(schema.scenes.id, id)).execute()
-  if (!scene) return badRequest(c, 'Scene not found')
+  if (!ownedRow(scene, userId)) return badRequest(c, 'Scene not found')
   if (!body.episode_id) return badRequest(c, 'episode_id is required')
   const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, Number(body.episode_id))).execute()
   if (!ep) return badRequest(c, 'Episode not found')
@@ -141,20 +162,21 @@ app.post('/:id/generate-image', async (c) => {
   const prompt = buildSceneImagePrompt(scene)
   try {
     logTaskStart('SceneImage', 'generate', { sceneId: id, episodeId: ep.id, dramaId: scene.dramaId, location: scene.location })
-    await db.update(schema.scenes).set({ status: 'processing', updatedAt: now() }).where(eq(schema.scenes.id, id)).execute()
+    await db.update(schema.scenes).set({ status: 'processing', updatedAt: now(), updatedBy: userId }).where(eq(schema.scenes.id, id)).execute()
     const genId = await generateImage({
       sceneId: id,
       dramaId: scene.dramaId,
       prompt,
       model: body.model,
-      configId: body.config_id ?? ep.imageConfigId ?? undefined,
-      userId: currentAuthUserId(c),
+      configId: body.model_config_id ?? body.modelConfigId ?? body.config_id ?? ep.imageConfigId ?? undefined,
+      userProviderId: body.user_provider_id ?? body.userProviderId ?? undefined,
+      userId,
     })
     logTaskSuccess('SceneImage', 'generate', { sceneId: id, generationId: genId })
     return success(c, { image_generation_id: genId })
   } catch (err: any) {
     logTaskError('SceneImage', 'generate', { sceneId: id, error: err.message })
-    await db.update(schema.scenes).set({ status: 'failed', updatedAt: now() }).where(eq(schema.scenes.id, id)).execute()
+    await db.update(schema.scenes).set({ status: 'failed', updatedAt: now(), updatedBy: userId }).where(eq(schema.scenes.id, id)).execute()
     return badRequest(c, err.message)
   }
 })
@@ -163,6 +185,7 @@ app.post('/:id/generate-image', async (c) => {
 app.post('/batch-generate-images', async (c) => {
   const body = await c.req.json()
   const ids: number[] = body.scene_ids || []
+  const userId = requestUserId(c)
   if (!body.episode_id) return badRequest(c, 'episode_id is required')
   const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, Number(body.episode_id))).execute()
   if (!ep) return badRequest(c, 'Episode not found')
@@ -171,24 +194,25 @@ app.post('/batch-generate-images', async (c) => {
   const failed: Array<{ scene_id: number; message: string }> = []
   for (const sid of ids) {
     const [scene] = await db.select().from(schema.scenes).where(eq(schema.scenes.id, sid)).execute()
-    if (!scene) {
+    if (!ownedRow(scene, userId)) {
       failed.push({ scene_id: sid, message: 'Scene not found' })
       continue
     }
     const prompt = buildSceneImagePrompt(scene)
     try {
-      await db.update(schema.scenes).set({ status: 'processing', updatedAt: now() }).where(eq(schema.scenes.id, sid)).execute()
+      await db.update(schema.scenes).set({ status: 'processing', updatedAt: now(), updatedBy: userId }).where(eq(schema.scenes.id, sid)).execute()
       const genId = await generateImage({
         sceneId: sid,
         dramaId: scene.dramaId,
         prompt,
         model: body.model,
-        configId: body.config_id ?? ep.imageConfigId ?? undefined,
-        userId: currentAuthUserId(c),
+        configId: body.model_config_id ?? body.modelConfigId ?? body.config_id ?? ep.imageConfigId ?? undefined,
+        userProviderId: body.user_provider_id ?? body.userProviderId ?? undefined,
+        userId,
       })
       results.push({ scene_id: sid, image_generation_id: genId })
     } catch (err: any) {
-      await db.update(schema.scenes).set({ status: 'failed', updatedAt: now() }).where(eq(schema.scenes.id, sid)).execute()
+      await db.update(schema.scenes).set({ status: 'failed', updatedAt: now(), updatedBy: userId }).where(eq(schema.scenes.id, sid)).execute()
       failed.push({ scene_id: sid, message: err.message || 'Generation failed' })
     }
   }
@@ -205,6 +229,7 @@ app.post('/batch-generate-images', async (c) => {
 // POST /scenes/:id/delete
 app.post('/:id/delete', async (c) => {
   const id = Number(c.req.param('id'))
+  const userId = requestUserId(c)
   const body = await c.req.json().catch(() => ({}))
   const episodeId = Number(body.episode_id ?? body.episodeId)
   if (episodeId) {
@@ -212,14 +237,15 @@ app.post('/:id/delete', async (c) => {
       .where(and(eq(schema.episodeScenes.sceneId, id), eq(schema.episodeScenes.episodeId, episodeId)))
       .execute()
   }
-  await db.update(schema.scenes).set({ deletedAt: now(), updatedAt: now() }).where(eq(schema.scenes.id, id)).execute()
+  await db.update(schema.scenes).set({ deletedAt: now(), deletedBy: userId, updatedAt: now(), updatedBy: userId }).where(and(eq(schema.scenes.id, id), eq(schema.scenes.userId, userId))).execute()
   return success(c)
 })
 
 // DELETE /scenes/:id
 app.delete('/:id', async (c) => {
   const id = Number(c.req.param('id'))
-  await db.update(schema.scenes).set({ deletedAt: now(), updatedAt: now() }).where(eq(schema.scenes.id, id)).execute()
+  const userId = requestUserId(c)
+  await db.update(schema.scenes).set({ deletedAt: now(), deletedBy: userId, updatedAt: now(), updatedBy: userId }).where(and(eq(schema.scenes.id, id), eq(schema.scenes.userId, userId))).execute()
   return success(c)
 })
 
