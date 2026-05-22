@@ -16,7 +16,7 @@ import { ViduVideoAdapter } from './vidu-video'
 import { AliImageAdapter } from './ali-image'
 import { AliVideoAdapter } from './ali-video'
 import { ZenMuxVideoAdapter } from './zenmux-video'
-import type { ImageProviderAdapter, VideoProviderAdapter, TTSProviderAdapter } from './types'
+import type { AIConfig, ImageProviderAdapter, VideoProviderAdapter, TTSProviderAdapter } from './types'
 
 // 图片 Adapter 注册表
 export const imageAdapters: Record<string, ImageProviderAdapter> = {
@@ -24,6 +24,7 @@ export const imageAdapters: Record<string, ImageProviderAdapter> = {
   apimart: new ApimartImageAdapter(),
   zenmux: new ZenMuxImageAdapter(),
   openai: new OpenAIImageAdapter(),
+  'openai-compatible-image': new OpenAIImageAdapter(),
   gemini: new GeminiImageAdapter(),
   volcengine: new VolcEngineImageAdapter(),
   ali: new AliImageAdapter(),
@@ -59,6 +60,23 @@ export function getTTSAdapter(provider: string): TTSProviderAdapter {
  */
 export function getImageAdapter(provider: string): ImageProviderAdapter {
   return imageAdapters[provider.toLowerCase()] || imageAdapters['minimax']
+}
+
+function configuredProtocol(config?: Pick<AIConfig, 'modelDefaults' | 'modelCapabilities'> | null) {
+  return String(
+    config?.modelDefaults?.protocol ||
+    config?.modelDefaults?.apiProtocol ||
+    config?.modelDefaults?.api_protocol ||
+    config?.modelCapabilities?.protocol ||
+    config?.modelCapabilities?.apiProtocol ||
+    config?.modelCapabilities?.api_protocol ||
+    '',
+  ).trim().toLowerCase().replace(/_/g, '-')
+}
+
+export function getImageAdapterForConfig(config: AIConfig): ImageProviderAdapter {
+  if (configuredProtocol(config) === 'openai-image') return imageAdapters['openai']
+  return getImageAdapter(config.provider)
 }
 
 /**

@@ -50,6 +50,8 @@ app.post('/', async (c) => {
       outputCompression: body.output_compression ?? body.outputCompression,
       background: body.background,
       moderation: body.moderation,
+      inputFidelity: body.input_fidelity ?? body.inputFidelity,
+      partialImages: body.partial_images ?? body.partialImages,
       responseFormat: body.response_format ?? body.responseFormat,
       watermark: body.watermark,
       stream: body.stream,

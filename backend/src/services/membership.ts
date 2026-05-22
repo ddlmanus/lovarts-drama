@@ -40,6 +40,8 @@ const imageGenerationColumnSql: Record<string, string> = {
   output_compression: "INT NULL COMMENT '图片输出压缩强度 0-100'",
   background: "VARCHAR(255) NULL COMMENT '图片背景模式'",
   moderation: "VARCHAR(255) NULL COMMENT '图片审核强度'",
+  input_fidelity: "VARCHAR(255) NULL COMMENT 'OpenAI Images 输入参考保真度'",
+  partial_images: "INT NULL COMMENT 'OpenAI Images 流式局部图片数量'",
   google_search: "TINYINT(1) NULL COMMENT '是否启用 Google 文字搜索增强'",
   google_image_search: "TINYINT(1) NULL COMMENT '是否启用 Google 图片搜索增强'",
   sequential_image_generation: "VARCHAR(255) NULL COMMENT '组图生成模式'",

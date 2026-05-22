@@ -207,6 +207,8 @@ async function runImageGenerationJob(config: any, body: any, userId: string, num
     outputCompression: body.output_compression ?? body.outputCompression,
     background: body.background,
     moderation: body.moderation,
+    inputFidelity: body.input_fidelity ?? body.inputFidelity,
+    partialImages: body.partial_images ?? body.partialImages,
     responseFormat: body.response_format ?? body.responseFormat,
     officialFallback: body.official_fallback ?? body.officialFallback,
     googleSearch: body.google_search ?? body.googleSearch,

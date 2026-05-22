@@ -35,6 +35,8 @@ function fromMysqlImage(row: any) {
     outputCompression: row.output_compression == null ? null : Number(row.output_compression),
     background: row.background,
     moderation: row.moderation,
+    inputFidelity: row.input_fidelity,
+    partialImages: row.partial_images == null ? null : Number(row.partial_images),
     googleSearch: row.google_search == null ? null : Boolean(row.google_search),
     googleImageSearch: row.google_image_search == null ? null : Boolean(row.google_image_search),
     sequentialImageGeneration: row.sequential_image_generation,
@@ -112,12 +114,12 @@ export async function insertImageGeneration(values: typeof schema.imageGeneratio
     INSERT INTO image_generations
     (storyboard_id, drama_id, scene_id, character_id, prop_id, image_type, frame_type, provider, prompt, negative_prompt, model, size,
      sample_image_size, quality, style, steps, cfg_scale, seed, output_format, response_format, watermark, stream, official_fallback,
-     output_compression, background, moderation, google_search, google_image_search,
+     output_compression, background, moderation, input_fidelity, partial_images, google_search, google_image_search,
      sequential_image_generation, sequential_image_generation_options, optimize_prompt_options, tools,
      image_url, local_path, status, task_id, error_msg, reference_images, mask,
      created_by, created_at, updated_by, updated_at, is_deleted)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-      ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON),
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON),
       ?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?, ?, ?, ?, 0)
   `, [
     values.storyboardId ?? null, values.dramaId ?? null, values.sceneId ?? null, values.characterId ?? null, values.propId ?? null,
@@ -127,6 +129,7 @@ export async function insertImageGeneration(values: typeof schema.imageGeneratio
     (values as any).outputFormat ?? null, (values as any).responseFormat ?? null, (values as any).watermark ?? null, (values as any).stream ?? null,
     (values as any).officialFallback ?? null,
     (values as any).outputCompression ?? null, (values as any).background ?? null, (values as any).moderation ?? null,
+    (values as any).inputFidelity ?? null, (values as any).partialImages ?? null,
     (values as any).googleSearch ?? null, (values as any).googleImageSearch ?? null,
     (values as any).sequentialImageGeneration ?? null, (values as any).sequentialImageGenerationOptions || '{}',
     (values as any).optimizePromptOptions || '{}', (values as any).tools || '[]',

@@ -305,6 +305,20 @@ const isApimartOfficialImage = computed(() => {
   const modelId = String(config?.model_id || config?.value || '').toLowerCase()
   return provider === 'apimart' && modelId === 'gpt-image-2-official'
 })
+const isOpenAIImageProtocol = computed(() => {
+  const config = selectedModelConfig.value
+  const protocol = String(
+    config?.defaults?.protocol ||
+    config?.defaults?.apiProtocol ||
+    config?.defaults?.api_protocol ||
+    config?.capabilities?.protocol ||
+    config?.capabilities?.apiProtocol ||
+    config?.capabilities?.api_protocol ||
+    ''
+  ).toLowerCase().replace(/_/g, '-')
+  const modelId = String(config?.model_id || config?.value || '').toLowerCase()
+  return protocol === 'openai-image' || modelId === 'gpt-image-2' || modelId === 'gpt-image-2-2026-04-21'
+})
 const isApimartGeminiImage = computed(() => {
   const config = selectedModelConfig.value
   const provider = String(config?.provider || '').toLowerCase()
@@ -322,7 +336,7 @@ const maxUploads = computed(() => {
   }, 0)
   if (profileMax > 0) return profileMax
   if (isApimartGeminiImage.value) return 14
-  return (isApimartGptImage2.value || isApimartOfficialImage.value) ? 16 : 4
+  return (isApimartGptImage2.value || isApimartOfficialImage.value || isOpenAIImageProtocol.value) ? 16 : 4
 })
 const imageSizeOptions = computed(() => activeType.value === 'video' ? buildAspectRatioOptions(selectedModelConfig.value) : buildImageSizeOptions(selectedModelConfig.value))
 const resolutionOptions = computed(() => buildResolutionOptions(selectedModelConfig.value))
@@ -1001,6 +1015,8 @@ async function submitPrompt() {
       output_compression: selectedModelConfig.value?.defaults?.output_compression ?? selectedModelConfig.value?.defaults?.outputCompression ?? undefined,
       background: selectedModelConfig.value?.defaults?.background || undefined,
       moderation: selectedModelConfig.value?.defaults?.moderation || undefined,
+      input_fidelity: selectedModelConfig.value?.defaults?.input_fidelity || selectedModelConfig.value?.defaults?.inputFidelity || undefined,
+      partial_images: selectedModelConfig.value?.defaults?.partial_images ?? selectedModelConfig.value?.defaults?.partialImages ?? undefined,
       reference_images: imageAssetUrls.length ? imageAssetUrls : referenceUrls,
       image_urls: isApimartImageModel() ? (imageAssetUrls.length ? imageAssetUrls : referenceUrls) : undefined,
       official_fallback: isApimartGptImage2.value ? (selectedModelConfig.value?.defaults?.official_fallback ?? selectedModelConfig.value?.defaults?.officialFallback ?? false) : undefined,

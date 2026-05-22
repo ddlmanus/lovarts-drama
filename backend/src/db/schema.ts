@@ -191,6 +191,7 @@ export const imageGenerations = mysqlTable('image_generations', {
   quality: str('quality'), style: str('style'), steps: int('steps'), cfgScale: double('cfg_scale'), seed: bigint('seed', { mode: 'number' }),
   outputFormat: str('output_format'), responseFormat: str('response_format'), watermark: boolean('watermark'), stream: boolean('stream'),
   officialFallback: boolean('official_fallback'), outputCompression: int('output_compression'), background: str('background'), moderation: str('moderation'),
+  inputFidelity: str('input_fidelity'), partialImages: int('partial_images'),
   googleSearch: boolean('google_search'), googleImageSearch: boolean('google_image_search'),
   sequentialImageGeneration: str('sequential_image_generation'), sequentialImageGenerationOptions: long('sequential_image_generation_options'),
   optimizePromptOptions: long('optimize_prompt_options'), tools: long('tools'),

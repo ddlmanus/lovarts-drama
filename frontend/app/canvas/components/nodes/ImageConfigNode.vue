@@ -378,7 +378,7 @@ const shouldUseOpenAIImageSize = (modelConfig) => {
     ''
   ).toLowerCase().replace(/_/g, '-')
   const modelId = String(modelConfig?.model_id || modelConfig?.value || localModel.value || '').toLowerCase()
-  return protocol === 'openai-image' || provider === 'openai' || (provider === 'zenmux' && (protocol === 'openai-image' || modelId.startsWith('openai/') || modelId.includes('gpt-image-')))
+  return protocol === 'openai-image' || provider === 'openai' || modelId === 'gpt-image-2' || modelId === 'gpt-image-2-2026-04-21' || (provider === 'zenmux' && (protocol === 'openai-image' || modelId.startsWith('openai/') || modelId.includes('gpt-image-')))
 }
 
 const requestSizeForModel = (modelConfig) => {
@@ -749,6 +749,8 @@ const handleGenerate = async (mode = 'auto') => {
       output_compression: selectedConfig?.defaults?.output_compression ?? selectedConfig?.defaults?.outputCompression ?? undefined,
       background: selectedConfig?.defaults?.background || undefined,
       moderation: selectedConfig?.defaults?.moderation || undefined,
+      input_fidelity: selectedConfig?.defaults?.input_fidelity || selectedConfig?.defaults?.inputFidelity || undefined,
+      partial_images: selectedConfig?.defaults?.partial_images ?? selectedConfig?.defaults?.partialImages ?? undefined,
       official_fallback: selectedConfig?.defaults?.official_fallback ?? selectedConfig?.defaults?.officialFallback ?? undefined,
       google_search: selectedConfig?.defaults?.google_search ?? selectedConfig?.defaults?.googleSearch ?? undefined,
       google_image_search: selectedConfig?.defaults?.google_image_search ?? selectedConfig?.defaults?.googleImageSearch ?? undefined

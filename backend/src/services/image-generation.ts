@@ -2,7 +2,11 @@ import { schema } from '../db/index.js'
 import { getConfigForModelAsync } from './ai.js'
 import { now } from '../utils/response.js'
 import { downloadFile, readImageAsCompressedDataUrl, saveBase64Image } from '../utils/storage.js'
-import { getImageAdapter } from './adapters/registry'
+import path from 'node:path'
+import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import sharp from 'sharp'
+import { getImageAdapterForConfig } from './adapters/registry'
 import type { AIConfig } from './adapters/types'
 import { generateZenmuxImageDirect, shouldUseZenmuxDirect } from './zenmux-direct.js'
 import { chargeCreditsAsync } from './credits.js'
@@ -27,6 +31,8 @@ interface GenerateImageParams {
   outputCompression?: number
   background?: string
   moderation?: string
+  inputFidelity?: string
+  partialImages?: number
   responseFormat?: string
   watermark?: boolean
   stream?: boolean
@@ -47,6 +53,12 @@ const SERIAL_IMAGE_PROVIDERS = new Set(['zenmux'])
 const imageProviderQueues = new Map<string, Promise<void>>()
 const IMAGE_FETCH_TIMEOUT_MS = 1_200_000
 const IMAGE_FETCH_MAX_ATTEMPTS = 3
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const REPO_ROOT = path.resolve(__dirname, '../../..')
+const PUBLIC_ROOTS = [
+  path.join(REPO_ROOT, 'frontend/public'),
+  path.join(REPO_ROOT, 'frontend/app/public'),
+]
 
 function normalizeNumberOfImages(value: unknown) {
   const parsed = Number(value)
@@ -80,6 +92,8 @@ export async function generateImage(params: GenerateImageParams): Promise<number
     outputCompression: params.outputCompression ?? defaults.output_compression ?? defaults.outputCompression ?? null,
     background: params.background || defaults.background || null,
     moderation: params.moderation || defaults.moderation || null,
+    inputFidelity: params.inputFidelity || defaults.input_fidelity || defaults.inputFidelity || null,
+    partialImages: params.partialImages ?? defaults.partial_images ?? defaults.partialImages ?? null,
     responseFormat: params.responseFormat || defaults.response_format || defaults.responseFormat || 'url',
     watermark: params.watermark ?? defaults.watermark ?? null,
     stream: params.stream ?? defaults.stream ?? null,
@@ -173,7 +187,7 @@ async function processImageGeneration(id: number, config: AIConfig, userId?: str
 }
 
 async function processImageGenerationNow(id: number, config: AIConfig, userId?: string) {
-  const adapter = getImageAdapter(config.provider)
+  const adapter = getImageAdapterForConfig(config)
 
   try {
     const record = await findImageGeneration(id)
@@ -233,6 +247,8 @@ async function processImageGenerationNow(id: number, config: AIConfig, userId?: 
       outputCompression: record.outputCompression,
       background: record.background,
       moderation: record.moderation,
+      inputFidelity: record.inputFidelity,
+      partialImages: record.partialImages,
       responseFormat: record.responseFormat,
       watermark: record.watermark,
       stream: record.stream,
@@ -256,13 +272,13 @@ async function processImageGenerationNow(id: number, config: AIConfig, userId?: 
       method,
       url,
       headers,
-      body,
+      body: body instanceof FormData ? summarizeFormData(body) : body,
     })
 
     const result = await fetchProviderJson(url, {
       method,
       headers,
-      body: JSON.stringify(body),
+      body: body instanceof FormData ? body : JSON.stringify(body),
     }, {
       id,
       provider: config.provider,
@@ -301,6 +317,22 @@ async function processImageGenerationNow(id: number, config: AIConfig, userId?: 
     logTaskError('ImageTask', 'process', { id, provider: config.provider, error: err.message })
     await updateImageGeneration(id, { status: 'failed', errorMsg: err.message, updatedAt: now() }, userId)
   }
+}
+
+function summarizeFormData(form: FormData) {
+  const summary: Record<string, any> = {}
+  for (const [key, value] of form.entries()) {
+    const existing = summary[key]
+    const display = value instanceof Blob
+      ? `[Blob ${value.type || 'application/octet-stream'} ${value.size} bytes]`
+      : String(value).length > 240
+        ? `${String(value).slice(0, 240)}...`
+        : String(value)
+    if (existing === undefined) summary[key] = display
+    else if (Array.isArray(existing)) existing.push(display)
+    else summary[key] = [existing, display]
+  }
+  return summary
 }
 
 async function fetchProviderJson(
@@ -400,6 +432,21 @@ async function normalizeReferenceImages(raw: string | null | undefined): Promise
         return null
       }
     }
+    if (value.startsWith('/')) {
+      const publicPath = resolvePublicImagePath(value)
+      if (publicPath) {
+        try {
+          return await readAbsoluteImageAsCompressedDataUrl(publicPath, {
+            maxWidth: 1024,
+            maxHeight: 1024,
+            quality: 78,
+          })
+        } catch (err) {
+          logTaskWarn('ImageTask', 'reference-public-read-failed', { path: publicPath, error: (err as Error).message })
+          return null
+        }
+      }
+    }
     if (/^https?:\/\//i.test(value)) return value
     logTaskWarn('ImageTask', 'reference-ignored-unsupported', { value })
     return null
@@ -408,8 +455,41 @@ async function normalizeReferenceImages(raw: string | null | undefined): Promise
   return normalized.filter((item): item is string => !!item).slice(0, 16)
 }
 
+function resolvePublicImagePath(value: string) {
+  const normalized = path.normalize(value.replace(/^\/+/, '')).replace(/^(\.\.(\/|\\|$))+/, '')
+  if (!normalized || normalized.startsWith('api/')) return null
+  for (const root of PUBLIC_ROOTS) {
+    const candidate = path.join(root, normalized)
+    if (!candidate.startsWith(root + path.sep)) continue
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate
+    }
+  }
+  return null
+}
+
+async function readAbsoluteImageAsCompressedDataUrl(
+  filePath: string,
+  options: { maxWidth?: number; maxHeight?: number; quality?: number } = {},
+) {
+  const maxWidth = options.maxWidth ?? 1024
+  const maxHeight = options.maxHeight ?? 1024
+  const quality = options.quality ?? 78
+  const resized = sharp(filePath).rotate().resize({
+    width: maxWidth,
+    height: maxHeight,
+    fit: 'inside',
+    withoutEnlargement: true,
+  })
+  const metadata = await resized.metadata()
+  const output = metadata.hasAlpha
+    ? await resized.flatten({ background: '#ffffff' }).jpeg({ quality, mozjpeg: true }).toBuffer()
+    : await resized.jpeg({ quality, mozjpeg: true }).toBuffer()
+  return `data:image/jpeg;base64,${output.toString('base64')}`
+}
+
 async function pollImageTask(id: number, config: AIConfig, taskId: string, userId?: string) {
-  const adapter = getImageAdapter(config.provider)
+  const adapter = getImageAdapterForConfig(config)
   const startedAt = Date.now()
   const maxDurationMs = 600_000
 
@@ -475,12 +555,12 @@ async function pollImageTask(id: number, config: AIConfig, taskId: string, userI
   }
 }
 
-function extractImageUrls(adapter: ReturnType<typeof getImageAdapter>, result: any, fallback?: string): string[] {
+function extractImageUrls(adapter: ReturnType<typeof getImageAdapterForConfig>, result: any, fallback?: string): string[] {
   const urls = adapter.extractImageUrls?.(result) || []
   return urls.length ? urls : (fallback ? [fallback] : [])
 }
 
-function extractImageBase64List(adapter: ReturnType<typeof getImageAdapter>, result: any): Array<{ data: string; mimeType: string }> {
+function extractImageBase64List(adapter: ReturnType<typeof getImageAdapterForConfig>, result: any): Array<{ data: string; mimeType: string }> {
   const list = adapter.extractImageBase64List?.(result) || []
   if (list.length) return list
   const one = adapter.extractImageBase64(result)

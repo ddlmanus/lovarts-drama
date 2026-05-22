@@ -579,7 +579,7 @@ const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', mo
 const huobaoForm = reactive({ apiKey: '' })
 const serviceTypes = [{ type: 'text', label: '文本' }, { type: 'image', label: '图片' }, { type: 'video', label: '视频' }, { type: 'audio', label: '音频' }]
 const serviceTypeOptions = computed(() => serviceTypes.map(s => ({ label: s.label, value: s.type })))
-const providers = ['ali', 'anthropic', 'apimart', 'chatfire', 'deepseek', 'gemini', 'minimax', 'openai', 'openrouter', 'vidu', 'volcengine', 'zenmux']
+const providers = ['ali', 'anthropic', 'apimart', 'chatfire', 'deepseek', 'gemini', 'minimax', 'openai', 'openai-compatible-image', 'openrouter', 'vidu', 'volcengine', 'zenmux']
 const providerSelectOptions = computed(() => {
   const dbProviders = models.value.map(m => m.provider).filter(Boolean)
   return Array.from(new Set([...providers, ...dbProviders])).map(p => ({ label: p, value: p }))
@@ -603,6 +603,8 @@ const providerPresets = {
   image: {
     apimart: { label: 'APIMart 图片', baseUrl: 'https://api.apimart.ai', models: ['gpt-image-2', 'gemini-3-pro-image-preview'] },
     zenmux: { label: 'ZenMux 图片', baseUrl: 'https://zenmux.ai/api/v1', models: ['gpt-image-2'] },
+    'openai-compatible-image': { label: '第三方 OpenAI Images', baseUrl: 'https://api.openai.com', models: ['gpt-image-2'] },
+    openai: { label: 'OpenAI Images', baseUrl: 'https://api.openai.com', models: ['gpt-image-2'] },
     chatfire: { label: 'Lovarts.短剧图片', baseUrl: 'https://api.chatfire.site', models: ['doubao-seedream-4-5-251128'] },
     gemini: { label: 'Gemini 推荐', baseUrl: 'https://api.chatfire.site', models: ['gemini-3-pro-image-preview'] },
     volcengine: { label: '火山推荐', baseUrl: 'https://ark.cn-beijing.volces.com', models: ['doubao-seedream-4-0-250828'] },
@@ -628,6 +630,7 @@ const endpointPrefixes = {
   apimart: '/v1',
   chatfire: '/v1',
   openai: '/v1',
+  'openai-compatible-image': '/v1',
   openrouter: '/v1',
   minimax: '/v1',
   gemini: '/v1beta',

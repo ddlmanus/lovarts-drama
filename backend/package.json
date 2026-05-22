@@ -14,6 +14,7 @@
     "db:sync:membership": "tsx scripts/sync-membership-schema.ts",
     "db:seed:zenmux-models": "tsx scripts/seed-zenmux-models.ts",
     "db:seed:apimart-gpt-image-2": "tsx scripts/seed-apimart-gpt-image-2.ts",
+    "db:seed:third-party-openai-image": "tsx scripts/seed-third-party-openai-image.ts",
     "db:seed:apimart-gemini-image": "tsx scripts/seed-apimart-gemini-image.ts",
     "db:seed:volcengine-seedream-image": "tsx scripts/seed-volcengine-seedream-image.ts",
     "db:seed:volcengine-seedance-video": "tsx scripts/seed-volcengine-seedance-video.ts",

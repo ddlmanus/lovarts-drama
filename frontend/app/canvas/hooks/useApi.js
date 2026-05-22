@@ -182,6 +182,8 @@ export const useImageGeneration = () => {
         output_compression: params.output_compression,
         background: params.background,
         moderation: params.moderation,
+        input_fidelity: params.input_fidelity,
+        partial_images: params.partial_images,
         official_fallback: params.official_fallback,
         google_search: params.google_search,
         google_image_search: params.google_image_search

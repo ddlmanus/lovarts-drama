@@ -162,6 +162,9 @@ export async function getConfigForModelSelectionAsync(params: {
     allowPlatform: false,
   })
   if (userProvider) return modelConfigToAIConfigAsync(modelConfig, userProvider)
+  if (params.userProviderId) {
+    throw new Error('用户供应商密钥不存在、已停用，或与所选模型供应商不匹配')
+  }
 
   const platformProvider = await findPlatformProvider({
     provider: modelConfig.provider,
@@ -204,6 +207,9 @@ export async function getConfigForModelAsync(serviceType: ServiceType, modelId?:
     allowPlatform: false,
   })
   if (userProvider) return modelConfigToAIConfigAsync(modelConfig, userProvider)
+  if (userProviderId) {
+    throw new Error('用户供应商密钥不存在、已停用，或与所选模型供应商不匹配')
+  }
 
   const platformProvider = await findPlatformProvider({
     provider: modelConfig.provider,
