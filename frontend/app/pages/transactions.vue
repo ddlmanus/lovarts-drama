@@ -7,11 +7,12 @@
     <div class="tab-navigation" role="tablist" aria-label="账单类型">
       <button :class="{ active: tab === 'orders' }" type="button" @click="switchTab('orders')">充值记录</button>
       <button :class="{ active: tab === 'points' }" type="button" @click="switchTab('points')">消费记录</button>
+      <button :class="{ active: tab === 'details' }" type="button" @click="switchTab('details')">积分明细</button>
     </div>
 
     <section class="table-panel">
       <div class="table-scroll">
-        <div class="table-grid" :class="tab === 'orders' ? 'orders-grid' : 'points-grid'">
+        <div class="table-grid" :class="gridClass">
           <div class="table-row table-head">
             <div v-for="col in activeColumns" :key="col.key" class="table-cell">{{ col.title }}</div>
           </div>
@@ -138,9 +139,26 @@ const pointColumns = [
   { key: 'createdAt', title: '时间' },
   { key: 'description', title: '描述' },
 ]
+const detailColumns = [
+  { key: 'logId', title: '流水号' },
+  { key: 'businessTypeDesc', title: '来源' },
+  { key: 'amountDisplay', title: '积分变动' },
+  { key: 'balanceDisplay', title: '当前积分' },
+  { key: 'status', title: '状态' },
+  { key: 'createdAt', title: '时间' },
+  { key: 'description', title: '说明' },
+]
 
-const activeColumns = computed(() => tab.value === 'orders' ? orderColumns : pointColumns)
+const activeColumns = computed(() => {
+  if (tab.value === 'orders') return orderColumns
+  if (tab.value === 'details') return detailColumns
+  return pointColumns
+})
 const activeRows = computed(() => tab.value === 'orders' ? orders.value.map(formatOrderRow) : logs.value.map(formatPointRow))
+const gridClass = computed(() => {
+  if (tab.value === 'orders') return 'orders-grid'
+  return tab.value === 'details' ? 'details-grid' : 'points-grid'
+})
 const qrContent = computed(() => String(paymentData.value?.qrCodeUrl || paymentData.value?.offlineQrCodeUrl || '').trim())
 const hasPaymentQr = computed(() => Boolean(qrContent.value))
 const visiblePages = computed(() => {
@@ -171,7 +189,7 @@ async function loadData() {
     const params = { page: pagination.page, page_size: pagination.page_size }
     const res = tab.value === 'orders'
       ? await billingAPI.orders(params)
-      : await billingAPI.pointLogs({ ...params, type: 'consume' })
+      : await billingAPI.pointLogs(tab.value === 'points' ? { ...params, type: 'consume' } : params)
     const items = res.items || []
     if (tab.value === 'orders') orders.value = items
     else logs.value = items
@@ -205,6 +223,7 @@ function cellClass(key, row) {
     'model-cell': key === 'modelName',
     'desc-cell': key === 'description',
     'positive-cell': key === 'amountDisplay' && String(row.amountDisplay).startsWith('+'),
+    'negative-cell': key === 'amountDisplay' && String(row.amountDisplay).startsWith('-'),
   }
 }
 
@@ -241,6 +260,14 @@ function statusText(status) {
 
 function taskText(row) {
   const raw = String(row.task_type || row.taskType || row.business_type || row.type || '').toLowerCase()
+  if (raw.includes('register_bonus') || raw.includes('register')) return '注册赠送'
+  if (raw.includes('daily_login') || raw.includes('login_bonus')) return '每日登录'
+  if (raw.includes('invite_bonus') || raw.includes('invite')) return '邀请奖励'
+  if (raw.includes('recharge') || raw.includes('credit_purchase') || raw.includes('order')) return '充值到账'
+  if (raw.includes('membership')) return '会员积分'
+  if (raw.includes('refund')) return '积分退回'
+  if (raw.includes('admin') || raw.includes('adjust')) return '后台调整'
+  if (raw.includes('consume')) return '积分消费'
   if (raw.includes('image') || raw.includes('cover')) return '图片生成'
   if (raw.includes('video')) return '视频生成'
   if (raw.includes('chat') || raw.includes('text') || raw.includes('ai')) return 'AI问答'
@@ -253,16 +280,19 @@ function confirmedDescription(row) {
   if (raw === '-') return raw
   const status = String(row.status || '').toLowerCase()
   if (status === 'canceled' || raw.includes('已回滚')) return raw.includes('已回滚') ? raw : `${raw}（已回滚）`
+  if (Number(row.amount || 0) > 0) return raw
   return raw.includes('已确认') ? raw : `${raw}（已确认）`
 }
 
 function formatPointRow(row) {
   return {
     ...row,
+    logId: row.id,
     orderId: row.related_task_id || row.relatedTaskId || row.id,
     businessTypeDesc: taskText(row),
     modelName: row.model || '-',
     amountDisplay: `${Number(row.amount || 0) > 0 ? '+' : ''}${Number(row.amount || 0)}`,
+    balanceDisplay: Number(row.balance || 0),
     statusKind: normalizeStatusKind(row.status),
     statusText: statusText(row.status),
     createdAt: formatTime(row.created_at || row.createdAt),
@@ -464,6 +494,11 @@ function isImageUrl(value) {
   min-width: 1320px;
 }
 
+.details-grid .table-row {
+  grid-template-columns: 1.1fr 1.05fr .9fr .9fr .85fr 1.55fr 2.4fr;
+  min-width: 1180px;
+}
+
 .table-row {
   display: grid;
   align-items: center;
@@ -523,6 +558,10 @@ function isImageUrl(value) {
 
 .positive-cell {
   color: #63e2b7;
+}
+
+.negative-cell {
+  color: #ff9f7a;
 }
 
 .muted {

@@ -25,6 +25,11 @@ function sameMysqlDay(left?: string | Date | null, right: Date = new Date()) {
     && date.getDate() === right.getDate()
 }
 
+function localDayKey(date = new Date()) {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
 export async function ensureRewardSettings() {
   const ts = now()
   for (const item of rewardSettingDefaults) {
@@ -137,13 +142,19 @@ export async function grantRegisterRewards(user: typeof schema.aiUsers.$inferSel
 
 export async function grantDailyLoginReward(user: typeof schema.aiUsers.$inferSelect) {
   const settings = await rewardSettings()
-  if (!settings.dailyLoginBonusCredits || sameMysqlDay(user.lastLoginAt)) return user
+  if (!settings.dailyLoginBonusCredits) return user
+  const today = localDayKey()
+  const existing = (await db.select().from(schema.pointsLogs).where(and(
+    eq(schema.pointsLogs.userId, user.id),
+    eq(schema.pointsLogs.type, 'DAILY_LOGIN_BONUS'),
+  )).execute()).find(row => row.relatedTaskId === today || sameMysqlDay(row.createdAt))
+  if (existing) return user
   return addRewardCredits({
     user,
     amount: settings.dailyLoginBonusCredits,
     type: 'DAILY_LOGIN_BONUS',
     description: '每天登录赠送积分',
     taskType: 'daily_login',
-    relatedTaskId: new Date().toISOString().slice(0, 10),
+    relatedTaskId: today,
   })
 }
