@@ -1,52 +1,54 @@
 <template>
-  <!-- Workflow panel | 工作流浮动面板 -->
-  <Transition name="panel-slide">
-    <div v-if="visible" class="workflow-panel" v-click-outside="handleClickOutside">
-      <!-- Header | 头部 -->
-      <div class="panel-header">
-        <div class="panel-tabs">
-          <span 
-            class="tab-item" 
-            :class="{ active: activeTab === 'public' }"
-            @click="activeTab = 'public'"
-          >公共工作流</span>
-          <span 
-            class="tab-item" 
-            :class="{ active: activeTab === 'my' }"
-            @click="activeTab = 'my'"
-          >我的工作流</span>
-        </div>
-        <button class="expand-btn" @click="visible = false">
-          <n-icon :size="16"><CloseOutline /></n-icon>
-        </button>
-      </div>
-      
-      <!-- Content | 内容 -->
-      <div class="panel-content">
-        <!-- Public workflows | 公共工作流 -->
-        <div v-if="activeTab === 'public'" class="workflow-grid">
-          <div 
-            v-for="workflow in publicWorkflows" 
-            :key="workflow.id"
-            class="workflow-card"
-            @click="handleAddWorkflow(workflow)"
-          >
-            <div class="card-cover">
-              <img v-if="workflow.cover" :src="workflow.cover" :alt="workflow.name" class="cover-img" />
-              <n-icon v-else :size="36" class="cover-icon">
-                <component :is="getIcon(workflow.icon)" />
-              </n-icon>
-            </div>
-            <div class="card-title">{{ workflow.name }}</div>
+  <!-- Workflow panel | 工作流弹窗 -->
+  <Transition name="panel-fade">
+    <div v-if="visible" class="workflow-dialog-layer" @click.self="visible = false">
+      <div class="workflow-panel">
+        <!-- Header | 头部 -->
+        <div class="panel-header">
+          <div class="panel-tabs">
+            <span 
+              class="tab-item" 
+              :class="{ active: activeTab === 'public' }"
+              @click="activeTab = 'public'"
+            >公共工作流</span>
+            <span 
+              class="tab-item" 
+              :class="{ active: activeTab === 'my' }"
+              @click="activeTab = 'my'"
+            >我的工作流</span>
           </div>
+          <button class="expand-btn" @click="visible = false">
+            <n-icon :size="18"><CloseOutline /></n-icon>
+          </button>
         </div>
         
-        <!-- My workflows | 我的工作流 -->
-        <div v-else class="empty-state">
-          <n-icon :size="36" class="text-gray-500">
-            <FolderOpenOutline />
-          </n-icon>
-          <p class="text-gray-500 text-sm mt-2">暂无自定义工作流</p>
+        <!-- Content | 内容 -->
+        <div class="panel-content">
+          <!-- Public workflows | 公共工作流 -->
+          <div v-if="activeTab === 'public'" class="workflow-grid">
+            <div 
+              v-for="workflow in publicWorkflows" 
+              :key="workflow.id"
+              class="workflow-card"
+              @click="handleAddWorkflow(workflow)"
+            >
+              <div class="card-cover">
+                <img v-if="workflow.cover" :src="workflow.cover" :alt="workflow.name" class="cover-img" />
+                <n-icon v-else :size="36" class="cover-icon">
+                  <component :is="getIcon(workflow.icon)" />
+                </n-icon>
+              </div>
+              <div class="card-title">{{ workflow.name }}</div>
+            </div>
+          </div>
+          
+          <!-- My workflows | 我的工作流 -->
+          <div v-else class="empty-state">
+            <n-icon :size="36" class="text-gray-500">
+              <FolderOpenOutline />
+            </n-icon>
+            <p class="text-gray-500 text-sm mt-2">暂无自定义工作流</p>
+          </div>
         </div>
       </div>
     </div>
@@ -113,43 +115,31 @@ const handleAddWorkflow = (workflow) => {
   visible.value = false
 }
 
-// Handle click outside | 点击外部关闭
-const handleClickOutside = () => {
-  visible.value = false
-}
-
-// Custom directive | 自定义指令
-const vClickOutside = {
-  mounted(el, binding) {
-    el._clickOutside = (e) => {
-      if (!el.contains(e.target)) {
-        binding.value()
-      }
-    }
-    setTimeout(() => {
-      document.addEventListener('click', el._clickOutside)
-    }, 0)
-  },
-  unmounted(el) {
-    document.removeEventListener('click', el._clickOutside)
-  }
-}
 </script>
 
 <style scoped>
+/* Dialog layer | 弹窗遮罩 */
+.workflow-dialog-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgb(0 0 0 / 46%);
+}
+
 /* Panel container | 面板容器 */
 .workflow-panel {
-  position: fixed;
-  left: 72px;
-  top: 100px;
-  width: 520px;
-  max-height: 70vh;
+  width: min(1080px, calc(100vw - 420px));
+  min-width: 720px;
+  max-height: min(82vh, 860px);
   background: var(--bg-secondary);
   backdrop-filter: blur(12px);
   border-radius: 16px;
   border: 1px solid var(--border-color);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-  z-index: 100;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 42%);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -164,17 +154,17 @@ const vClickOutside = {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px 12px;
+  padding: 20px 24px 16px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .panel-tabs {
   display: flex;
-  gap: 24px;
+  gap: 28px;
 }
 
 .tab-item {
-  font-size: 15px;
+  font-size: 18px;
   color: var(--text-secondary);
   cursor: pointer;
   transition: color 0.2s;
@@ -187,12 +177,12 @@ const vClickOutside = {
 
 .tab-item.active {
   color: var(--text-primary);
-  font-weight: 500;
+  font-weight: 700;
 }
 
 .expand-btn {
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -213,14 +203,14 @@ const vClickOutside = {
 .panel-content {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 22px 24px 28px;
 }
 
 /* Workflow grid | 工作流网格 */
 .workflow-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  gap: 26px 34px;
 }
 
 /* Workflow card | 工作流卡片 */
@@ -239,7 +229,7 @@ const vClickOutside = {
 
 .card-cover {
   aspect-ratio: 1;
-  border-radius: 12px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -260,10 +250,11 @@ const vClickOutside = {
 }
 
 .card-title {
-  margin-top: 10px;
-  font-size: 13px;
+  margin-top: 12px;
+  font-size: 17px;
+  font-weight: 700;
   color: var(--text-primary);
-  text-align: center;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -281,15 +272,23 @@ const vClickOutside = {
 }
 
 /* Transition | 过渡动画 */
-.panel-slide-enter-active,
-.panel-slide-leave-active {
+.panel-fade-enter-active,
+.panel-fade-leave-active {
   transition: all 0.25s ease;
 }
 
-.panel-slide-enter-from,
-.panel-slide-leave-to {
+.panel-fade-enter-from,
+.panel-fade-leave-to {
   opacity: 0;
-  transform: translateX(-12px);
+}
+
+.panel-fade-enter-from .workflow-panel,
+.panel-fade-leave-to .workflow-panel {
+  transform: translateY(10px) scale(0.98);
+}
+
+.workflow-panel {
+  transition: transform 0.25s ease;
 }
 
 /* Scrollbar | 滚动条 */
@@ -308,5 +307,31 @@ const vClickOutside = {
 
 .panel-content::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
+}
+
+@media (max-width: 1180px) {
+  .workflow-panel {
+    width: min(920px, calc(100vw - 72px));
+    min-width: 0;
+  }
+
+  .workflow-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .workflow-dialog-layer {
+    padding: 16px;
+  }
+
+  .workflow-panel {
+    width: 100%;
+    max-height: 86vh;
+  }
+
+  .workflow-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

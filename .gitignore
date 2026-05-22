@@ -38,6 +38,7 @@ data/public.sql
 data/*.bak*
 data/static/
 data/storage/
+data/codex/
 
 # Config
 configs/config.yaml

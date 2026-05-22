@@ -61,7 +61,7 @@ app.post('/:type/chat', async (c) => {
   })
   updateAgentTask(taskId, { step: 'model_request', message: '正在请求文本模型...', progress: 8 })
 
-  const agent = createAgent(agentType, episode_id, drama_id, model, taskId)
+  const agent = await createAgent(agentType, episode_id, drama_id, model, taskId)
   if (!agent) {
     failAgentTask(taskId, 'Agent not found')
     logTaskError('Agent', agentType, { reason: 'agent not found' })

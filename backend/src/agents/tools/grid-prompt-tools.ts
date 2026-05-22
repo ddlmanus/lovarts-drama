@@ -22,7 +22,7 @@ export function createGridPromptTools(episodeId: number, dramaId: number) {
     inputSchema: z.object({}),
     execute: async () => {
       const chars = db.select().from(schema.characters)
-        .where(eq(schema.characters.dramaId, dramaId)).all()
+        .where(eq(schema.characters.dramaId, dramaId)).execute()
         .filter(c => !c.deletedAt)
       return {
         characters: chars.map(c => ({
@@ -45,7 +45,7 @@ export function createGridPromptTools(episodeId: number, dramaId: number) {
     }),
     execute: async ({ character_id }) => {
       const [c] = db.select().from(schema.characters)
-        .where(eq(schema.characters.id, character_id)).all()
+        .where(eq(schema.characters.id, character_id)).execute()
       if (!c) return { error: 'Character not found' }
 
       const parts: string[] = []
@@ -73,7 +73,7 @@ export function createGridPromptTools(episodeId: number, dramaId: number) {
     inputSchema: z.object({}),
     execute: async () => {
       const scenes = db.select().from(schema.scenes)
-        .where(eq(schema.scenes.dramaId, dramaId)).all()
+        .where(eq(schema.scenes.dramaId, dramaId)).execute()
         .filter(s => !s.deletedAt)
       return {
         scenes: scenes.map(s => ({
@@ -94,7 +94,7 @@ export function createGridPromptTools(episodeId: number, dramaId: number) {
     }),
     execute: async ({ scene_id }) => {
       const [s] = db.select().from(schema.scenes)
-        .where(eq(schema.scenes.id, scene_id)).all()
+        .where(eq(schema.scenes.id, scene_id)).execute()
       if (!s) return { error: 'Scene not found' }
 
       const parts: string[] = []
@@ -124,7 +124,7 @@ export function createGridPromptTools(episodeId: number, dramaId: number) {
     execute: async ({ shot_ids }) => {
       if (!shot_ids.length) return { shots: [] }
       const shots = db.select().from(schema.storyboards)
-        .where(eq(schema.storyboards.episodeId, episodeId)).all()
+        .where(eq(schema.storyboards.episodeId, episodeId)).execute()
         .filter(sb => shot_ids.includes(sb.id))
         .map(sb => ({
           shot_number: sb.storyboardNumber,
@@ -172,7 +172,7 @@ export function createGridPromptTools(episodeId: number, dramaId: number) {
       }
 
       if (mode === 'first_last') {
-        const cellPrompts = []
+        const cellPrompts: Array<{ shot_number: number; frame_type: string; prompt: string }> = []
         for (let i = 0; i < totalCells; i++) {
           const s = shots[i % shots.length]
           const isFirst = i % 2 === 0

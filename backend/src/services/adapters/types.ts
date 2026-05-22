@@ -40,6 +40,12 @@ export interface ImageProviderAdapter {
    * 仅用于 Gemini 等只返回 base64 的厂商
    */
   extractImageBase64(result: any): { data: string; mimeType: string } | null
+
+  /**
+   * Optional multi-image extraction for providers that can return multiple results.
+   */
+  extractImageUrls?(result: any): string[]
+  extractImageBase64List?(result: any): Array<{ data: string; mimeType: string }>
 }
 
 /**
@@ -73,9 +79,13 @@ export interface AIConfig {
   baseUrl: string
   apiKey: string
   model: string
+  modelConfigId?: number
+  userProviderId?: number | null
   modelDefaults?: Record<string, any>
   modelParameters?: Record<string, any>
   modelCapabilities?: Record<string, any>
+  resourceMode?: 'user_api' | 'platform'
+  billable?: boolean
 }
 
 export interface ImageGenerationRecord {
@@ -90,15 +100,25 @@ export interface ImageGenerationRecord {
   seed?: number | null
   cfgScale?: number | null
   outputFormat?: string | null
+  responseFormat?: string | null
   outputCompression?: number | null
   background?: string | null
   moderation?: string | null
   inputFidelity?: string | null
   partialImages?: number | null
   stream?: boolean | null
+  officialFallback?: boolean | null
+  googleSearch?: boolean | null
+  googleImageSearch?: boolean | null
+  watermark?: boolean | null
+  sequentialImageGeneration?: string | null
+  sequentialImageGenerationOptions?: string | null
+  optimizePromptOptions?: string | null
+  tools?: string | null
   mask?: string | null
   frameType?: string | null
   referenceImages?: string | null
+  numberOfImages?: number | null
   // ... 其他字段
 }
 
@@ -111,12 +131,24 @@ export interface VideoGenerationRecord {
   firstFrameUrl?: string | null
   lastFrameUrl?: string | null
   referenceImageUrls?: string | null
+  referenceVideoUrls?: string | null
+  referenceAudioUrls?: string | null
   duration?: number | null
   fps?: number | null
   resolution?: string | null
   aspectRatio?: string | null
+  frames?: number | null
   seed?: number | null
   generateAudio?: boolean | null
+  cameraFixed?: boolean | null
+  watermark?: boolean | null
+  returnLastFrame?: boolean | null
+  serviceTier?: string | null
+  executionExpiresAfter?: number | null
+  callbackUrl?: string | null
+  draft?: boolean | null
+  draftTaskId?: string | null
+  tools?: string | null
   negativePrompt?: string | null
   enhancePrompt?: boolean | null
   personGeneration?: string | null

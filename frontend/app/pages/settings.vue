@@ -32,12 +32,12 @@
         <div class="settings-head">
           <div class="settings-brand">
             <div class="settings-brand-mark">
-              <img v-if="showBrandImage" :src="brandLogo" alt="火宝短剧" class="settings-brand-logo" @error="showBrandImage = false" />
+              <img v-if="showBrandImage" :src="brandLogo" alt="Lovarts.短剧" class="settings-brand-logo" @error="showBrandImage = false" />
               <span v-else class="settings-brand-fallback">火</span>
             </div>
             <div class="settings-brand-copy">
               <div class="settings-brand-kicker">Huobao Shorts</div>
-              <div class="settings-brand-name">火宝短剧</div>
+              <div class="settings-brand-name">Lovarts.短剧</div>
             </div>
           </div>
           <h2 class="settings-title">AI 服务配置</h2>
@@ -47,11 +47,11 @@
           <div class="setup-panel-head">
             <div>
               <div class="setup-kicker">Quick Setup</div>
-              <div class="setup-title">火宝推荐配置</div>
+              <div class="setup-title">Lovarts.短剧推荐配置</div>
               <div class="setup-desc">一键写入文本、图片、视频、音频四类推荐配置，适合作为开箱默认方案。</div>
             </div>
             <button class="btn btn-primary" @click="presetDialog = true">
-              <Sparkles :size="14" /> 火宝一键配置
+              <Sparkles :size="14" /> Lovarts.短剧一键配置
             </button>
           </div>
           <div class="preset-grid">
@@ -122,7 +122,7 @@
         <div class="settings-head">
           <div class="settings-brand">
             <div class="settings-brand-mark">
-              <img v-if="showBrandImage" :src="brandLogo" alt="火宝短剧" class="settings-brand-logo" @error="showBrandImage = false" />
+              <img v-if="showBrandImage" :src="brandLogo" alt="Lovarts.短剧" class="settings-brand-logo" @error="showBrandImage = false" />
               <span v-else class="settings-brand-fallback">火</span>
             </div>
             <div class="settings-brand-copy">
@@ -188,12 +188,12 @@
         <div class="settings-head">
           <div class="settings-brand">
             <div class="settings-brand-mark">
-              <img v-if="showBrandImage" :src="brandLogo" alt="火宝短剧" class="settings-brand-logo" @error="showBrandImage = false" />
+              <img v-if="showBrandImage" :src="brandLogo" alt="Lovarts.短剧" class="settings-brand-logo" @error="showBrandImage = false" />
               <span v-else class="settings-brand-fallback">火</span>
             </div>
             <div class="settings-brand-copy">
               <div class="settings-brand-kicker">Huobao Shorts</div>
-              <div class="settings-brand-name">火宝短剧</div>
+              <div class="settings-brand-name">Lovarts.短剧</div>
             </div>
           </div>
           <h2 class="settings-title">Agent 配置</h2>
@@ -267,12 +267,12 @@
           <div class="settings-head">
             <div class="settings-brand">
               <div class="settings-brand-mark">
-                <img v-if="showBrandImage" :src="brandLogo" alt="火宝短剧" class="settings-brand-logo" @error="showBrandImage = false" />
+                <img v-if="showBrandImage" :src="brandLogo" alt="Lovarts.短剧" class="settings-brand-logo" @error="showBrandImage = false" />
                 <span v-else class="settings-brand-fallback">火</span>
               </div>
               <div class="settings-brand-copy">
                 <div class="settings-brand-kicker">Huobao Shorts</div>
-                <div class="settings-brand-name">火宝短剧</div>
+                <div class="settings-brand-name">Lovarts.短剧</div>
               </div>
             </div>
             <div style="display:flex;align-items:center;gap:10px">
@@ -445,7 +445,7 @@
         </div>
         <label class="field">
           <span class="field-label">配置名称</span>
-          <input v-model="cfgForm.name" class="input" placeholder="如 火宝默认图像服务" />
+          <input v-model="cfgForm.name" class="input" placeholder="如 Lovarts.短剧默认图像服务" />
         </label>
         <label class="field"><span class="field-label">服务商</span>
           <BaseSelect v-model="cfgForm.provider" :options="providerSelectOptions" placeholder="选择服务商" searchable />
@@ -490,16 +490,16 @@
         <div class="config-modal-head">
           <div>
             <div class="setup-kicker">Huobao Preset</div>
-            <h2 class="modal-title">火宝一键配置</h2>
-            <div class="modal-note">输入火宝开放平台 API Key 后，文本、图片、视频、音频都会使用火宝推荐链路，并同时初始化 5 个 Agent 的默认模型。</div>
+            <h2 class="modal-title">Lovarts.短剧一键配置</h2>
+            <div class="modal-note">输入Lovarts.短剧开放平台 API Key 后，文本、图片、视频、音频都会使用Lovarts.短剧推荐链路，并同时初始化 5 个 Agent 的默认模型。</div>
           </div>
           <span class="tag tag-success">推荐</span>
         </div>
         <div class="huobao-grid">
           <label class="field">
-            <span class="field-label">火宝 API Key <span class="dim">(文本 / 图片 / 视频 / 音频统一使用)</span></span>
-            <input v-model="huobaoForm.apiKey" class="input" type="password" placeholder="用于火宝文本、图片、视频、音频服务" />
-            <span class="field-hint">火宝 API Key 可在火宝开放平台获取</span>
+            <span class="field-label">Lovarts.短剧 API Key <span class="dim">(文本 / 图片 / 视频 / 音频统一使用)</span></span>
+            <input v-model="huobaoForm.apiKey" class="input" type="password" placeholder="用于Lovarts.短剧文本、图片、视频、音频服务" />
+            <span class="field-hint">Lovarts.短剧 API Key 可在Lovarts.短剧开放平台获取</span>
           </label>
         </div>
         <div class="preset-grid compact">
@@ -593,7 +593,7 @@ const serviceMeta = {
 const providerPresets = {
   text: {
     apimart: { label: 'APIMart 多模态', baseUrl: 'https://api.apimart.ai', models: ['gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-3-pro-preview-thinking'] },
-    chatfire: { label: '火宝文本', baseUrl: 'https://api.chatfire.site', models: ['gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-3-pro-preview-thinking'] },
+    chatfire: { label: 'Lovarts.短剧文本', baseUrl: 'https://api.chatfire.site', models: ['gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-3-pro-preview-thinking'] },
     anthropic: { label: 'Anthropic 推荐', baseUrl: 'https://api.apimart.ai', models: ['claude-sonnet-4-5-20250929', 'claude-opus-4-1-20250805', 'claude-haiku-4-5-20251001'] },
     gemini: { label: 'Google Gemini 推荐', baseUrl: 'https://api.apimart.ai', models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] },
     deepseek: { label: 'DeepSeek 推荐', baseUrl: 'https://api.apimart.ai', models: ['deepseek-v3.1-250821', 'deepseek-v3.1-think-250821', 'deepseek-v3-0324'] },
@@ -603,26 +603,26 @@ const providerPresets = {
   image: {
     apimart: { label: 'APIMart 图片', baseUrl: 'https://api.apimart.ai', models: ['gpt-image-2', 'gemini-3-pro-image-preview'] },
     zenmux: { label: 'ZenMux 图片', baseUrl: 'https://zenmux.ai/api/v1', models: ['gpt-image-2'] },
-    chatfire: { label: '火宝图片', baseUrl: 'https://api.chatfire.site', models: ['doubao-seedream-4-5-251128'] },
+    chatfire: { label: 'Lovarts.短剧图片', baseUrl: 'https://api.chatfire.site', models: ['doubao-seedream-4-5-251128'] },
     gemini: { label: 'Gemini 推荐', baseUrl: 'https://api.chatfire.site', models: ['gemini-3-pro-image-preview'] },
     volcengine: { label: '火山推荐', baseUrl: 'https://ark.cn-beijing.volces.com', models: ['doubao-seedream-4-0-250828'] },
   },
   video: {
     apimart: { label: 'APIMart 视频', baseUrl: 'https://api.apimart.ai', models: ['doubao-seedance-2.0', 'doubao-seedance-2.0-fast'] },
-    volcengine: { label: '火宝视频', baseUrl: 'https://api.chatfire.site/volcengine', models: ['doubao-seedance-1-5-pro-251215'] },
+    volcengine: { label: 'Lovarts.短剧视频', baseUrl: 'https://api.chatfire.site/volcengine', models: ['doubao-seedance-1-5-pro-251215'] },
     vidu: { label: 'Vidu 推荐', baseUrl: 'https://api.vidu.com', models: ['viduq3-turbo'] },
     ali: { label: '阿里推荐', baseUrl: 'https://dashscope.aliyuncs.com', models: ['wan2.6-i2v-flash'] },
   },
   audio: {
-    chatfire: { label: '火宝音频', baseUrl: 'https://api.chatfire.site/minimax', models: ['speech-2.8-hd'] },
+    chatfire: { label: 'Lovarts.短剧音频', baseUrl: 'https://api.chatfire.site/minimax', models: ['speech-2.8-hd'] },
     minimax: { label: 'MiniMax 音频', baseUrl: 'https://api.chatfire.site/minimax', models: ['speech-2.8-hd'] },
   },
 }
 const huobaoPresetCards = [
-  { serviceType: 'text', label: '文本', provider: '火宝', baseUrl: 'https://api.chatfire.site', model: 'gemini-3.1-pro-preview', priority: 100 },
-  { serviceType: 'image', label: '图片', provider: '火宝', baseUrl: 'https://api.chatfire.site', model: 'doubao-seedream-4-5-251128', priority: 99 },
-  { serviceType: 'video', label: '视频', provider: '火宝', baseUrl: 'https://api.chatfire.site/volcengine', model: 'doubao-seedance-1-5-pro-251215', priority: 98 },
-  { serviceType: 'audio', label: '音频', provider: '火宝', baseUrl: 'https://api.chatfire.site/minimax', model: 'speech-2.8-hd', priority: 97 },
+  { serviceType: 'text', label: '文本', provider: 'Lovarts.短剧', baseUrl: 'https://api.chatfire.site', model: 'gemini-3.1-pro-preview', priority: 100 },
+  { serviceType: 'image', label: '图片', provider: 'Lovarts.短剧', baseUrl: 'https://api.chatfire.site', model: 'doubao-seedream-4-5-251128', priority: 99 },
+  { serviceType: 'video', label: '视频', provider: 'Lovarts.短剧', baseUrl: 'https://api.chatfire.site/volcengine', model: 'doubao-seedance-1-5-pro-251215', priority: 98 },
+  { serviceType: 'audio', label: '音频', provider: 'Lovarts.短剧', baseUrl: 'https://api.chatfire.site/minimax', model: 'speech-2.8-hd', priority: 97 },
 ]
 const endpointPrefixes = {
   apimart: '/v1',
@@ -917,7 +917,7 @@ async function applyHuobaoPreset() {
     await loadCfgs()
     await loadAgents()
     presetDialog.value = false
-    toast.success('火宝推荐配置与默认 Agent LLM 已写入')
+    toast.success('Lovarts.短剧推荐配置与默认 Agent LLM 已写入')
   } catch (e) {
     toast.error(e.message)
   }

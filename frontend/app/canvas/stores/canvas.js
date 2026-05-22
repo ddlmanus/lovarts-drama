@@ -4,7 +4,6 @@
  */
 import { ref, watch } from 'vue'
 import { updateProjectCanvas, getProjectCanvas } from './projects'
-import { IMAGE_MODELS, VIDEO_MODELS, CHAT_MODELS, DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL, DEFAULT_CHAT_MODEL } from '../config/models'
 
 // Node ID counter | 节点ID计数器
 let nodeId = 0
@@ -22,10 +21,15 @@ export const canvasViewport = ref({ x: 100, y: 50, zoom: 0.8 })
 
 // Selected node | 选中的节点
 export const selectedNode = ref(null)
+export const saveStatus = ref('saved')
+export const lastSavedAt = ref(null)
 
 // Auto-save flag | 自动保存标志
 let autoSaveEnabled = false
 let saveTimeout = null
+let pendingSavePromise = Promise.resolve()
+const CONTENT_SAVE_DELAY = 120
+const VIEWPORT_SAVE_DELAY = 500
 
 // History for undo/redo | 撤销/重做历史
 const history = ref([])
@@ -182,6 +186,7 @@ export const addNode = (type, position = { x: 100, y: 100 }, data = {}) => {
   }
   nodes.value = [...nodes.value, newNode]
   saveToHistory() // Save after adding node | 添加节点后保存
+  debouncedSave()
   return id
 }
 
@@ -226,6 +231,7 @@ export const addNodes = (nodeSpecs, autoBatch = true) => {
     endBatchOperation()
   }
 
+  debouncedSave()
   return ids
 }
 
@@ -239,22 +245,31 @@ const getDefaultNodeData = (type) => {
         publicProps: {}  // 公共属性（可被 @ 引用）
       }
     case 'imageConfig': {
-      const imageModel = IMAGE_MODELS.find(m => m.key === DEFAULT_IMAGE_MODEL) || IMAGE_MODELS[0]
       return {
         prompt: '',
-        model: DEFAULT_IMAGE_MODEL,
-        size: imageModel?.defaultParams?.size || '1x1',
-        quality: imageModel?.defaultParams?.quality || 'standard',
+        model: '',
+        modelKey: '',
+        model_config_id: undefined,
+        user_provider_id: undefined,
+        provider: undefined,
+        size: '',
+        resolution: '',
+        quality: '',
         label: '文生图'
       }
     }
     case 'videoConfig': {
-      const videoModel = VIDEO_MODELS.find(m => m.key === DEFAULT_VIDEO_MODEL) || VIDEO_MODELS[0]
       return {
         prompt: '',
-        ratio: videoModel?.defaultParams?.ratio || '16:9',
-        duration: videoModel?.defaultParams?.duration || 5,
-        model: DEFAULT_VIDEO_MODEL,
+        ratio: '',
+        resolution: '',
+        duration: 5,
+        dur: 5,
+        model: '',
+        modelKey: '',
+        model_config_id: undefined,
+        user_provider_id: undefined,
+        provider: undefined,
         label: '图生视频'
       }
     }
@@ -273,7 +288,11 @@ const getDefaultNodeData = (type) => {
     case 'llmConfig':
       return {
         systemPrompt: '',
-        model: DEFAULT_CHAT_MODEL,
+        model: '',
+        modelKey: '',
+        model_config_id: undefined,
+        user_provider_id: undefined,
+        provider: undefined,
         outputFormat: 'text',
         outputContent: '',
         label: 'LLM文本生成',
@@ -289,6 +308,7 @@ export const updateNode = (id, data) => {
   nodes.value = nodes.value.map(node => 
     node.id === id ? { ...node, data: { ...node.data, ...data } } : node
   )
+  debouncedSave()
 }
 
 // Remove node | 删除节点
@@ -296,6 +316,7 @@ export const removeNode = (id) => {
   nodes.value = nodes.value.filter(node => node.id !== id)
   edges.value = edges.value.filter(edge => edge.source !== id && edge.target !== id)
   saveToHistory() // Save after removing node | 删除节点后保存
+  debouncedSave()
 }
 
 // Duplicate node | 复制节点
@@ -320,6 +341,7 @@ export const duplicateNode = (id) => {
   }
   nodes.value = [...nodes.value, newNode]
   saveToHistory() // Save after duplicating node | 复制节点后保存
+  debouncedSave()
   return newId
 }
 
@@ -331,6 +353,7 @@ export const addEdge = (params) => {
   }
   edges.value = [...edges.value, newEdge]
   saveToHistory() // Save after adding edge | 添加连线后保存
+  debouncedSave()
 }
 
 /**
@@ -364,6 +387,7 @@ export const addEdges = (edgeSpecs, autoBatch = true) => {
     endBatchOperation()
   }
 
+  debouncedSave()
   return ids
 }
 
@@ -373,12 +397,14 @@ export const updateEdge = (id, data) => {
     edge.id === id ? { ...edge, data: { ...edge.data, ...data } } : edge
   )
   saveToHistory() // Save after updating edge | 更新连线后保存
+  debouncedSave()
 }
 
 // Remove edge | 删除边
 export const removeEdge = (id) => {
   edges.value = edges.value.filter(edge => edge.id !== id)
   saveToHistory() // Save after removing edge | 删除连线后保存
+  debouncedSave()
 }
 
 // Clear canvas | 清空画布
@@ -415,26 +441,18 @@ export const initSampleData = () => {
   })
 }
 
-/**
- * Load project data | 加载项目数据
- * @param {string} projectId - Project ID | 项目ID
- */
-export const loadProject = (projectId) => {
+const restoreCanvasState = (projectId, canvasData) => {
   autoSaveEnabled = false
   isRestoring = true
   currentProjectId.value = projectId
-  
-  const canvasData = getProjectCanvas(projectId)
-  
+
   if (canvasData) {
-    // Restore nodes | 恢复节点
-    nodes.value = canvasData.nodes || []
-    edges.value = canvasData.edges || []
+    nodes.value = Array.isArray(canvasData.nodes) ? canvasData.nodes : []
+    edges.value = Array.isArray(canvasData.edges) ? canvasData.edges : []
     canvasViewport.value = canvasData.viewport || { x: 100, y: 50, zoom: 0.8 }
-    
-    // Update node ID counter | 更新节点ID计数器
+
     const maxId = nodes.value.reduce((max, node) => {
-      const match = node.id.match(/node_(\d+)/)
+      const match = String(node.id || '').match(/node_(\d+)/)
       if (match) {
         return Math.max(max, parseInt(match[1], 10))
       }
@@ -442,49 +460,84 @@ export const loadProject = (projectId) => {
     }, -1)
     nodeId = maxId + 1
   } else {
-    // Empty project | 空项目
     clearCanvas()
   }
-  
-  // Initialize history with current state | 用当前状态初始化历史
+
   history.value = [{
     nodes: JSON.parse(JSON.stringify(nodes.value)),
     edges: JSON.parse(JSON.stringify(edges.value))
   }]
   historyIndex.value = 0
-  
-  // Enable auto-save after loading | 加载后启用自动保存
-  setTimeout(() => {
-    autoSaveEnabled = true
-    isRestoring = false
-  }, 100)
+
+  autoSaveEnabled = true
+  isRestoring = false
+}
+
+export const applyProjectCanvas = (projectId, canvasData) => {
+  restoreCanvasState(projectId, canvasData)
+}
+
+/**
+ * Load project data | 加载项目数据
+ * @param {string} projectId - Project ID | 项目ID
+ */
+export const loadProject = (projectId) => {
+  const canvasData = getProjectCanvas(projectId)
+  restoreCanvasState(projectId, canvasData)
 }
 
 /**
  * Save current project | 保存当前项目
  */
-export const saveProject = () => {
-  if (!currentProjectId.value) return
-  updateProjectCanvas(currentProjectId.value, {
+export const saveProject = async () => {
+  if (!currentProjectId.value) return false
+  saveStatus.value = 'saving'
+  const savePromise = updateProjectCanvas(currentProjectId.value, {
     nodes: nodes.value,
     edges: edges.value,
     viewport: canvasViewport.value
   })
+  pendingSavePromise = savePromise
+  try {
+    const result = await savePromise
+    saveStatus.value = 'saved'
+    lastSavedAt.value = new Date()
+    return result
+  } catch (err) {
+    saveStatus.value = 'error'
+    pendingSavePromise = Promise.resolve()
+    throw err
+  }
+}
+
+export const flushProjectSave = async () => {
+  if (saveTimeout) {
+    clearTimeout(saveTimeout)
+    saveTimeout = null
+  }
+  if (!autoSaveEnabled || !currentProjectId.value) return false
+  return saveProject()
 }
 
 /**
  * Debounced auto-save | 防抖动自动保存
  */
-const debouncedSave = () => {
+const debouncedSave = (delay = CONTENT_SAVE_DELAY) => {
   if (!autoSaveEnabled || !currentProjectId.value) return
+  saveStatus.value = 'pending'
   
   if (saveTimeout) {
     clearTimeout(saveTimeout)
   }
   
-  saveTimeout = setTimeout(() => {
-    saveProject()
-  }, 500)
+  saveTimeout = setTimeout(async () => {
+    saveTimeout = null
+    try {
+      await saveProject()
+    } catch (err) {
+      console.error('Failed to auto-save canvas:', err)
+    }
+  }, delay)
 }
 
 /**
@@ -492,7 +545,7 @@ const debouncedSave = () => {
  */
 export const updateViewport = (viewport) => {
   canvasViewport.value = viewport
-  debouncedSave()
+  debouncedSave(VIEWPORT_SAVE_DELAY)
 }
 
 /**

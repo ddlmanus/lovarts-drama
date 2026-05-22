@@ -6,8 +6,9 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { v4 as uuid } from 'uuid'
-import { getAudioConfigById } from './ai.js'
+import { getConfigForModelAsync } from './ai.js'
 import { getTTSAdapter } from './adapters/registry.js'
+import { chargeCreditsAsync } from './credits.js'
 import { logTaskError, logTaskPayload, logTaskProgress, logTaskStart, logTaskSuccess, redactUrl } from '../utils/task-logger.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -20,14 +21,36 @@ interface TTSParams {
   speed?: number
   emotion?: string
   configId?: number | null
+  modelConfigId?: number | null
+  userId?: string
+  relatedTaskId?: string | number | null
+  taskType?: string
 }
 
 /**
  * 生成 TTS 音频，返回本地文件路径
  */
 export async function generateTTS(params: TTSParams): Promise<string> {
-  const config = getAudioConfigById(params.configId)
+  const config = await getConfigForModelAsync('audio', params.model, params.modelConfigId ?? params.configId ?? null, params.userId)
+  if (!config) throw new Error('No active audio AI config — 请在后台模型配置中设置音频默认模型')
   const adapter = getTTSAdapter(config.provider)
+  await chargeCreditsAsync({
+    userId: params.userId,
+    serviceType: 'audio',
+    model: params.model || config.model,
+    modelConfigId: config.modelConfigId,
+    billable: config.billable,
+    resourceMode: config.resourceMode,
+    quantity: 1,
+    taskType: params.taskType || 'audio',
+    relatedTaskId: params.relatedTaskId || null,
+    description: '音频生成消费',
+    validateOnly: true,
+    metadata: {
+      voice: params.voice,
+      textLength: params.text.length,
+    },
+  })
 
   logTaskStart('AudioTask', 'tts-generate', {
     provider: config.provider,
@@ -86,6 +109,23 @@ export async function generateTTS(params: TTSParams): Promise<string> {
   fs.writeFileSync(filePath, buffer)
 
   const relativePath = `static/audio/${filename}`
+  await chargeCreditsAsync({
+    userId: params.userId,
+    serviceType: 'audio',
+    model: params.model || config.model,
+    modelConfigId: config.modelConfigId,
+    billable: config.billable,
+    resourceMode: config.resourceMode,
+    quantity: 1,
+    taskType: params.taskType || 'audio',
+    relatedTaskId: params.relatedTaskId || relativePath,
+    description: '音频生成消费（已确认）',
+    metadata: {
+      voice: params.voice,
+      textLength: params.text.length,
+      audioMs: parsed.audioLength,
+    },
+  })
   logTaskSuccess('AudioTask', 'tts-saved', {
     provider: config.provider,
     voice: params.voice,
@@ -99,7 +139,7 @@ export async function generateTTS(params: TTSParams): Promise<string> {
 /**
  * 为角色生成试听音频
  */
-export async function generateVoiceSample(characterName: string, voiceId: string, configId?: number | null): Promise<string> {
+export async function generateVoiceSample(characterName: string, voiceId: string, configId?: number | null, userId?: string, relatedTaskId?: string | number | null): Promise<string> {
   const sampleText = `你好，我是${characterName}。很高兴认识你，这是我的声音试听。`
-  return generateTTS({ text: sampleText, voice: voiceId, configId })
+  return generateTTS({ text: sampleText, voice: voiceId, configId, userId, relatedTaskId, taskType: 'voice_sample' })
 }

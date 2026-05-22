@@ -2,139 +2,144 @@
   <img src="./frontend/public/huobao-logo.png" width="88" alt="Lovarts Drama Logo" />
 </p>
 
-<h1 align="center">Lovarts Drama / Lovarts短剧</h1>
+<h1 align="center">Lovarts Drama / Lovarts.短剧</h1>
 
 <p align="center">
-  AI-native drama production workspace for scripts, storyboards, assets, video generation and node-based creative canvas.
+  AI 短剧生产工作台：剧本、角色、场景、分镜、图片、视频、配音、合成、灵感流和节点画布。
 </p>
 
 <p align="center">
   <a href="https://nodejs.org"><img alt="Node.js" src="https://img.shields.io/badge/Node.js-20%2B-339933?style=flat-square&logo=node.js&logoColor=white"></a>
   <a href="https://nuxt.com"><img alt="Nuxt" src="https://img.shields.io/badge/Nuxt-3-00DC82?style=flat-square&logo=nuxt&logoColor=white"></a>
   <a href="https://vuejs.org"><img alt="Vue" src="https://img.shields.io/badge/Vue-3-4FC08D?style=flat-square&logo=vue.js&logoColor=white"></a>
-  <a href="https://www.typescriptlang.org"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Full--stack-3178C6?style=flat-square&logo=typescript&logoColor=white"></a>
+  <a href="https://www.mysql.com"><img alt="MySQL" src="https://img.shields.io/badge/MySQL-8%2B-4479A1?style=flat-square&logo=mysql&logoColor=white"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-blue?style=flat-square"></a>
 </p>
 
 <p align="center">
-  <a href="#features">Features</a>
+  <a href="#项目概览">项目概览</a>
   ·
-  <a href="#quick-start">Quick Start</a>
+  <a href="#本地运行">本地运行</a>
   ·
-  <a href="#architecture">Architecture</a>
+  <a href="#mysql-数据库">MySQL 数据库</a>
   ·
-  <a href="#configuration">Configuration</a>
-  ·
-  <a href="#deployment">Deployment</a>
+  <a href="#部署">部署</a>
 </p>
 
 <p align="center">
-
   <img src="./6b284a8a-c265-4475-ada0-fc7815b1bcea.png" alt="Lovarts Drama Preview" width="860" />
 </p>
 
-## Overview
+<p align="center">
+   在线使用教程  访问地址：https://drama.lovarts.art/   适用设计图和短剧制作的的网站：https://lovarts.art/
+   注册一个账号->填写使用自己的供应商信息->开始使用  注意 此时消耗的是你自己的api，不会产生收费情况 
+   如果没有自己api的用户 可以自己使用平台提供会员信息进行购买
+</p>
 
-Lovarts Drama is a full-stack AI drama production platform. It helps teams move from script planning to character and scene assets, storyboard breakdown, image generation, video generation, dubbing, composition, export and canvas-based creative planning.
+## 项目概览
 
-The project is designed as a practical production workspace rather than a marketing page: compact dark UI, reusable creative input, asset libraries, episode workbench and a full-screen infinite canvas.
+Lovarts Drama 是一个全栈 AI 短剧生产平台。它把短剧项目、分集剧本、角色库、场景库、分镜拆解、首帧图、视频生成、配音、字幕、合成导出和节点式创作画布放在同一个工作台里。
 
-## Features
+当前版本已经从早期的 SQLite 本地数据库迁移到 MySQL。SQLite 相关说明和 `DB_PATH` 已不再是主路径；后端默认读取 MySQL 配置，并使用 Redis 承载部分事件/缓存能力。
 
-| Area | What it does |
+
+## 功能模块
+
+| 模块 | 说明 |
 | --- | --- |
-| Drama projects | Create drama projects, episodes, scripts and production metadata. |
-| Character library | Manage character profile, appearance, reference images, voice style and generated assets. |
-| Scene library | Manage locations, time, visual prompts and reusable scene assets. |
-| Storyboard workbench | Break scripts into shots, generate first frames, videos, audio, subtitles and composed clips. |
-| AI configuration | Configure text, image, video and voice services from the Web settings page. |
-| Agent skills | Use built-in skills for rewriting, extraction, storyboard splitting, voice assignment and grid prompt generation. |
-| Inspiration page | Browse waterfall materials, app shortcuts and a shared bottom input box. |
-| Creation page | Use the same shared creative input in a focused generation workspace. |
-| Infinite canvas | Vue Flow based node canvas for text, image, video and workflow orchestration. |
+| 短剧项目 | 创建短剧、分集、剧本和制作元信息。 |
+| 角色库 | 管理角色档案、外貌、参考图、音色和生成资产。 |
+| 场景库 | 管理地点、时间、视觉提示词和可复用场景资产。 |
+| 分镜工作台 | 拆分剧本镜头，生成首帧、视频、配音、字幕和合成片段。 |
+| 创作入口 | 首页灵感流、生成页和公共素材输入框。 |
+| 无限画布 | 基于 Vue Flow 的文本、图片、视频节点工作流。 |
+| 模型配置 | 在后台维护供应商、模型、计费规则、用户密钥和平台密钥。 |
+| 会员/积分 | 支持套餐、积分包、订单、支付配置和会员发放任务。 |
+| Codex 工作区 | 支持在产品内运行 Codex 任务、插件和用户隔离技能。 |
 
-## Screens and Routes
+## 页面路由
 
-| Route | Purpose |
+| 路由 | 用途 |
 | --- | --- |
-| `/` | Drama project entry |
-| `/home` | Inspiration feed and quick creative apps |
-| `/generate` | Creation workspace |
-| `/canvas` | Full-screen infinite canvas |
-| `/settings` | AI service and Agent configuration |
-| `/library/characters` | Character library |
-| `/library/scenes` | Scene library |
-| `/drama/:id` | Drama detail |
-| `/drama/:id/episode/:episodeNumber` | Episode production workbench |
+| `/` | 短剧项目入口 |
+| `/home` | 灵感流和快捷创作入口 |
+| `/generate` | 生成工作台 |
+| `/canvas` | 全屏节点画布 |
+| `/chat` | Codex/聊天工作区 |
+| `/account` | 账户、会员、积分 |
+| `/transactions` | 交易记录 |
+| `/settings` | AI 服务和 Agent 配置 |
+| `/admin-login` | 管理员登录 |
+| `/admin` | 管理后台 |
+| `/library/characters` | 角色库 |
+| `/library/scenes` | 场景库 |
+| `/drama/:id` | 短剧详情 |
+| `/drama/:id/episode/:episodeNumber` | 分集生产工作台 |
 
-## Tech Stack
+## 技术栈
 
-| Layer | Stack |
+| 层 | 技术 |
 | --- | --- |
-| Frontend | Nuxt 3, Vue 3, TypeScript, Naive UI, Tailwind CSS, Vue Flow, Pinia |
-| Backend | Node.js 20, Hono, Drizzle ORM, better-sqlite3, Mastra, AI SDK |
-| Database | SQLite with WAL mode |
-| Media | FFmpeg, fluent-ffmpeg, sharp |
-| Deployment | Docker, Docker Compose |
+| 前端 | Nuxt 3, Vue 3, TypeScript, Naive UI, Tailwind CSS, Vue Flow, Pinia |
+| 后端 | Node.js 20+, Hono, TypeScript, Drizzle ORM, Mastra, AI SDK |
+| 数据库 | MySQL 8+，`mysql2`，Drizzle MySQL schema |
+| 缓存/事件 | Redis，`ioredis` |
+| 媒体处理 | FFmpeg, fluent-ffmpeg, sharp |
+| 生产部署 | PM2, Nginx/宝塔 Nginx, Certbot, HTTPS |
 
-## Architecture
+## 目录结构
 
 ```text
 .
 ├── backend/
-│   ├── src/index.ts              # Hono app, middleware and route registration
-│   ├── src/db/                   # SQLite initialization and Drizzle schema
+│   ├── src/index.ts              # Hono app, middleware, route registration
+│   ├── src/config/env.ts         # .env loader and MySQL/Redis/storage config
+│   ├── src/db/                   # Drizzle DB entry, MySQL schema and helpers
 │   ├── src/routes/               # REST API modules
-│   ├── src/services/             # AI generation, storage and media services
-│   └── src/services/adapters/    # Provider adapters
+│   ├── src/services/             # AI, storage, billing, membership, media services
+│   ├── scripts/                  # MySQL init, schema sync, model seed scripts
+│   └── sql/mysql-init.sql        # MySQL base schema
 ├── frontend/
 │   ├── app/pages/                # Nuxt routes
 │   ├── app/components/           # Shared UI components
-│   ├── app/layouts/              # Product shell layouts
-│   ├── app/canvas/               # Infinite canvas migration
-│   └── app/assets/               # Global product and canvas CSS
+│   ├── app/composables/          # API and feature composables
+│   ├── app/canvas/               # Infinite canvas modules
+│   └── app/assets/               # Global styles
 ├── skills/                       # Agent skill prompt assets
-├── configs/                      # Config templates
-├── data/                         # Runtime database and static files
+├── configs/                      # Optional config templates
+├── data/                         # Runtime local files and generated media
+├── deploy_drama_lovarts.sh       # Current server deploy script
 ├── Dockerfile
-└── docker-compose.yml
+└── docker-compose.yml            # Legacy/simple container entry
 ```
 
-```mermaid
-flowchart LR
-  User["User"] --> Frontend["Nuxt 3 Frontend"]
-  Frontend --> API["Hono API /api/v1"]
-  API --> DB["SQLite"]
-  API --> Storage["Local Storage /static"]
-  API --> Agents["Mastra Agents + Skills"]
-  API --> Providers["AI Providers"]
-  API --> FFmpeg["FFmpeg Compose / Merge"]
-```
+## 本地运行
 
-## Quick Start
-
-### Prerequisites
+### 依赖要求
 
 - Node.js 20+
 - npm 9+
+- MySQL 8+
+- Redis 6+
 - FFmpeg 4+
 
-Install FFmpeg:
+macOS 可用 Homebrew 安装基础依赖：
 
 ```bash
-# macOS
-brew install ffmpeg
-
-# Ubuntu / Debian
-sudo apt update
-sudo apt install ffmpeg
+brew install mysql redis ffmpeg
 ```
 
-### Install
+Ubuntu / Debian：
 
 ```bash
-git clone https://github.com/ddlmanus/lovarts-drama.git
-cd lovarts-drama
+sudo apt update
+sudo apt install mysql-server redis-server ffmpeg
+```
+
+### 安装依赖
+
+```bash
+cd /path/to/huobao
 
 cd backend
 npm install
@@ -143,23 +148,125 @@ cd ../frontend
 npm install
 ```
 
-### Run
+### 配置环境变量
 
-Start the backend:
+后端会读取两个位置的 `.env`：
+
+```text
+.env
+backend/.env
+```
+
+推荐本地使用 `backend/.env`。最小配置示例：
+
+```env
+DB_DRIVER=mysql
+DATABASE_URL="mysql://huobao:your_password@127.0.0.1:3306/huobao?useSSL=false&serverTimezone=Asia%2FShanghai&allowPublicKeyRetrieval=true"
+
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+REDIS_TLS=false
+
+PORT=5679
+NODE_ENV=development
+PUBLIC_URL=http://localhost:3013
+API_PUBLIC_URL=http://localhost:5679
+AUTH_SECRET=change-me-in-local-dev
+```
+
+也可以不用 `DATABASE_URL`，改用拆分变量：
+
+```env
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=huobao
+MYSQL_PASSWORD=your_password
+MYSQL_DATABASE=huobao
+MYSQL_TIMEZONE=+08:00
+```
+
+### 启动 MySQL 和 Redis
+
+macOS：
+
+```bash
+brew services start mysql
+brew services start redis
+```
+
+Ubuntu / Debian：
+
+```bash
+sudo systemctl start mysql
+sudo systemctl start redis-server
+```
+
+### 创建数据库和账号
+
+示例：
+
+```sql
+CREATE DATABASE huobao CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'huobao'@'%' IDENTIFIED BY 'your_password';
+GRANT ALL PRIVILEGES ON huobao.* TO 'huobao'@'%';
+FLUSH PRIVILEGES;
+```
+
+本机只连 `127.0.0.1` 时，也可以把账号限定为 `'huobao'@'localhost'`。
+
+### 初始化和同步 MySQL 表结构
+
+首次创建库后运行：
+
+```bash
+cd backend
+npm run db:mysql:init
+npm run db:sync:membership
+```
+
+如果已有旧库，或者从 SQLite 时代迁移过来的库缺少新字段，也运行：
+
+```bash
+cd backend
+npm run db:sync:membership
+```
+
+这个脚本会补齐会员、积分、用户资源模式等运行时需要的字段，例如 `resource_mode`、`onboarding_completed_at`。
+
+### 可选：初始化模型和套餐数据
+
+按需要执行：
+
+```bash
+cd backend
+npm run db:seed:zenmux-models
+npm run db:seed:apimart-gpt-image-2
+npm run db:seed:apimart-gemini-image
+npm run db:seed:volcengine-seedream-image
+npm run db:seed:volcengine-seedance-video
+npm run db:seed:credit-packages
+npm run db:seed:membership-plans
+```
+
+### 启动开发服务
+
+启动后端：
 
 ```bash
 cd backend
 npm run dev
 ```
 
-Start the frontend:
+启动前端：
 
 ```bash
 cd frontend
 npm run dev
 ```
 
-Open:
+打开：
 
 ```text
 Frontend: http://localhost:3013
@@ -167,191 +274,296 @@ Backend:  http://localhost:5679
 Health:   http://localhost:5679/api/v1/health
 ```
 
-## Configuration
+前端开发服务器会把 `/api` 和 `/static` 代理到 `http://localhost:5679`，配置在 `frontend/nuxt.config.ts`。
 
-Copy the config template if you need a local config file:
+## MySQL 数据库
 
-```bash
-cp configs/config.example.yaml configs/config.yaml
+当前后端默认使用 MySQL：
+
+```ts
+DB_DRIVER=mysql
 ```
 
-The current backend primarily reads runtime values from environment variables. AI service credentials are best managed from the Web settings page, which stores them in SQLite instead of source files.
+主要配置入口在 `backend/src/config/env.ts`。读取顺序为：
 
-| Variable | Default | Description |
+1. `DATABASE_URL`
+2. `MYSQL_*` / `DB_*` 拆分变量
+3. 默认值
+
+常用数据库变量：
+
+| 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `PORT` | `5679` | Backend HTTP port |
-| `DB_PATH` | `data/huobao_drama.db` | SQLite database path |
-| `STORAGE_PATH` | `data/static` | Local media storage path |
-| `STORAGE_BASE_URL` | empty | Public static file base URL |
-| `PUBLIC_URL` | empty | Public site URL |
-| `API_PUBLIC_URL` | empty | Public API URL |
-| `APIMART_API_KEY` | empty | Apimart API key |
-| `AI_API_KEY` | empty | Generic fallback AI key |
-| `APIMART_BASE_URL` | built-in default | Apimart base URL |
-| `APIMART_TEXT_MODEL` | built-in default | Default text model |
-| `APIMART_IMAGE_MODEL` | built-in default | Default image model |
-| `APIMART_VIDEO_MODEL` | built-in default | Default video model |
+| `DB_DRIVER` | `mysql` | 当前应保持为 `mysql` |
+| `DATABASE_URL` | 空 | MySQL 连接串 |
+| `MYSQL_HOST` / `DB_HOST` | `127.0.0.1` | MySQL 主机 |
+| `MYSQL_PORT` / `DB_PORT` | `3306` | MySQL 端口 |
+| `MYSQL_USER` / `DB_USER` | `root` | MySQL 用户 |
+| `MYSQL_PASSWORD` / `DB_PASSWORD` | 空 | MySQL 密码 |
+| `MYSQL_DATABASE` / `DB_NAME` | `huobao` | 数据库名 |
+| `MYSQL_CONNECTION_LIMIT` | `10` | 连接池大小 |
+| `MYSQL_CONNECT_TIMEOUT` | `60000` | 连接超时毫秒 |
+| `MYSQL_SSL` | `false` | 是否启用 SSL |
+| `MYSQL_TIMEZONE` | `+08:00` | MySQL 时区 |
 
-## API Modules
+Redis 变量：
 
-All main API routes are mounted under:
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `REDIS_URL` | 空 | Redis URL，存在时优先使用 |
+| `REDIS_HOST` | `127.0.0.1` | Redis 主机 |
+| `REDIS_PORT` | `6379` | Redis 端口 |
+| `REDIS_PASSWORD` | 空 | Redis 密码 |
+| `REDIS_DB` | `0` | Redis DB |
+| `REDIS_KEY_PREFIX` | `huobao:` | key 前缀 |
+| `REDIS_TLS` | `false` | 是否启用 TLS |
+
+## API
+
+主 API 挂载在：
 
 ```text
 /api/v1
 ```
 
-| Route | Module |
-| --- | --- |
-| `/health` | Health check |
-| `/dramas` | Drama projects |
-| `/episodes` | Episodes |
-| `/storyboards` | Storyboards |
-| `/characters` | Characters |
-| `/scenes` | Scenes |
-| `/images` | Image generation |
-| `/videos` | Video generation |
-| `/upload` | Uploads |
-| `/ai-configs` | AI service configs |
-| `/ai-providers` | Provider presets |
-| `/agent-configs` | Agent configs |
-| `/agent` | Agent invocation |
-| `/compose` | Single-shot composition |
-| `/merge` | Episode merge |
-| `/grid` | Grid image generation and split |
-| `/skills` | Skill metadata |
-| `/ai-voices` | Voice configs |
-| `/tasks` | Task status |
+常用模块：
 
-Static files:
+| 路由 | 模块 |
+| --- | --- |
+| `/health` | 健康检查 |
+| `/dramas` | 短剧项目 |
+| `/episodes` | 分集 |
+| `/storyboards` | 分镜 |
+| `/characters` | 角色 |
+| `/scenes` | 场景 |
+| `/images` | 图片生成 |
+| `/videos` | 视频生成 |
+| `/upload` | 上传 |
+| `/creations` | 创作任务 |
+| `/events` | 事件流 |
+| `/canvas-projects` | 画布项目 |
+| `/billing` | 会员、积分、订单 |
+| `/admin/*` | 管理后台接口 |
+| `/ai-models` | 模型配置 |
+| `/ai-configs` | 服务密钥配置 |
+| `/ai-providers` | 供应商模板 |
+| `/agent` | Agent 调用 |
+| `/skills` | Agent 技能 |
+| `/codex` | Codex 工作区 |
+
+静态文件：
 
 ```text
 /static/*
 ```
 
-Webhook callbacks:
+Webhook：
 
 ```text
 /webhooks
 ```
 
-## Agent Skills
+## 常用命令
 
-Runtime skill prompts live in `skills/`.
-
-| Skill | Purpose |
-| --- | --- |
-| `script_rewriter` | Rewrite source text into drama scripts |
-| `extractor` | Extract characters and scenes |
-| `storyboard_breaker` | Split scripts into storyboard shots |
-| `voice_assigner` | Assign voices to characters |
-| `grid_prompt_generator` | Generate character, scene and shot grid prompts |
-
-These Markdown files are runtime prompt assets. Edit them carefully because they directly affect Agent behavior.
-
-## Development Commands
-
-Backend:
+后端：
 
 ```bash
 cd backend
-npm run dev        # Development server
-npm start          # Start API directly
-npm run build      # TypeScript build
-npm run typecheck  # Type-only check
+npm run dev                  # 开发模式，tsx watch src/index.ts
+npm run start                # 直接启动后端
+npm run build                # TypeScript 编译
+npm run typecheck            # 仅类型检查
+npm run db:mysql:init        # 初始化 MySQL 基础表
+npm run db:sync:membership   # 同步会员/用户/积分相关字段
 ```
 
-Frontend:
+前端：
 
 ```bash
 cd frontend
-npm run dev        # Nuxt dev server on 3013
-npm run build      # Production build
-npm run generate   # Static generation
-npm run preview    # Preview build
+npm run dev                  # Nuxt dev server，端口 3013
+npm run build                # Nuxt production build
+npm run generate             # 静态生成 .output/public
+npm run preview              # 预览构建结果
 ```
 
-## Deployment
+## 生产构建
 
-### Docker Compose
-
-```bash
-docker compose up -d --build
-```
-
-Default service:
-
-```text
-http://localhost:5679
-```
-
-Runtime data is mounted to:
-
-```text
-./data
-```
-
-### Manual Production Run
+当前后端会托管 Nuxt 静态产物。生产构建流程：
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run generate
 
 cd ../backend
-npm install
-PORT=5679 npm start
+npm ci
+PORT=5679 NODE_ENV=production npm run start
 ```
 
-The backend serves the generated frontend output from `frontend/dist`.
+后端启动后会优先读取：
 
-## Troubleshooting
+```text
+frontend/.output/public
+```
 
-### Frontend cannot reach backend
+如果没有该目录，会回退读取：
 
-Check the backend:
+```text
+frontend/dist
+```
+
+## 部署
+
+当前服务器部署脚本：
+
+```bash
+./deploy_drama_lovarts.sh
+```
+
+默认部署目标：
+
+| 项 | 值 |
+| --- | --- |
+| 服务器 | `103.171.35.146` |
+| 用户 | `root` |
+| 域名 | `drama.Lovarts.短剧` |
+| 远端目录 | `/www/wwwroot/drama-lovarts` |
+| PM2 应用名 | `drama-lovarts-backend` |
+| 应用端口 | `5679` |
+| Nginx | 优先适配宝塔路径 `/www/server/nginx` |
+
+脚本会做这些事：
+
+1. 打包项目，排除 `.git`、`node_modules`、构建产物、`data`、`output`。
+2. 上传到服务器。
+3. 安装或确认 Node.js、PM2、FFmpeg、Nginx、Certbot。
+4. 远端执行 `frontend npm ci && npm run generate`。
+5. 远端执行 `backend npm ci`。
+6. 用 PM2 启动或重启 `drama-lovarts-backend`。
+7. 写入宝塔 Nginx 虚拟主机配置。
+8. 使用 Certbot 为 `drama.Lovarts.短剧` 申请 HTTPS 证书。
+9. 执行 `npm run db:sync:membership` 并重启后端。
+
+可覆盖默认值：
+
+```bash
+SERVER_IP=1.2.3.4 \
+SERVER_USER=root \
+SERVER_PASS='your_password' \
+DOMAIN=example.com \
+REMOTE_DIR=/www/wwwroot/example \
+APP_NAME=example-backend \
+APP_PORT=5679 \
+./deploy_drama_lovarts.sh
+```
+
+部署后检查：
+
+```bash
+curl https://drama.Lovarts.短剧/api/v1/health
+ssh root@103.171.35.146 "pm2 list"
+```
+
+## Docker 说明
+
+仓库仍保留 `Dockerfile` 和 `docker-compose.yml`，但当前业务主线已经迁移到 MySQL/Redis。现有 compose 文件只启动应用容器，没有内置 MySQL/Redis 服务，也没有完整注入 MySQL 环境变量。
+
+如果要使用 Docker Compose，请先补齐：
+
+- MySQL 服务或外部 MySQL 连接。
+- Redis 服务或外部 Redis 连接。
+- `DATABASE_URL` / `MYSQL_*` 环境变量。
+- `REDIS_*` 环境变量。
+- `data/static` 持久化卷。
+
+## 故障排查
+
+### 后端健康检查失败
 
 ```bash
 curl http://localhost:5679/api/v1/health
 ```
 
-Then verify the proxy in `frontend/nuxt.config.ts`.
+检查：
 
-### Video composition fails
+- `backend/.env` 是否存在。
+- MySQL 是否可连。
+- Redis 是否可连。
+- `PORT` 是否被占用。
+- PM2 日志：`pm2 logs drama-lovarts-backend`
 
-Check FFmpeg:
+### MySQL 报 Unknown column
+
+说明库结构落后于代码，运行：
+
+```bash
+cd backend
+npm run db:sync:membership
+```
+
+然后重启后端。
+
+### 前端请求接口失败
+
+开发环境检查 `frontend/nuxt.config.ts` 的代理：
+
+```text
+/api    -> http://localhost:5679
+/static -> http://localhost:5679
+```
+
+生产环境检查 Nginx 是否反代到 `127.0.0.1:5679`。
+
+### 上传或媒体生成失败
+
+检查 FFmpeg 和静态目录权限：
 
 ```bash
 ffmpeg -version
+mkdir -p data/static
 ```
 
-Also confirm `data/static` is writable.
-
-### Canvas styles are missing
-
-The canvas page depends on Tailwind and Vue Flow CSS registered in `frontend/nuxt.config.ts`:
+后端默认本地存储路径是：
 
 ```text
-~/assets/tailwind.css
-@vue-flow/core/dist/style.css
-@vue-flow/core/dist/theme-default.css
-@vue-flow/minimap/dist/style.css
-~/assets/canvas.css
+data/static
 ```
 
-### SQLite is locked
+可用 `STORAGE_PATH` 覆盖。
 
-The database uses WAL and a busy timeout. If lock errors continue, make sure only one backend process is writing to the same DB file.
+### HTTPS 证书申请失败
 
-## Contributing
+确认：
 
-Before submitting changes:
+- 域名 A 记录指向服务器。
+- 服务器 80/443 端口开放。
+- Nginx 的 `/.well-known/acme-challenge/` 没有被强制跳转到应用首页。
+- 宝塔 Nginx 使用 `/www/server/nginx/sbin/nginx -t/-s reload`。
+
+## 提交前检查
 
 ```bash
-cd frontend && npm run build
-cd ../backend && npm run typecheck
+cd frontend
+npm run build
+
+cd ../backend
+npm run typecheck
 ```
 
-Do not commit local secrets, generated databases, uploaded media, `node_modules`, `.nuxt`, `.output`, or `dist`.
+不要提交：
+
+```text
+node_modules/
+.env
+.env.local
+frontend/.nuxt/
+frontend/.output/
+backend/dist/
+data/
+output/
+*.log
+```
 
 ## License
 

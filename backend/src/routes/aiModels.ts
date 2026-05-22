@@ -1,9 +1,10 @@
 import { Hono } from 'hono'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, like, or, sql } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
 import { badRequest, created, notFound, now, success } from '../utils/response.js'
 import { toSnakeCase } from '../utils/transform.js'
 import { currentAuthUserId } from '../utils/auth.js'
+import { isPlatformUserId } from '../repositories/models.js'
 
 const app = new Hono()
 const DEFAULT_USER_ID = 'default'
@@ -41,6 +42,47 @@ function stringifyConfig(value: any) {
     }
   }
   return JSON.stringify(value)
+}
+
+function isEmptyObject(value: any) {
+  return !value || (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0)
+}
+
+function firstNonEmptyObject(...values: any[]) {
+  for (const value of values) {
+    if (!isEmptyObject(value)) return value
+  }
+  return {}
+}
+
+function mergeObjects(...values: any[]) {
+  const result: Record<string, any> = {}
+  for (const value of values) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+    Object.assign(result, value)
+  }
+  return result
+}
+
+function normalizeParameterType(value: unknown) {
+  return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+}
+
+function isBillingRuleType(row: typeof schema.aiModelBillingRules.$inferSelect, types: string[]) {
+  const normalized = normalizeParameterType(row.parameterType)
+  return types.map(normalizeParameterType).includes(normalized)
+}
+
+function nullableDateInput(value: any, fallback: any = null) {
+  if (value === undefined) return fallback
+  if (value === null || value === '') return null
+  return value
+}
+
+function pickDateInput(body: any, snakeKey: string, camelKey: string, fallback: any = null) {
+  if (body[snakeKey] !== undefined) return nullableDateInput(body[snakeKey], fallback)
+  if (body[camelKey] !== undefined) return nullableDateInput(body[camelKey], fallback)
+  return fallback
 }
 
 function serviceFromType(type: string) {
@@ -81,9 +123,9 @@ function serializeProvider(row: typeof schema.aiServiceProviders.$inferSelect) {
   }
 }
 
-function serializeModel(row: typeof schema.aiModelConfigs.$inferSelect, provider?: any) {
+async function serializeModel(row: typeof schema.aiModelConfigs.$inferSelect, provider?: any) {
   const parameterProfile = row.parameterProfileId
-    ? db.select().from(schema.aiModelParameterProfiles).where(eq(schema.aiModelParameterProfiles.id, row.parameterProfileId)).all()[0]
+    ? (await db.select().from(schema.aiModelParameterProfiles).where(eq(schema.aiModelParameterProfiles.id, row.parameterProfileId)).execute())[0]
     : null
   return {
     ...toSnakeCase(row),
@@ -91,15 +133,114 @@ function serializeModel(row: typeof schema.aiModelConfigs.$inferSelect, provider
     parameters: parseJson(row.parameters, {}),
     defaults: parseJson(row.defaults, {}),
     capabilities: parseJson(row.capabilities, {}),
+    image_credit_by_resolution: parseJson(row.imageCreditByResolution, {}),
+    video_credit_per_second_by_resolution: parseJson(row.videoCreditPerSecondByResolution, {}),
+    billing_config: parseJson(row.billingConfig, {}),
+    billing_rules: await serializeBillingRules(row.id),
+    is_free: Boolean(row.isFree),
+    member_only: Boolean(row.memberOnly),
     provider: provider ? serializeProvider(provider) : row.provider,
-    parameter_profile: parameterProfile ? serializeParameterProfile(parameterProfile) : null,
+    parameter_profile: parameterProfile ? await serializeParameterProfile(parameterProfile) : null,
   }
 }
 
-function serializeParameterProfile(row: typeof schema.aiModelParameterProfiles.$inferSelect) {
-  const items = db.select().from(schema.aiModelParameterProfileItems)
+function serializeBillingRule(row: typeof schema.aiModelBillingRules.$inferSelect) {
+  return {
+    ...toSnakeCase(row),
+    credits: Number(row.credits || 0),
+  }
+}
+
+async function serializeBillingRules(modelConfigId: number) {
+  return (await db.select().from(schema.aiModelBillingRules)
+    .where(eq(schema.aiModelBillingRules.modelConfigId, modelConfigId))
+    .execute())
+    .filter(row => !row.deletedAt)
+    .sort((a, b) => a.parameterType.localeCompare(b.parameterType) || a.parameterValue.localeCompare(b.parameterValue) || a.id - b.id)
+    .map(serializeBillingRule)
+}
+
+async function billingRuleCreditMap(modelConfigId: number | null | undefined, parameterTypes: string[]) {
+  if (!modelConfigId) return {}
+  const rows = (await db.select().from(schema.aiModelBillingRules)
+    .where(eq(schema.aiModelBillingRules.modelConfigId, modelConfigId))
+    .execute())
+    .filter(row => !row.deletedAt)
+    .filter(row => isBillingRuleType(row, parameterTypes))
+  return Object.fromEntries(rows.map(row => [row.parameterValue, Number(row.credits || 0)]))
+}
+
+function parseCreditMapJson(value: string | null | undefined) {
+  const raw = parseJson(value, {})
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  return Object.fromEntries(
+    Object.entries(raw)
+      .filter(([key]) => String(key || '').trim())
+      .map(([key, credits]) => [String(key).trim(), Math.max(0, Number(credits) || 0)]),
+  )
+}
+
+async function replaceBillingRulesFromMap(
+  modelConfigId: number,
+  serviceType: string,
+  parameterTypes: string[],
+  creditMap: Record<string, number>,
+  unit: string,
+) {
+  const ts = now()
+  const rows = await db.select().from(schema.aiModelBillingRules)
+    .where(eq(schema.aiModelBillingRules.modelConfigId, modelConfigId))
+    .execute()
+  const activeRows = rows
+    .filter(row => !row.deletedAt)
+    .filter(row => isBillingRuleType(row, parameterTypes))
+  for (const row of activeRows) {
+    await db.update(schema.aiModelBillingRules)
+      .set({ deletedAt: ts, updatedAt: ts })
+      .where(eq(schema.aiModelBillingRules.id, row.id))
+      .execute()
+  }
+
+  const parameterType = parameterTypes[0] || 'resolution'
+  for (const [parameterValue, credits] of Object.entries(creditMap)) {
+    await db.insert(schema.aiModelBillingRules).values({
+      modelConfigId,
+      serviceType,
+      parameterType,
+      parameterValue,
+      credits,
+      unit,
+      createdAt: ts,
+      updatedAt: ts,
+    }).execute()
+  }
+}
+
+async function syncModelBillingRules(modelConfigId: number, values: Awaited<ReturnType<typeof normalizeModelBody>>) {
+  if ('error' in values) return
+  if (values.serviceType === 'image') {
+    await replaceBillingRulesFromMap(
+      modelConfigId,
+      values.serviceType,
+      ['sample_image_size', 'resolution'],
+      parseCreditMapJson(values.imageCreditByResolution),
+      'request',
+    )
+  } else if (values.serviceType === 'video') {
+    await replaceBillingRulesFromMap(
+      modelConfigId,
+      values.serviceType,
+      ['resolution'],
+      parseCreditMapJson(values.videoCreditPerSecondByResolution),
+      'second',
+    )
+  }
+}
+
+async function serializeParameterProfile(row: typeof schema.aiModelParameterProfiles.$inferSelect) {
+  const items = (await db.select().from(schema.aiModelParameterProfileItems)
     .where(eq(schema.aiModelParameterProfileItems.profileId, row.id))
-    .all()
+    .execute())
     .sort((a, b) => (a.rank || 0) - (b.rank || 0) || a.id - b.id)
   return {
     ...toSnakeCase(row),
@@ -121,42 +262,48 @@ function currentUserId(c: any) {
   return currentAuthUserId(c)
 }
 
-function ensureUser(userId: string) {
-  const [row] = db.select().from(schema.aiUsers).where(eq(schema.aiUsers.id, userId)).all()
+async function ensureUser(userId: string) {
+  const [row] = (await db.select().from(schema.aiUsers).where(eq(schema.aiUsers.id, userId)).execute())
   if (row) return row
   const ts = now()
-  db.insert(schema.aiUsers).values({
+  await db.insert(schema.aiUsers).values({
     id: userId,
     name: userId === DEFAULT_USER_ID ? '默认用户' : userId,
     role: 'user',
     isActive: true,
     createdAt: ts,
     updatedAt: ts,
-  }).run()
-  return db.select().from(schema.aiUsers).where(eq(schema.aiUsers.id, userId)).all()[0]
+  }).execute()
+  return (await db.select().from(schema.aiUsers).where(eq(schema.aiUsers.id, userId)).execute())[0]
 }
 
-function publicModels() {
-  return db.select().from(schema.aiModelConfigs).where(isNull(schema.aiModelConfigs.userId)).all()
+async function publicModels() {
+  return (await db.select().from(schema.aiModelConfigs).where(isNull(schema.aiModelConfigs.userId)).execute())
 }
 
-function userModels(userId: string) {
-  return db.select().from(schema.aiModelConfigs).where(eq(schema.aiModelConfigs.userId, userId)).all()
+async function userModels(userId: string) {
+  return await db.select().from(schema.aiModelConfigs).where(eq(schema.aiModelConfigs.userId, userId)).execute()
 }
 
-function providerById(id: number) {
-  return db.select().from(schema.aiServiceProviders).where(eq(schema.aiServiceProviders.id, id)).all()[0]
+async function providerById(id: number) {
+  return (await db.select().from(schema.aiServiceProviders).where(eq(schema.aiServiceProviders.id, id)).execute())[0]
 }
 
-function providerForModel(model: typeof schema.aiModelConfigs.$inferSelect) {
+async function providerForModel(model: typeof schema.aiModelConfigs.$inferSelect) {
   if (model.providerId) return providerById(model.providerId)
-  return db.select().from(schema.aiServiceProviders).where(eq(schema.aiServiceProviders.provider, model.provider)).all()[0]
+  return (await db.select().from(schema.aiServiceProviders).where(eq(schema.aiServiceProviders.provider, model.provider)).execute())[0]
 }
 
-function normalizeModelBody(body: any, scope: 'public' | 'user') {
+function clampInt(value: string | undefined, fallback: number, min: number, max: number) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(max, Math.max(min, Math.floor(parsed)))
+}
+
+async function normalizeModelBody(body: any, scope: 'public' | 'user') {
   const serviceType = String(body.service_type || body.serviceType || serviceFromType(body.type)).trim()
   const providerId = Number(body.provider_id ?? body.providerId ?? 0) || null
-  const providerRow = providerId ? providerById(providerId) : null
+  const providerRow = providerId ? await providerById(providerId) : null
   const provider = String(body.provider || providerRow?.provider || '').trim()
   const modelId = String(body.model_id || body.modelId || '').trim()
   const name = String(body.name || modelId || '').trim()
@@ -180,6 +327,11 @@ function normalizeModelBody(body: any, scope: 'public' | 'user') {
     defaults: stringifyJson(body.defaults),
     capabilities: stringifyJson(body.capabilities),
     cost: Number(body.cost || 0),
+    isFree: Boolean(body.is_free ?? body.isFree ?? false),
+    memberOnly: Boolean(body.member_only ?? body.memberOnly ?? false),
+    imageCreditByResolution: stringifyJson(body.image_credit_by_resolution ?? body.imageCreditByResolution),
+    videoCreditPerSecondByResolution: stringifyJson(body.video_credit_per_second_by_resolution ?? body.videoCreditPerSecondByResolution),
+    billingConfig: stringifyJson(body.billing_config ?? body.billingConfig),
     priority: Number(body.priority || body.rank || 0),
     isDefault: Boolean(body.is_default ?? body.isDefault ?? false),
     isActive: Boolean(body.is_active ?? body.isActive ?? true),
@@ -187,49 +339,159 @@ function normalizeModelBody(body: any, scope: 'public' | 'user') {
 }
 
 async function clearDefaultForService(serviceType: string, userId?: string | null, exceptId?: number) {
-  let rows = db.select().from(schema.aiModelConfigs).where(eq(schema.aiModelConfigs.serviceType, serviceType)).all()
+  let rows = await db.select().from(schema.aiModelConfigs).where(eq(schema.aiModelConfigs.serviceType, serviceType)).execute()
   rows = rows.filter(row => (userId ? row.userId === userId : !row.userId))
   for (const row of rows) {
     if (exceptId && row.id === exceptId) continue
     if (!row.isDefault) continue
-    db.update(schema.aiModelConfigs).set({ isDefault: false, updatedAt: now() }).where(eq(schema.aiModelConfigs.id, row.id)).run()
+    await db.update(schema.aiModelConfigs).set({ isDefault: false, updatedAt: now() }).where(eq(schema.aiModelConfigs.id, row.id)).execute()
   }
 }
 
-// Public model options used by creation pages. User copies win over platform templates.
-app.get('/options', async (c) => {
-  const userId = currentUserId(c)
-  const serviceType = c.req.query('service_type')
-  let rows = [...userModels(userId), ...publicModels()].filter(row => row.isActive)
-  if (serviceType) rows = rows.filter(row => row.serviceType === serviceType)
-
-  const seen = new Set<string>()
-  rows = rows
-    .sort((a, b) => Number(Boolean(b.userId)) - Number(Boolean(a.userId)) || Number(b.isDefault) - Number(a.isDefault) || (b.priority || 0) - (a.priority || 0))
-    .filter(row => {
-      const key = `${row.serviceType}:${row.provider}:${row.modelId}`
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-
-  return success(c, rows.map(row => ({
-    label: `${row.name || row.modelId} (${row.provider})`,
+async function serializeModelOption(row: typeof schema.aiModelConfigs.$inferSelect, userProvider?: typeof schema.aiUserProviderConfigs.$inferSelect | null) {
+  const defaults = parseJson(row.defaults, {})
+  const provider = await providerForModel(row)
+  const sourceModel = row.sourceModelId
+    ? (await db.select().from(schema.aiModelConfigs).where(eq(schema.aiModelConfigs.id, row.sourceModelId)).execute())[0]
+    : null
+  const publicFallback = row.userId
+    ? (await db.select().from(schema.aiModelConfigs)
+        .where(and(
+          isNull(schema.aiModelConfigs.userId),
+          eq(schema.aiModelConfigs.serviceType, row.serviceType),
+          eq(schema.aiModelConfigs.provider, row.provider),
+          eq(schema.aiModelConfigs.modelId, row.modelId),
+        ))
+        .execute())[0]
+    : null
+  const ownImageCredits = parseJson(row.imageCreditByResolution, {})
+  const sourceImageCredits = parseJson(sourceModel?.imageCreditByResolution, {})
+  const fallbackImageCredits = parseJson(publicFallback?.imageCreditByResolution, {})
+  const ownImageRuleCredits = await billingRuleCreditMap(row.id, ['resolution', 'sample_image_size'])
+  const sourceImageRuleCredits = await billingRuleCreditMap(sourceModel?.id, ['resolution', 'sample_image_size'])
+  const fallbackImageRuleCredits = await billingRuleCreditMap(publicFallback?.id, ['resolution', 'sample_image_size'])
+  const ownVideoCredits = parseJson(row.videoCreditPerSecondByResolution, {})
+  const sourceVideoCredits = parseJson(sourceModel?.videoCreditPerSecondByResolution, {})
+  const fallbackVideoCredits = parseJson(publicFallback?.videoCreditPerSecondByResolution, {})
+  const ownVideoRuleCredits = await billingRuleCreditMap(row.id, ['resolution'])
+  const sourceVideoRuleCredits = await billingRuleCreditMap(sourceModel?.id, ['resolution'])
+  const fallbackVideoRuleCredits = await billingRuleCreditMap(publicFallback?.id, ['resolution'])
+  const ownBillingConfig = parseJson(row.billingConfig, {})
+  const sourceBillingConfig = parseJson(sourceModel?.billingConfig, {})
+  const fallbackBillingConfig = parseJson(publicFallback?.billingConfig, {})
+  const imageCredits = mergeObjects(
+    fallbackImageCredits,
+    sourceImageCredits,
+    ownImageCredits,
+    fallbackImageRuleCredits,
+    sourceImageRuleCredits,
+    ownImageRuleCredits,
+  )
+  const videoCredits = mergeObjects(
+    fallbackVideoCredits,
+    sourceVideoCredits,
+    ownVideoCredits,
+    fallbackVideoRuleCredits,
+    sourceVideoRuleCredits,
+    ownVideoRuleCredits,
+  )
+  const parameterProfile = row.parameterProfileId
+    ? await serializeParameterProfile((await db.select().from(schema.aiModelParameterProfiles).where(eq(schema.aiModelParameterProfiles.id, row.parameterProfileId)).execute())[0])
+    : null
+  const billingRules = await serializeBillingRules(row.id)
+  const isUserProvider = Boolean(userProvider?.userId && !isPlatformUserId(userProvider.userId))
+  return {
+    label: row.name || row.modelId,
     value: row.modelId,
+    id: row.id,
+    model_config_id: row.id,
     model_id: row.modelId,
+    name: row.name,
+    description: row.description,
     provider: row.provider,
+    provider_id: row.providerId,
+    provider_name: userProvider?.name || provider?.displayName || provider?.name || row.provider,
+    user_provider_id: isUserProvider ? userProvider?.id || null : null,
+    resource_mode: isUserProvider ? 'user_api' : 'platform',
+    is_platform_model: !isUserProvider,
+    is_official: String(row.modelId || '').toLowerCase().includes('official') || String(row.name || '').includes('官方'),
+    billing_required: !isUserProvider && !row.isFree,
     service_type: row.serviceType,
     user_id: row.userId,
     parameters: parseJson(row.parameters, {}),
-    defaults: parseJson(row.defaults, {}),
+    defaults,
     capabilities: parseJson(row.capabilities, {}),
-    parameter_profile: row.parameterProfileId
-      ? serializeParameterProfile(db.select().from(schema.aiModelParameterProfiles).where(eq(schema.aiModelParameterProfiles.id, row.parameterProfileId)).all()[0])
-      : null,
-    default_aspect_ratio: parseJson(row.defaults, {}).aspect_ratio || parseJson(row.defaults, {}).aspectRatio || '',
-    default_resolution: parseJson(row.defaults, {}).resolution || '',
+    image_credit_by_resolution: imageCredits,
+    video_credit_per_second_by_resolution: videoCredits,
+    billing_config: firstNonEmptyObject(ownBillingConfig, sourceBillingConfig, fallbackBillingConfig),
+    billing_rules: billingRules,
+    is_free: Boolean(row.isFree),
+    member_only: Boolean(row.memberOnly),
+    parameter_profile: parameterProfile,
+    default_aspect_ratio: defaults.aspect_ratio || defaults.aspectRatio || '',
+    default_resolution: defaults.resolution || defaults.sample_image_size || defaults.sampleImageSize || '',
     is_default: row.isDefault,
-  })))
+  }
+}
+
+// User creation options: active user providers -> public platform models under each provider.
+app.get('/options', async (c) => {
+  const userId = currentUserId(c)
+  const serviceType = c.req.query('service_type')
+  await ensureUser(userId)
+
+  const userProviders = (await db.select().from(schema.aiUserProviderConfigs)
+    .where(eq(schema.aiUserProviderConfigs.userId, userId))
+    .execute())
+    .filter(row => row.isActive)
+    .filter(row => !isPlatformUserId(row.userId))
+
+  const rows: Array<{
+    model: typeof schema.aiModelConfigs.$inferSelect
+    userProvider: typeof schema.aiUserProviderConfigs.$inferSelect | null
+  }> = []
+  const seen = new Set<string>()
+  for (const userProvider of userProviders) {
+    const providerModels = (await publicModels())
+      .filter(row => row.isActive)
+      .filter(row => !serviceType || row.serviceType === serviceType)
+      .filter(row => row.providerId === userProvider.providerId || row.provider === userProvider.provider)
+      .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || (b.priority || 0) - (a.priority || 0))
+
+    for (const model of providerModels) {
+      const key = `${userProvider.id}:${model.serviceType}:${model.provider}:${model.modelId}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      rows.push({ model, userProvider })
+    }
+  }
+  const platformModels = (await publicModels())
+    .filter(row => row.isActive)
+    .filter(row => !serviceType || row.serviceType === serviceType)
+    .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || (b.priority || 0) - (a.priority || 0))
+  for (const model of platformModels) {
+    const key = `platform:${model.serviceType}:${model.provider}:${model.modelId}:${model.id}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    rows.push({ model, userProvider: null })
+  }
+
+  rows.sort((a, b) =>
+    Number(Boolean(b.userProvider)) - Number(Boolean(a.userProvider)) ||
+    ((a.userProvider?.id || 0) - (b.userProvider?.id || 0)) ||
+    Number(b.model.isDefault) - Number(a.model.isDefault) ||
+    (b.model.priority || 0) - (a.model.priority || 0)
+  )
+
+  return success(c, await Promise.all(rows.map(({ model, userProvider }) => serializeModelOption(model, userProvider))))
+})
+
+app.get('/providers', async (c) => {
+  const serviceType = c.req.query('service_type')
+  let rows = await db.select().from(schema.aiServiceProviders).where(eq(schema.aiServiceProviders.isActive, true)).execute()
+  if (serviceType) rows = rows.filter(row => row.serviceType === serviceType || row.serviceType === 'all')
+  rows.sort((a, b) => (a.rank || 0) - (b.rank || 0) || (a.displayName || a.name).localeCompare(b.displayName || b.name))
+  return success(c, rows.map(serializeProvider))
 })
 
 // Legacy compatible model list. Defaults to user-visible rows.
@@ -239,17 +501,55 @@ app.get('/', async (c) => {
   const serviceType = c.req.query('service_type')
   const provider = c.req.query('provider')
   const activeOnly = c.req.query('active') !== '0'
-  let rows = scope === 'public' ? publicModels() : [...userModels(userId), ...publicModels()]
+  let rows = scope === 'public' ? await publicModels() : [...await userModels(userId), ...await publicModels()]
   if (serviceType) rows = rows.filter(row => row.serviceType === serviceType)
   if (provider) rows = rows.filter(row => row.provider === provider)
   if (activeOnly) rows = rows.filter(row => row.isActive)
   rows.sort((a, b) => Number(Boolean(b.userId)) - Number(Boolean(a.userId)) || a.serviceType.localeCompare(b.serviceType) || (b.priority || 0) - (a.priority || 0))
-  return success(c, rows.map(row => serializeModel(row, providerForModel(row))))
+  return success(c, await Promise.all(rows.map(async row => serializeModel(row, await providerForModel(row)))))
 })
 
 // Admin users
-app.get('/admin/users', (c) => {
-  return success(c, db.select().from(schema.aiUsers).all().map(toSnakeCase))
+app.get('/admin/users', async (c) => {
+  const keyword = String(c.req.query('keyword') || '').trim()
+  const role = c.req.query('role')
+  const active = c.req.query('active')
+  const all = c.req.query('all') === '1' || c.req.query('all') === 'true'
+  const page = clampInt(c.req.query('page'), 1, 1, 100000)
+  const pageSize = clampInt(c.req.query('page_size') || c.req.query('pageSize'), 20, 1, 100)
+  const conditions: any[] = []
+
+  if (role) conditions.push(eq(schema.aiUsers.role, role))
+  if (active === '1' || active === 'true') conditions.push(eq(schema.aiUsers.isActive, true))
+  if (active === '0' || active === 'false') conditions.push(eq(schema.aiUsers.isActive, false))
+  if (keyword) {
+    const pattern = `%${keyword}%`
+    conditions.push(or(
+      like(schema.aiUsers.id, pattern),
+      like(schema.aiUsers.name, pattern),
+      like(schema.aiUsers.email, pattern),
+      like(schema.aiUsers.account, pattern),
+    )!)
+  }
+
+  const where = conditions.length ? and(...conditions) : undefined
+  if (all) {
+    const rows = (await db.select().from(schema.aiUsers).where(where).orderBy(schema.aiUsers.createdAt, schema.aiUsers.id).execute())
+    return success(c, rows.map(toSnakeCase))
+  }
+
+  const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(schema.aiUsers).where(where).execute()
+  const rows = await db.select().from(schema.aiUsers)
+    .where(where)
+    .orderBy(schema.aiUsers.createdAt, schema.aiUsers.id)
+    .limit(pageSize)
+    .offset((page - 1) * pageSize)
+    .execute()
+
+  return success(c, {
+    items: rows.map(toSnakeCase),
+    pagination: { page, page_size: pageSize, total: Number(total || 0), total_pages: Math.max(1, Math.ceil(Number(total || 0) / pageSize)) },
+  })
 })
 
 app.post('/admin/users', async (c) => {
@@ -258,28 +558,103 @@ app.post('/admin/users', async (c) => {
   if (!id) return badRequest(c, 'id is required')
   const ts = now()
   try {
-    db.insert(schema.aiUsers).values({
+    await db.insert(schema.aiUsers).values({
       id,
       name: body.name || id,
       email: body.email || '',
+      phone: body.phone || '',
+      credits: Number(body.credits || 0),
+      membershipPlanId: body.membership_plan_id ?? body.membershipPlanId ?? null,
+      membershipStatus: body.membership_status ?? body.membershipStatus ?? 'none',
+      membershipExpiresAt: pickDateInput(body, 'membership_expires_at', 'membershipExpiresAt', null),
       role: body.role || 'user',
       isActive: body.is_active ?? body.isActive ?? true,
       createdAt: ts,
       updatedAt: ts,
-    }).run()
-    return created(c, toSnakeCase(ensureUser(id)))
+    }).execute()
+    return created(c, toSnakeCase(await ensureUser(id)))
   } catch (error: any) {
     return badRequest(c, String(error.message || error))
   }
 })
 
+app.put('/admin/users/:id', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json()
+  const row = (await db.select().from(schema.aiUsers).where(eq(schema.aiUsers.id, id)).execute())[0]
+  if (!row) return notFound(c, 'user not found')
+  await db.update(schema.aiUsers).set({
+    name: body.name || row.name,
+    account: body.account ?? body.account_id ?? row.account,
+    email: body.email ?? row.email ?? '',
+    phone: body.phone ?? row.phone ?? '',
+    credits: Number(body.credits ?? row.credits ?? 0),
+    membershipPlanId: body.membership_plan_id ?? body.membershipPlanId ?? row.membershipPlanId,
+    membershipStatus: body.membership_status ?? body.membershipStatus ?? row.membershipStatus ?? 'none',
+    membershipExpiresAt: pickDateInput(body, 'membership_expires_at', 'membershipExpiresAt', row.membershipExpiresAt),
+    role: body.role || row.role || 'user',
+    isActive: body.is_active ?? body.isActive ?? row.isActive ?? true,
+    updatedAt: now(),
+  }).where(eq(schema.aiUsers.id, id)).execute()
+  const updated = (await db.select().from(schema.aiUsers).where(eq(schema.aiUsers.id, id)).execute())[0]
+  return success(c, toSnakeCase(updated))
+})
+
+app.delete('/admin/users/:id', async (c) => {
+  const id = c.req.param('id')
+  const row = (await db.select().from(schema.aiUsers).where(eq(schema.aiUsers.id, id)).execute())[0]
+  if (!row) return notFound(c, 'user not found')
+  await db.delete(schema.aiUserProviderConfigs).where(eq(schema.aiUserProviderConfigs.userId, id)).execute()
+  await db.delete(schema.aiModelConfigs).where(eq(schema.aiModelConfigs.userId, id)).execute()
+  await db.delete(schema.aiUsers).where(eq(schema.aiUsers.id, id)).execute()
+  return success(c)
+})
+
 // Admin provider templates
-app.get('/admin/providers', (c) => {
-  const activeOnly = c.req.query('active') === '1'
-  let rows = db.select().from(schema.aiServiceProviders).all()
-  if (activeOnly) rows = rows.filter(row => row.isActive)
-  rows.sort((a, b) => (b.id || 0) - (a.id || 0))
-  return success(c, rows.map(serializeProvider))
+app.get('/admin/providers', async (c) => {
+  const serviceType = c.req.query('service_type')
+  const active = c.req.query('active')
+  const keyword = String(c.req.query('keyword') || '').trim()
+  const all = c.req.query('all') === '1' || c.req.query('all') === 'true'
+  const page = clampInt(c.req.query('page'), 1, 1, 100000)
+  const pageSize = clampInt(c.req.query('page_size') || c.req.query('pageSize'), 20, 1, 100)
+  const conditions: any[] = []
+
+  if (serviceType) conditions.push(eq(schema.aiServiceProviders.serviceType, serviceType))
+  if (active === '1' || active === 'true') conditions.push(eq(schema.aiServiceProviders.isActive, true))
+  if (active === '0' || active === 'false') conditions.push(eq(schema.aiServiceProviders.isActive, false))
+  if (keyword) {
+    const pattern = `%${keyword}%`
+    conditions.push(or(
+      like(schema.aiServiceProviders.name, pattern),
+      like(schema.aiServiceProviders.displayName, pattern),
+      like(schema.aiServiceProviders.provider, pattern),
+      like(schema.aiServiceProviders.website, pattern),
+      like(schema.aiServiceProviders.description, pattern),
+    )!)
+  }
+
+  const where = conditions.length ? and(...conditions) : undefined
+  if (all) {
+    const rows = await db.select().from(schema.aiServiceProviders)
+      .where(where)
+      .orderBy(sql`${schema.aiServiceProviders.rank} asc`, sql`${schema.aiServiceProviders.id} desc`)
+      .execute()
+    return success(c, rows.map(serializeProvider))
+  }
+
+  const [{ total }] = (await db.select({ total: sql<number>`count(*)` }).from(schema.aiServiceProviders).where(where).execute())
+  const rows = await db.select().from(schema.aiServiceProviders)
+    .where(where)
+    .orderBy(sql`${schema.aiServiceProviders.rank} asc`, sql`${schema.aiServiceProviders.id} desc`)
+    .limit(pageSize)
+    .offset((page - 1) * pageSize)
+    .execute()
+
+  return success(c, {
+    items: rows.map(serializeProvider),
+    pagination: { page, page_size: pageSize, total: Number(total || 0), total_pages: Math.max(1, Math.ceil(Number(total || 0) / pageSize)) },
+  })
 })
 
 app.post('/admin/providers', async (c) => {
@@ -288,7 +663,7 @@ app.post('/admin/providers', async (c) => {
   const key = providerKey(body.key || body.provider || body.name)
   if (!body.name) return badRequest(c, 'name is required')
   try {
-    const result = db.insert(schema.aiServiceProviders).values({
+    const result = await db.insert(schema.aiServiceProviders).values({
       name: body.name,
       displayName: body.display_name || body.displayName || body.name,
       serviceType: String(body.service_type || body.serviceType || 'all'),
@@ -304,8 +679,8 @@ app.post('/admin/providers', async (c) => {
       isActive: body.is_active ?? body.isActive ?? true,
       createdAt: ts,
       updatedAt: ts,
-    }).run()
-    const row = providerById(Number(result.lastInsertRowid))
+    }).execute()
+    const row = await providerById(Number(result.insertId))
     return created(c, serializeProvider(row))
   } catch (error: any) {
     return badRequest(c, String(error.message || error))
@@ -330,34 +705,76 @@ app.put('/admin/providers/:id', async (c) => {
     description: body.description || '',
     isActive: body.is_active ?? body.isActive ?? true,
     updatedAt: now(),
-  }).where(eq(schema.aiServiceProviders.id, id)).run()
-  return success(c, serializeProvider(providerById(id)))
+  }).where(eq(schema.aiServiceProviders.id, id)).execute()
+  return success(c, serializeProvider(await providerById(id)))
 })
 
-app.delete('/admin/providers/:id', (c) => {
-  db.delete(schema.aiServiceProviders).where(eq(schema.aiServiceProviders.id, Number(c.req.param('id')))).run()
+app.delete('/admin/providers/:id', async (c) => {
+  await db.delete(schema.aiServiceProviders).where(eq(schema.aiServiceProviders.id, Number(c.req.param('id')))).execute()
   return success(c)
 })
 
 // Admin public model templates
-app.get('/admin/models', (c) => {
+app.get('/admin/models', async (c) => {
   const serviceType = c.req.query('service_type')
-  let rows = publicModels()
-  if (serviceType) rows = rows.filter(row => row.serviceType === serviceType)
-  rows.sort((a, b) => a.serviceType.localeCompare(b.serviceType) || (b.priority || 0) - (a.priority || 0))
-  return success(c, rows.map(row => serializeModel(row, providerForModel(row))))
+  const provider = c.req.query('provider')
+  const active = c.req.query('active')
+  const keyword = String(c.req.query('keyword') || '').trim()
+  const page = clampInt(c.req.query('page'), 1, 1, 100000)
+  const pageSize = clampInt(c.req.query('page_size') || c.req.query('pageSize'), 20, 1, 100)
+  const conditions = [isNull(schema.aiModelConfigs.userId)]
+
+  if (serviceType) conditions.push(eq(schema.aiModelConfigs.serviceType, serviceType))
+  if (provider) conditions.push(eq(schema.aiModelConfigs.provider, provider))
+  if (active === '1' || active === 'true') conditions.push(eq(schema.aiModelConfigs.isActive, true))
+  if (active === '0' || active === 'false') conditions.push(eq(schema.aiModelConfigs.isActive, false))
+  if (keyword) {
+    const pattern = `%${keyword}%`
+    conditions.push(or(
+      like(schema.aiModelConfigs.name, pattern),
+      like(schema.aiModelConfigs.modelId, pattern),
+      like(schema.aiModelConfigs.provider, pattern),
+      like(schema.aiModelConfigs.description, pattern),
+    )!)
+  }
+
+  const where = and(...conditions)
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(schema.aiModelConfigs)
+    .where(where)
+    .execute()
+  const rows = await db.select()
+    .from(schema.aiModelConfigs)
+    .where(where)
+    .orderBy(schema.aiModelConfigs.serviceType, sql`${schema.aiModelConfigs.priority} desc`, schema.aiModelConfigs.id)
+    .limit(pageSize)
+    .offset((page - 1) * pageSize)
+    .execute()
+
+  return success(c, {
+    items: await Promise.all(rows.map(async row => serializeModel(row, await providerForModel(row)))),
+    pagination: {
+      page,
+      page_size: pageSize,
+      total: Number(total || 0),
+      total_pages: Math.max(1, Math.ceil(Number(total || 0) / pageSize)),
+    },
+  })
 })
 
 app.post('/admin/models', async (c) => {
   const body = await c.req.json()
-  const values = normalizeModelBody(body, 'public')
+  const values = await normalizeModelBody(body, 'public')
   if ('error' in values) return badRequest(c, values.error)
   const ts = now()
   if (values.isDefault) await clearDefaultForService(values.serviceType, null)
   try {
-    const result = db.insert(schema.aiModelConfigs).values({ ...values, userId: null, createdAt: ts, updatedAt: ts }).run()
-    const row = db.select().from(schema.aiModelConfigs).where(eq(schema.aiModelConfigs.id, Number(result.lastInsertRowid))).all()[0]
-    return created(c, serializeModel(row, providerForModel(row)))
+    const result = await db.insert(schema.aiModelConfigs).values({ ...values, userId: null, createdAt: ts, updatedAt: ts }).execute()
+    const row = (await db.select().from(schema.aiModelConfigs).where(eq(schema.aiModelConfigs.id, Number(result.insertId))).execute())[0]
+    await syncModelBillingRules(row.id, values)
+    const updated = (await db.select().from(schema.aiModelConfigs).where(eq(schema.aiModelConfigs.id, row.id)).execute())[0]
+    return created(c, await serializeModel(updated, await providerForModel(updated)))
   } catch (error: any) {
     return badRequest(c, String(error.message || error))
   }
@@ -366,26 +783,126 @@ app.post('/admin/models', async (c) => {
 app.put('/admin/models/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json()
-  const values = normalizeModelBody(body, 'public')
+  const values = await normalizeModelBody(body, 'public')
   if ('error' in values) return badRequest(c, values.error)
   if (values.isDefault) await clearDefaultForService(values.serviceType, null, id)
-  db.update(schema.aiModelConfigs).set({ ...values, userId: null, updatedAt: now() }).where(eq(schema.aiModelConfigs.id, id)).run()
-  const row = db.select().from(schema.aiModelConfigs).where(eq(schema.aiModelConfigs.id, id)).all()[0]
-  return success(c, serializeModel(row, providerForModel(row)))
+  await db.update(schema.aiModelConfigs).set({ ...values, userId: null, updatedAt: now() }).where(eq(schema.aiModelConfigs.id, id)).execute()
+  await syncModelBillingRules(id, values)
+  const row = (await db.select().from(schema.aiModelConfigs).where(eq(schema.aiModelConfigs.id, id)).execute())[0]
+  return success(c, await serializeModel(row, await providerForModel(row)))
 })
 
-app.delete('/admin/models/:id', (c) => {
-  db.delete(schema.aiModelConfigs).where(eq(schema.aiModelConfigs.id, Number(c.req.param('id')))).run()
+app.delete('/admin/models/:id', async (c) => {
+  await db.delete(schema.aiModelConfigs).where(eq(schema.aiModelConfigs.id, Number(c.req.param('id')))).execute()
+  return success(c)
+})
+
+app.get('/admin/models/:id/billing-rules', async (c) => {
+  const id = Number(c.req.param('id'))
+  const model = (await db.select().from(schema.aiModelConfigs).where(eq(schema.aiModelConfigs.id, id)).execute())[0]
+  if (!model) return notFound(c, 'model not found')
+  return success(c, await serializeBillingRules(id))
+})
+
+app.post('/admin/models/:id/billing-rules', async (c) => {
+  const id = Number(c.req.param('id'))
+  const model = (await db.select().from(schema.aiModelConfigs).where(eq(schema.aiModelConfigs.id, id)).execute())[0]
+  if (!model) return notFound(c, 'model not found')
+  const body = await c.req.json()
+  const parameterType = String(body.parameter_type || body.parameterType || 'resolution').trim()
+  const parameterValue = String(body.parameter_value || body.parameterValue || '').trim()
+  if (!parameterType || !parameterValue) return badRequest(c, 'parameter_type and parameter_value are required')
+  const ts = now()
+  const result = await db.insert(schema.aiModelBillingRules).values({
+    modelConfigId: id,
+    serviceType: model.serviceType,
+    parameterType,
+    parameterValue,
+    credits: Number(body.credits || 0),
+    unit: body.unit || (model.serviceType === 'video' ? 'second' : 'request'),
+    createdAt: ts,
+    updatedAt: ts,
+  }).execute()
+  const row = (await db.select().from(schema.aiModelBillingRules).where(eq(schema.aiModelBillingRules.id, Number(result.insertId))).execute())[0]
+  return created(c, serializeBillingRule(row))
+})
+
+app.put('/admin/models/billing-rules/:ruleId', async (c) => {
+  const id = Number(c.req.param('ruleId'))
+  const row = (await db.select().from(schema.aiModelBillingRules).where(eq(schema.aiModelBillingRules.id, id)).execute())[0]
+  if (!row) return notFound(c, 'billing rule not found')
+  const body = await c.req.json()
+  db.update(schema.aiModelBillingRules).set({
+    parameterType: String(body.parameter_type || body.parameterType || row.parameterType).trim(),
+    parameterValue: String(body.parameter_value || body.parameterValue || row.parameterValue).trim(),
+    credits: Number(body.credits ?? row.credits ?? 0),
+    unit: body.unit || row.unit || 'request',
+    updatedAt: now(),
+  }).where(eq(schema.aiModelBillingRules.id, id)).execute()
+  const updated = (await db.select().from(schema.aiModelBillingRules).where(eq(schema.aiModelBillingRules.id, id)).execute())[0]
+  return success(c, serializeBillingRule(updated))
+})
+
+app.delete('/admin/models/billing-rules/:ruleId', async (c) => {
+  db.update(schema.aiModelBillingRules)
+    .set({ deletedAt: now(), updatedAt: now() })
+    .where(eq(schema.aiModelBillingRules.id, Number(c.req.param('ruleId'))))
+    .execute()
   return success(c)
 })
 
 // Admin parameter profiles
-app.get('/admin/model-parameters', (c) => {
+app.get('/admin/model-parameters', async (c) => {
   const serviceType = c.req.query('service_type')
-  let rows = db.select().from(schema.aiModelParameterProfiles).all()
-  if (serviceType) rows = rows.filter(row => row.serviceType === serviceType)
-  rows.sort((a, b) => a.serviceType.localeCompare(b.serviceType) || a.name.localeCompare(b.name))
-  return success(c, rows.map(serializeParameterProfile))
+  const active = c.req.query('active')
+  const keyword = String(c.req.query('keyword') || '').trim()
+  const all = c.req.query('all') === '1' || c.req.query('all') === 'true'
+  const page = clampInt(c.req.query('page'), 1, 1, 100000)
+  const pageSize = clampInt(c.req.query('page_size') || c.req.query('pageSize'), 20, 1, 100)
+  const conditions: any[] = []
+
+  if (serviceType) conditions.push(eq(schema.aiModelParameterProfiles.serviceType, serviceType))
+  if (active === '1' || active === 'true') conditions.push(eq(schema.aiModelParameterProfiles.isActive, true))
+  if (active === '0' || active === 'false') conditions.push(eq(schema.aiModelParameterProfiles.isActive, false))
+  if (keyword) {
+    const pattern = `%${keyword}%`
+    conditions.push(or(
+      like(schema.aiModelParameterProfiles.key, pattern),
+      like(schema.aiModelParameterProfiles.name, pattern),
+      like(schema.aiModelParameterProfiles.description, pattern),
+    )!)
+  }
+
+  const where = conditions.length ? and(...conditions) : undefined
+  if (all) {
+    const rows = await db.select().from(schema.aiModelParameterProfiles)
+      .where(where)
+      .orderBy(schema.aiModelParameterProfiles.serviceType, schema.aiModelParameterProfiles.name, schema.aiModelParameterProfiles.id)
+      .execute()
+    return success(c, await Promise.all(rows.map(serializeParameterProfile)))
+  }
+
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(schema.aiModelParameterProfiles)
+    .where(where)
+    .execute()
+  const rows = await db.select().from(schema.aiModelParameterProfiles)
+    .where(where)
+    .orderBy(schema.aiModelParameterProfiles.serviceType, schema.aiModelParameterProfiles.name, schema.aiModelParameterProfiles.id)
+    .limit(pageSize)
+    .offset((page - 1) * pageSize)
+    .execute()
+
+  return success(c, {
+    items: await Promise.all(rows.map(serializeParameterProfile)),
+    pagination: {
+      page,
+      page_size: pageSize,
+      total: Number(total || 0),
+      total_pages: Math.max(1, Math.ceil(Number(total || 0) / pageSize)),
+    },
+  })
 })
 
 app.post('/admin/model-parameters', async (c) => {
@@ -393,7 +910,7 @@ app.post('/admin/model-parameters', async (c) => {
   const ts = now()
   if (!body.key || !body.name) return badRequest(c, 'key and name are required')
   try {
-    const result = db.insert(schema.aiModelParameterProfiles).values({
+  const result = await db.insert(schema.aiModelParameterProfiles).values({
       key: body.key,
       name: body.name,
       serviceType: body.service_type || body.serviceType || serviceFromType(body.model_type || body.modelType),
@@ -403,9 +920,9 @@ app.post('/admin/model-parameters', async (c) => {
       isActive: body.is_active ?? body.isActive ?? true,
       createdAt: ts,
       updatedAt: ts,
-    }).run()
-    const row = db.select().from(schema.aiModelParameterProfiles).where(eq(schema.aiModelParameterProfiles.id, Number(result.lastInsertRowid))).all()[0]
-    return created(c, serializeParameterProfile(row))
+    }).execute()
+    const row = (await db.select().from(schema.aiModelParameterProfiles).where(eq(schema.aiModelParameterProfiles.id, Number(result.insertId))).execute())[0]
+    return created(c, await serializeParameterProfile(row))
   } catch (error: any) {
     return badRequest(c, String(error.message || error))
   }
@@ -423,30 +940,30 @@ app.put('/admin/model-parameters/:id', async (c) => {
     isBuiltin: body.is_builtin ?? body.isBuiltin ?? false,
     isActive: body.is_active ?? body.isActive ?? true,
     updatedAt: now(),
-  }).where(eq(schema.aiModelParameterProfiles.id, id)).run()
-  const row = db.select().from(schema.aiModelParameterProfiles).where(eq(schema.aiModelParameterProfiles.id, id)).all()[0]
-  return success(c, serializeParameterProfile(row))
+  }).where(eq(schema.aiModelParameterProfiles.id, id)).execute()
+  const row = (await db.select().from(schema.aiModelParameterProfiles).where(eq(schema.aiModelParameterProfiles.id, id)).execute())[0]
+  return success(c, await serializeParameterProfile(row))
 })
 
-app.delete('/admin/model-parameters/:id', (c) => {
+app.delete('/admin/model-parameters/:id', async (c) => {
   const id = Number(c.req.param('id'))
-  db.delete(schema.aiModelParameterProfileItems).where(eq(schema.aiModelParameterProfileItems.profileId, id)).run()
-  db.delete(schema.aiModelParameterProfiles).where(eq(schema.aiModelParameterProfiles.id, id)).run()
+  await db.delete(schema.aiModelParameterProfileItems).where(eq(schema.aiModelParameterProfileItems.profileId, id)).execute()
+  await db.delete(schema.aiModelParameterProfiles).where(eq(schema.aiModelParameterProfiles.id, id)).execute()
   return success(c)
 })
 
-app.get('/admin/model-parameters/:id/items', (c) => {
+app.get('/admin/model-parameters/:id/items', async (c) => {
   const profileId = Number(c.req.param('id'))
-  const rows = db.select().from(schema.aiModelParameterProfileItems)
+  const rows = (await db.select().from(schema.aiModelParameterProfileItems)
     .where(eq(schema.aiModelParameterProfileItems.profileId, profileId))
-    .all()
+    .execute())
     .sort((a, b) => (a.rank || 0) - (b.rank || 0) || a.id - b.id)
   return success(c, rows.map(serializeParameterItem))
 })
 
 app.post('/admin/model-parameters/:id/items', async (c) => {
   const profileId = Number(c.req.param('id'))
-  const profile = db.select().from(schema.aiModelParameterProfiles).where(eq(schema.aiModelParameterProfiles.id, profileId)).all()[0]
+  const profile = (await db.select().from(schema.aiModelParameterProfiles).where(eq(schema.aiModelParameterProfiles.id, profileId)).execute())[0]
   if (!profile) return notFound(c, 'parameter profile not found')
   const body = await c.req.json()
   const type = String(body.type || '').trim()
@@ -454,7 +971,7 @@ app.post('/admin/model-parameters/:id/items', async (c) => {
   const value = String(body.value || '').trim()
   if (!type || !label || !value) return badRequest(c, 'type, label and value are required')
   const ts = now()
-  const result = db.insert(schema.aiModelParameterProfileItems).values({
+  const result = await db.insert(schema.aiModelParameterProfileItems).values({
     profileId,
     type,
     label,
@@ -463,8 +980,8 @@ app.post('/admin/model-parameters/:id/items', async (c) => {
     rank: Number(body.rank || 0),
     createdAt: ts,
     updatedAt: ts,
-  }).run()
-  const row = db.select().from(schema.aiModelParameterProfileItems).where(eq(schema.aiModelParameterProfileItems.id, Number(result.lastInsertRowid))).all()[0]
+  }).execute()
+  const row = (await db.select().from(schema.aiModelParameterProfileItems).where(eq(schema.aiModelParameterProfileItems.id, Number(result.insertId))).execute())[0]
   return created(c, serializeParameterItem(row))
 })
 
@@ -475,80 +992,163 @@ app.put('/admin/model-parameters/items/:itemId', async (c) => {
   const label = String(body.label || '').trim()
   const value = String(body.value || '').trim()
   if (!type || !label || !value) return badRequest(c, 'type, label and value are required')
-  db.update(schema.aiModelParameterProfileItems).set({
+  await db.update(schema.aiModelParameterProfileItems).set({
     type,
     label,
     value,
     config: stringifyConfig(body.config),
     rank: Number(body.rank || 0),
     updatedAt: now(),
-  }).where(eq(schema.aiModelParameterProfileItems.id, id)).run()
-  const row = db.select().from(schema.aiModelParameterProfileItems).where(eq(schema.aiModelParameterProfileItems.id, id)).all()[0]
+  }).where(eq(schema.aiModelParameterProfileItems.id, id)).execute()
+  const row = (await db.select().from(schema.aiModelParameterProfileItems).where(eq(schema.aiModelParameterProfileItems.id, id)).execute())[0]
   if (!row) return notFound(c, 'parameter item not found')
   return success(c, serializeParameterItem(row))
 })
 
-app.delete('/admin/model-parameters/items/:itemId', (c) => {
-  db.delete(schema.aiModelParameterProfileItems).where(eq(schema.aiModelParameterProfileItems.id, Number(c.req.param('itemId')))).run()
+app.delete('/admin/model-parameters/items/:itemId', async (c) => {
+  await db.delete(schema.aiModelParameterProfileItems).where(eq(schema.aiModelParameterProfileItems.id, Number(c.req.param('itemId')))).execute()
   return success(c)
 })
 
 // User provider connection. Copies all public models under this provider to the user.
-app.get('/user/providers', (c) => {
+app.get('/user/providers', async (c) => {
   const userId = currentUserId(c)
-  ensureUser(userId)
-  const rows = db.select().from(schema.aiUserProviderConfigs).where(eq(schema.aiUserProviderConfigs.userId, userId)).all()
+  await ensureUser(userId)
+  const rows = (await db.select().from(schema.aiUserProviderConfigs).where(eq(schema.aiUserProviderConfigs.userId, userId)).execute())
   return success(c, rows.map(row => ({ ...toSnakeCase(row), api_key: row.apiKey ? '********' : '' })))
 })
 
-app.get('/admin/user-providers', (c) => {
-  let rows = db.select().from(schema.aiUserProviderConfigs).all()
+app.get('/admin/user-providers', async (c) => {
   const userId = c.req.query('user_id')
-  if (userId) rows = rows.filter(row => row.userId === userId)
-  rows.sort((a, b) => a.userId.localeCompare(b.userId) || (b.id || 0) - (a.id || 0))
-  return success(c, rows.map(row => ({ ...toSnakeCase(row), api_key: row.apiKey ? '********' : '' })))
+  const provider = c.req.query('provider')
+  const active = c.req.query('active')
+  const keyword = String(c.req.query('keyword') || '').trim()
+  const page = clampInt(c.req.query('page'), 1, 1, 100000)
+  const pageSize = clampInt(c.req.query('page_size') || c.req.query('pageSize'), 20, 1, 100)
+  const conditions: any[] = []
+
+  if (userId === '__platform__') conditions.push(isNull(schema.aiUserProviderConfigs.userId))
+  else if (userId) conditions.push(eq(schema.aiUserProviderConfigs.userId, userId))
+  if (provider) conditions.push(eq(schema.aiUserProviderConfigs.provider, provider))
+  if (active === '1' || active === 'true') conditions.push(eq(schema.aiUserProviderConfigs.isActive, true))
+  if (active === '0' || active === 'false') conditions.push(eq(schema.aiUserProviderConfigs.isActive, false))
+  if (keyword) {
+    const pattern = `%${keyword}%`
+    conditions.push(or(
+      like(schema.aiUserProviderConfigs.userId, pattern),
+      like(schema.aiUserProviderConfigs.name, pattern),
+      like(schema.aiUserProviderConfigs.provider, pattern),
+      like(schema.aiUserProviderConfigs.baseUrl, pattern),
+    )!)
+  }
+
+  const where = conditions.length ? and(...conditions) : undefined
+  const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(schema.aiUserProviderConfigs).where(where).execute()
+  const rows = await db.select().from(schema.aiUserProviderConfigs)
+    .where(where)
+    .orderBy(schema.aiUserProviderConfigs.userId, sql`${schema.aiUserProviderConfigs.id} desc`)
+    .limit(pageSize)
+    .offset((page - 1) * pageSize)
+    .execute()
+
+  return success(c, {
+    items: rows.map(row => ({ ...toSnakeCase(row), api_key: row.apiKey ? '********' : '' })),
+    pagination: { page, page_size: pageSize, total: Number(total || 0), total_pages: Math.max(1, Math.ceil(Number(total || 0) / pageSize)) },
+  })
 })
 
-app.delete('/admin/user-providers/:id', (c) => {
+app.post('/admin/user-providers', async (c) => {
+  const body = await c.req.json()
+  const rawUserId = String(body.user_id ?? body.userId ?? '').trim()
+  const userId = rawUserId || null
+  const providerId = Number(body.provider_id || body.providerId)
+  const provider = await providerById(providerId)
+  if (!provider) return notFound(c, 'provider not found')
+  const baseUrl = String(body.base_url || body.baseUrl || '').trim()
+  const apiKey = String(body.api_key || body.apiKey || '').trim()
+  if (!baseUrl || !apiKey) return badRequest(c, 'base_url and api_key are required')
+  const ts = now()
+  const result = await db.insert(schema.aiUserProviderConfigs).values({
+    userId,
+    providerId,
+    provider: provider.provider,
+    name: body.name || provider.displayName || provider.name,
+    baseUrl,
+    apiKey,
+    isActive: body.is_active ?? body.isActive ?? true,
+    createdAt: ts,
+    updatedAt: ts,
+  }).execute()
+  const row = (await db.select().from(schema.aiUserProviderConfigs).where(eq(schema.aiUserProviderConfigs.id, Number(result.insertId))).execute())[0]
+  return created(c, { ...toSnakeCase(row), api_key: row.apiKey ? '********' : '' })
+})
+
+app.put('/admin/user-providers/:id', async (c) => {
   const id = Number(c.req.param('id'))
-  const row = db.select().from(schema.aiUserProviderConfigs).where(eq(schema.aiUserProviderConfigs.id, id)).all()[0]
+  const body = await c.req.json()
+  const row = (await db.select().from(schema.aiUserProviderConfigs).where(eq(schema.aiUserProviderConfigs.id, id)).execute())[0]
   if (!row) return notFound(c, 'user provider not found')
-  db.delete(schema.aiUserProviderConfigs).where(eq(schema.aiUserProviderConfigs.id, id)).run()
-  db.select().from(schema.aiModelConfigs)
-    .where(eq(schema.aiModelConfigs.userId, row.userId))
-    .all()
-    .filter(model => model.providerId === row.providerId || model.provider === row.provider)
-    .forEach(model => {
-      db.update(schema.aiModelConfigs).set({ isActive: false, updatedAt: now() }).where(eq(schema.aiModelConfigs.id, model.id)).run()
-    })
+  const rawUserId = body.user_id ?? body.userId
+  const providerId = Number(body.provider_id || body.providerId || row.providerId)
+  const provider = await providerById(providerId)
+  if (!provider) return notFound(c, 'provider not found')
+  const apiKey = String(body.api_key || body.apiKey || '').trim()
+  await db.update(schema.aiUserProviderConfigs).set({
+    userId: rawUserId === undefined ? row.userId : (String(rawUserId || '').trim() || null),
+    providerId,
+    provider: provider.provider,
+    name: body.name || provider.displayName || provider.name,
+    baseUrl: body.base_url || body.baseUrl || row.baseUrl,
+    apiKey: apiKey && apiKey !== '********' ? apiKey : row.apiKey,
+    isActive: body.is_active ?? body.isActive ?? row.isActive,
+    updatedAt: now(),
+  }).where(eq(schema.aiUserProviderConfigs.id, id)).execute()
+  const updated = (await db.select().from(schema.aiUserProviderConfigs).where(eq(schema.aiUserProviderConfigs.id, id)).execute())[0]
+  return success(c, { ...toSnakeCase(updated), api_key: updated.apiKey ? '********' : '' })
+})
+
+app.delete('/admin/user-providers/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  const row = (await db.select().from(schema.aiUserProviderConfigs).where(eq(schema.aiUserProviderConfigs.id, id)).execute())[0]
+  if (!row) return notFound(c, 'user provider not found')
+  await db.delete(schema.aiUserProviderConfigs).where(eq(schema.aiUserProviderConfigs.id, id)).execute()
+  if (row.userId) {
+    const modelsToDisable = (await db.select().from(schema.aiModelConfigs)
+      .where(eq(schema.aiModelConfigs.userId, row.userId))
+      .execute())
+      .filter(model => model.providerId === row.providerId || model.provider === row.provider)
+    for (const model of modelsToDisable) {
+      await db.update(schema.aiModelConfigs).set({ isActive: false, updatedAt: now() }).where(eq(schema.aiModelConfigs.id, model.id)).execute()
+    }
+  }
   return success(c)
 })
 
 app.post('/user/providers/connect', async (c) => {
   const userId = currentUserId(c)
-  ensureUser(userId)
+  await ensureUser(userId)
   const body = await c.req.json()
   const providerId = Number(body.provider_id || body.providerId)
-  const provider = providerById(providerId)
+  const provider = await providerById(providerId)
   if (!provider) return notFound(c, 'provider not found')
   const baseUrl = String(body.base_url || body.baseUrl || '').trim()
   const apiKey = String(body.api_key || body.apiKey || '').trim()
   if (!baseUrl || !apiKey) return badRequest(c, 'base_url and api_key are required')
   const ts = now()
 
-  const existing = db.select().from(schema.aiUserProviderConfigs)
-    .where(and(eq(schema.aiUserProviderConfigs.userId, userId), eq(schema.aiUserProviderConfigs.providerId, providerId))).all()[0]
+  const existing = (await db.select().from(schema.aiUserProviderConfigs)
+    .where(and(eq(schema.aiUserProviderConfigs.userId, userId), eq(schema.aiUserProviderConfigs.providerId, providerId))).execute())[0]
   if (existing) {
-    db.update(schema.aiUserProviderConfigs).set({
+    await db.update(schema.aiUserProviderConfigs).set({
       name: provider.displayName || provider.name,
       provider: provider.provider,
       baseUrl,
       apiKey,
       isActive: true,
       updatedAt: ts,
-    }).where(eq(schema.aiUserProviderConfigs.id, existing.id)).run()
+    }).where(eq(schema.aiUserProviderConfigs.id, existing.id)).execute()
   } else {
-    db.insert(schema.aiUserProviderConfigs).values({
+    await db.insert(schema.aiUserProviderConfigs).values({
       userId,
       providerId,
       provider: provider.provider,
@@ -558,68 +1158,31 @@ app.post('/user/providers/connect', async (c) => {
       isActive: true,
       createdAt: ts,
       updatedAt: ts,
-    }).run()
+    }).execute()
   }
 
-  const sourceModels = publicModels().filter(model => model.providerId === providerId || model.provider === provider.provider)
-  let copied = 0
-  for (const model of sourceModels) {
-    const exists = userModels(userId).find(row => row.sourceModelId === model.id || (row.provider === model.provider && row.modelId === model.modelId && row.serviceType === model.serviceType))
-    if (exists) {
-      db.update(schema.aiModelConfigs).set({
-        name: model.name,
-        description: model.description,
-        baseUrl: null,
-        endpoint: model.endpoint,
-        queryEndpoint: model.queryEndpoint,
-        parameterProfileId: model.parameterProfileId,
-        parameters: model.parameters,
-        defaults: model.defaults,
-        capabilities: model.capabilities,
-        cost: model.cost,
-        priority: model.priority,
-        isActive: true,
-        updatedAt: ts,
-      }).where(eq(schema.aiModelConfigs.id, exists.id)).run()
-      continue
-    }
-    db.insert(schema.aiModelConfigs).values({
-      userId,
-      providerId,
-      sourceModelId: model.id,
-      serviceType: model.serviceType,
-      provider: model.provider,
-      modelId: model.modelId,
-      name: model.name,
-      description: model.description,
-      baseUrl: null,
-      parameterProfileId: model.parameterProfileId,
-      endpoint: model.endpoint,
-      queryEndpoint: model.queryEndpoint,
-      parameters: model.parameters,
-      defaults: model.defaults,
-      capabilities: model.capabilities,
-      cost: model.cost,
-      priority: model.priority,
-      isDefault: model.isDefault,
-      isActive: true,
-      createdAt: ts,
-      updatedAt: ts,
-    }).run()
-    copied += 1
-  }
+  const availableModels = (await publicModels())
+    .filter(model => model.isActive)
+    .filter(model => model.providerId === providerId || model.provider === provider.provider)
+    .length
 
-  return success(c, { provider: serializeProvider(provider), copied })
+  await db.update(schema.aiUsers).set({
+    resourceMode: 'user_api',
+    onboardingCompletedAt: ts,
+    updatedAt: ts,
+  }).where(eq(schema.aiUsers.id, userId)).execute()
+
+  return success(c, { provider: serializeProvider(provider), copied: 0, available_models: availableModels })
 })
 
 app.post('/seed-from-configs', async (c) => {
   const ts = now()
-  const configs = db.select().from(schema.aiServiceConfigs).all()
+  const configs = (await db.select().from(schema.aiServiceConfigs).execute())
   let createdCount = 0
 
   for (const config of configs) {
     const key = providerKey(config.provider || config.name)
-    let provider = db.select().from(schema.aiServiceProviders).where(eq(schema.aiServiceProviders.provider, key)).all()[0]
+    let provider = (await db.select().from(schema.aiServiceProviders).where(eq(schema.aiServiceProviders.provider, key)).execute())[0]
     if (!provider) {
       const providerResult = db.insert(schema.aiServiceProviders).values({
         name: config.name || key,
@@ -631,14 +1194,14 @@ app.post('/seed-from-configs', async (c) => {
         isActive: Boolean(config.isActive),
         createdAt: ts,
         updatedAt: ts,
-      }).run()
-      provider = providerById(Number(providerResult.lastInsertRowid))
+      }).execute()
+      provider = await providerById(Number(providerResult.insertId))
     }
     const models = parseJson(config.model, [])
     for (const model of Array.isArray(models) ? models : [models]) {
       const modelId = String(model || '').trim()
       if (!modelId) continue
-      const exists = publicModels().find(row => row.provider === key && row.serviceType === config.serviceType && row.modelId === modelId)
+      const exists = (await publicModels()).find(row => row.provider === key && row.serviceType === config.serviceType && row.modelId === modelId)
       if (exists) continue
       db.insert(schema.aiModelConfigs).values({
         userId: null,
@@ -653,7 +1216,7 @@ app.post('/seed-from-configs', async (c) => {
         isActive: Boolean(config.isActive),
         createdAt: ts,
         updatedAt: ts,
-      }).run()
+      }).execute()
       createdCount += 1
     }
   }

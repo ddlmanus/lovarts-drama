@@ -6,7 +6,7 @@
         <NuxtLayout>
           <NuxtPage />
         </NuxtLayout>
-        <Toaster position="top-right" :duration="3000" />
+        <Toaster position="bottom-right" :duration="3000" />
       </NDialogProvider>
     </NMessageProvider>
   </NConfigProvider>

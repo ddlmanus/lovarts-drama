@@ -9,7 +9,7 @@
  */
 
 import { ref, watch } from 'vue'
-import { streamChatCompletions } from '~/canvas/api'
+import { chatAPI } from '~/composables/useApi'
 import { 
   nodes, 
   addNode, 
@@ -307,16 +307,14 @@ export const useWorkflowOrchestrator = () => {
     isAnalyzing.value = true
     
     try {
-      let response = ''
-      for await (const chunk of streamChatCompletions({
-        model: 'gpt-4o',
+      const result = await chatAPI.ask({
         messages: [
           { role: 'system', content: INTENT_ANALYSIS_PROMPT },
           { role: 'user', content: userInput }
-        ]
-      })) {
-        response += chunk
-      }
+        ],
+        stream: false
+      })
+      const response = result?.text || result?.content || ''
       
       const jsonMatch = response.match(/\{[\s\S]*\}/)
       if (!jsonMatch) {

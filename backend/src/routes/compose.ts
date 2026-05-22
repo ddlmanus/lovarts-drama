@@ -28,7 +28,7 @@ app.post('/episodes/:id/compose-all', async (c) => {
   const storyboards = db.select().from(schema.storyboards)
     .where(eq(schema.storyboards.episodeId, episodeId))
     .orderBy(schema.storyboards.storyboardNumber)
-    .all()
+    .execute()
 
   if (storyboards.length === 0) return badRequest(c, 'No storyboards found')
 
@@ -39,7 +39,7 @@ app.post('/episodes/:id/compose-all', async (c) => {
   db.update(schema.storyboards)
     .set({ status: 'compose_processing' })
     .where(eq(schema.storyboards.episodeId, episodeId))
-    .run()
+    .execute()
 
   ;(async () => {
     for (const sb of withVideo) {
@@ -65,7 +65,7 @@ app.get('/episodes/:id/compose-status', async (c) => {
   const storyboards = db.select().from(schema.storyboards)
     .where(eq(schema.storyboards.episodeId, episodeId))
     .orderBy(schema.storyboards.storyboardNumber)
-    .all()
+    .execute()
 
   const withVideo = storyboards.filter(sb => !!sb.videoUrl)
   const completed = withVideo.filter(sb => sb.status === 'compose_completed' && !!sb.composedVideoUrl)

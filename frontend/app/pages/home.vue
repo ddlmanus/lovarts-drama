@@ -93,7 +93,7 @@
                     <Copy :size="14" />
                     <span>复制</span>
                   </button>
-                  <button type="button" @click="usePrompt(item.prompt)">
+                  <button type="button" @click="createVariant(item)">
                     <WandSparkles :size="14" />
                     <span>二创</span>
                   </button>
@@ -109,7 +109,7 @@
       </div>
     </section>
 
-    <MaterialInput v-model="prompt" />
+    <MaterialInput v-model="prompt" :external-reference-image="externalReferenceImage" />
   </div>
 </template>
 
@@ -122,34 +122,34 @@ import {
 import { toast } from 'vue-sonner'
 
 const banners = [
-  { title: '诗和远方', image: 'https://ffile.chatfire.site/miniapp/banner02.png' },
-  { title: '疯狂动物城', image: 'https://ffile.chatfire.site/miniapp/banner03.png' },
-  { title: '圣诞装扮', image: 'https://ffile.chatfire.site/miniapp/banner01.png' },
+  { title: '诗和远方', image: '/inspiration/banner02-1fad6df8.png' },
+  { title: '疯狂动物城', image: '/inspiration/banner03-e0c5e3e9.png' },
+  { title: '圣诞装扮', image: '/inspiration/banner01-2357139b.png' },
 ]
 
 const quickApps = [
   {
     title: '戴个圣诞帽',
     desc: '一键为照片添加圣诞帽',
-    image: 'https://ffile.chatfire.site/image/covers/christmas-cover.png',
+    image: '/inspiration/christmas-cover-289ca5fb.png',
     prompt: '保留原图质感，为图片添加圣诞帽，帽子方向向右。人物不要动',
   },
   {
     title: '疯狂动物城',
     desc: '与动物城明星合影',
-    image: 'https://ffile.chatfire.site/miniapp/cover01.png',
+    image: '/inspiration/cover01-9795e1da.png',
     prompt: '把人物放入疯狂动物城风格街景，与动物城明星自然合影，保持照片质感',
   },
   {
     title: '圣诞装扮',
     desc: '圣诞魔法，温馨变装',
-    image: 'https://ffile.chatfire.site/miniapp/sd1.jpg',
+    image: '/inspiration/sd1-985f634a.jpg',
     prompt: '圣诞主题温馨变装，柔和灯光，节日氛围，保留人物面部特征',
   },
   {
     title: '诗和远方',
     desc: '诗意旅程，自由浪漫',
-    image: 'https://ffile.chatfire.site/miniapp/p1-1.jpg',
+    image: '/inspiration/p1-1-db910279.jpg',
     prompt: '诗意远方旅行大片，自由浪漫，电影质感，自然光，细腻色彩',
   },
 ]
@@ -159,154 +159,154 @@ const galleryItems = [
     id: 1,
     type: '图片',
     height: 426.6,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/f2211ac0bae6484898a0b340f43528e7_20251221_095955_26cd6c2e.png',
+    image: '/inspiration/f2211ac0bae6484898a0b340f43528e7_20251221_095955_26cd6c2e-8269a20a.png',
     prompt: '高定羊毛毡作品，巨大的红色萝卜房子，郁郁葱葱的花园，色彩鲜艳明快，温馨童话氛围，超高清细节。',
   },
   {
     id: 2,
     type: '图片',
     height: 284.4,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/f4708e578e054f31ba3a0f90fc4c0edf_20251217_160656_132cf4eb.png',
+    image: '/inspiration/f4708e578e054f31ba3a0f90fc4c0edf_20251217_160656_132cf4eb-3e044e00.png',
     prompt: '保留原图质感，为图片添加圣诞帽，帽子方向向右。人物不要动。',
   },
   {
     id: 3,
     type: '图片',
     height: 284.4,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/9ccaf4f0707b47c99d7b685bc710dddf_20250730_113041_a2f5a0d5.image',
+    image: '/inspiration/9ccaf4f0707b47c99d7b685bc710dddf_20250730_113041_a2f5a0d5-6906c221.jpg',
     prompt: '梅西的卡通图像，抽象夸张，高清细节，深蓝色背景，3D 卡通，伦勃朗光。',
   },
   {
     id: 4,
     type: '图片',
     height: 159.9,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/8db982b2461343d0814f9f685115b837_20251217_233155_c3a7f5dc.png',
+    image: '/inspiration/8db982b2461343d0814f9f685115b837_20251217_233155_c3a7f5dc-a5f45f20.png',
     prompt: 'Anime magical girl warrior, vibrant colors, dynamic pose, fantasy setting, glowing magical aura.',
   },
   {
     id: 5,
     type: '图片',
     height: 189.7,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/44ba9375b8b949e286b966b489ac566c_20250822_142807_1d7f83ff.png',
+    image: '/inspiration/44ba9375b8b949e286b966b489ac566c_20250822_142807_1d7f83ff-759d3c69.png',
     prompt: '西安秦潮盛唐，大雁塔、钟楼、大明宫丹凤门同框，朱红鎏金与赛博青蓝，夜空丝路全息剪影。',
   },
   {
     id: 6,
     type: '图片',
     height: 284.4,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/fca38735e3e54e26985531f244974384_20250730_112905_d5331fac.image',
+    image: '/inspiration/fca38735e3e54e26985531f244974384_20250730_112905_d5331fac-e83992e6.jpg',
     prompt: '9 宫格表情包，三维可爱风格，动作：打瞌睡、求抱抱、卖萌、微笑、生气、流泪、委屈、难过、激动。',
   },
   {
     id: 7,
     type: '图片',
     height: 505.6,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/acacb0bc310944bab324c5a769a2260b_20251221_095655_45c5e32a.png',
+    image: '/inspiration/acacb0bc310944bab324c5a769a2260b_20251221_095655_45c5e32a-3ce1f610.png',
     prompt: '疯狂动物城城市风光，兔朱迪和狐尼克并排站在面前，表情生动，温暖可爱，3D 动画风格，电影级光线。',
   },
   {
     id: 8,
     type: '图片',
     height: 379.2,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/42c39e98bf6a47f9b76788e32e229234_20251218_221855_ab30c284.png',
+    image: '/inspiration/42c39e98bf6a47f9b76788e32e229234_20251218_221855_ab30c284-c2230b7a.png',
     prompt: '给图中人物进行圣诞装扮，保留脸部特征，红丝绒圣诞服饰，暖黄色柔和灯光，高清特写，元气可爱风格。',
   },
   {
     id: 9,
     type: '图片',
     height: 189.7,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/426260b9e1a448c5920bc183666a6077_20250822_145507_892da26e.png',
+    image: '/inspiration/426260b9e1a448c5920bc183666a6077_20250822_145507_892da26e-43b68e9b.png',
     prompt: '厦门城市插画，鼓浪屿、厦门大学、南普陀寺、双子塔、环岛路等地标同框，初夏傍晚，色彩明亮。',
   },
   {
     id: 10,
     type: '图片',
     height: 159.9,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/59239205f0244b5d9f13f1c41885c040_20251217_233355_626a5068.png',
+    image: '/inspiration/59239205f0244b5d9f13f1c41885c040_20251217_233355_626a5068-5c3e02d4.png',
     prompt: '白色狐仙在神秘仙境中翩翩起舞，九条尾巴梦幻摇曳，白色莲花与蝴蝶环绕，如梦如幻。',
   },
   {
     id: 11,
     type: '图片',
     height: 159.9,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/ffa845fcf68848419d6a1d9bc8f34d3a_20250915_080024_d9e8ca50.png',
+    image: '/inspiration/ffa845fcf68848419d6a1d9bc8f34d3a_20250915_080024_d9e8ca50-30533bda.png',
     prompt: '变形金刚大战，金属质感，动态冲突场面，电影级光影。',
   },
   {
     id: 12,
     type: '图片',
     height: 284.4,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/fe253bfe742b40fe8ce3cb47d41ed3b9_20250821_185907_1ffbc593.png',
+    image: '/inspiration/fe253bfe742b40fe8ce3cb47d41ed3b9_20250821_185907_1ffbc593-ccee1f68.png',
     prompt: 'Chinese ink-wash manga style, black and white, dramatic lighting, high contrast.',
   },
   {
     id: 13,
     type: '图片',
     height: 284.4,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/11d445c7af784adcbaf279069a97ecb6_20250821_191109_db83c9e1.png',
+    image: '/inspiration/11d445c7af784adcbaf279069a97ecb6_20250821_191109_db83c9e1-b9c9ee1e.png',
     prompt: '中国风侠客水墨风格，屋顶黑影掠过，盗贼剪影，月亮在背后，黑白高对比。',
   },
   {
     id: 14,
     type: '图片',
     height: 284.4,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/0fdc4063e87d4a12bd3855e6be32f310_20250730_110724_473b3114.image',
+    image: '/inspiration/0fdc4063e87d4a12bd3855e6be32f310_20250730_110724_473b3114-955538bb.jpg',
     prompt: '皮克斯与儿童读物插图风格，可爱人物特写，红色背景，羊毛毛毡织物艺术，高清细节。',
   },
   {
     id: 15,
     type: '图片',
     height: 284.4,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/9c5de6faec18492caeee8109afcda45e_20250729_094603_68a685f1.image',
+    image: '/inspiration/9c5de6faec18492caeee8109afcda45e_20250729_094603_68a685f1-399f1cd1.jpg',
     prompt: '治愈系卡通角色，由织物、棉花、毛毡毛绒组成，丑萌可爱，蓝天白云户外，证件照构图。',
   },
   {
     id: 16,
     type: '图片',
     height: 284.4,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/f66ff5b3e5b0466dba51696fd38065fc_20250730_073500_c2fda4d1.image',
-    prompt: '画图问答找火宝，模型切换不用愁，复古印刷字体，彩色毛线缠绕，淡黄色绒布背景，温暖手工质感。',
+    image: '/inspiration/f66ff5b3e5b0466dba51696fd38065fc_20250730_073500_c2fda4d1-6a4be035.jpg',
+    prompt: '画图问答找Lovarts.短剧，模型切换不用愁，复古印刷字体，彩色毛线缠绕，淡黄色绒布背景，温暖手工质感。',
   },
   {
     id: 17,
     type: '图片',
     height: 284.4,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/9909203018eb474baec37426beed559e_20251218_152655_d9c0b45b.png',
+    image: '/inspiration/9909203018eb474baec37426beed559e_20251218_152655_d9c0b45b-4469c0d4.png',
     prompt: '风格转换，动漫风格，氛围很棒，画面柔和。',
   },
   {
     id: 18,
     type: '图片',
     height: 426.6,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/8d1c19d2547c44ff91ed7645f2282995_20250729_230939_9c2fa589.image',
+    image: '/inspiration/8d1c19d2547c44ff91ed7645f2282995_20250729_230939_9c2fa589-b24c32d4.jpg',
     prompt: '现代格斗角色，都市夜景背景，概念艺术，强烈轮廓光，高细节数字插画。',
   },
   {
     id: 19,
     type: '视频',
     height: 426.6,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/8d1c19d2547c44ff91ed7645f2282995_20250729_230939_9c2fa589.image',
+    image: '/inspiration/8d1c19d2547c44ff91ed7645f2282995_20250729_230939_9c2fa589-b24c32d4.jpg',
     prompt: '都市动作短片首帧，现代格斗角色，强烈轮廓光，城市夜景，镜头缓慢推进。',
   },
   {
     id: 20,
     type: '视频',
     height: 284.4,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/9c5de6faec18492caeee8109afcda45e_20250729_094603_68a685f1.image',
+    image: '/inspiration/9c5de6faec18492caeee8109afcda45e_20250729_094603_68a685f1-399f1cd1.jpg',
     prompt: '治愈系卡通角色户外短片，蓝天白云，柔软毛绒质感，镜头轻微摇移。',
   },
   {
     id: 21,
     type: '视频',
     height: 189.7,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/44ba9375b8b949e286b966b489ac566c_20250822_142807_1d7f83ff.png',
+    image: '/inspiration/44ba9375b8b949e286b966b489ac566c_20250822_142807_1d7f83ff-759d3c69.png',
     prompt: '西安城市宣传视频首帧，赛博唐风夜景，镜头从钟楼推向大雁塔。',
   },
   {
     id: 22,
     type: '视频',
     height: 284.4,
-    image: 'https://ffile.chatfire.site/cf/chatfire-media/image/fe253bfe742b40fe8ce3cb47d41ed3b9_20250821_185907_1ffbc593.png',
+    image: '/inspiration/fe253bfe742b40fe8ce3cb47d41ed3b9_20250821_185907_1ffbc593-ccee1f68.png',
     prompt: '黑白水墨武侠动画，强对比光影，人物从画面边缘掠过。',
   },
 ]
@@ -316,6 +316,7 @@ const activeTab = ref('图片')
 const activeBanner = ref(0)
 const pauseAuto = ref(false)
 const prompt = ref('')
+const externalReferenceImage = ref(null)
 
 const columnCount = ref(5)
 const filteredItems = computed(() => galleryItems.filter((item) => item.type === activeTab.value))
@@ -353,6 +354,16 @@ function prevBanner() {
 function usePrompt(text) {
   prompt.value = text
   toast.success('已填入提示词')
+}
+
+function createVariant(item) {
+  prompt.value = item.prompt
+  externalReferenceImage.value = {
+    id: `${item.id}-${Date.now()}`,
+    url: item.image,
+    name: `参考图${item.id}`,
+  }
+  toast.success('已加入参考图')
 }
 
 async function copyPrompt(text) {

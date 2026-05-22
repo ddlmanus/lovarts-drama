@@ -1,35 +1,31 @@
 <template>
   <div class="codex-page" :class="{ 'panel-collapsed': codexPanelCollapsed }">
     <aside class="project-panel">
-      <div class="panel-toolbar">
-        <span>Codex</span>
-      </div>
       <div class="panel-nav">
         <button class="nav-action" type="button" :disabled="!activeProject" @click="newThread">
           <Edit3 :size="18" />
-          <span>新对话</span>
+          <span>New chat</span>
         </button>
         <button class="nav-action" type="button" @click="openSkillInstallChat">
           <Search :size="18" />
-          <span>搜索</span>
+          <span>Search</span>
         </button>
-        <button class="nav-action" type="button" :class="{ active: currentView === 'skills' }" @click="openSkillsPage">
+        <button class="nav-action" type="button" :class="{ active: currentView === 'skills' }" @click="openPluginsPage">
           <Blocks :size="18" />
-          <span>技能</span>
+          <span>Skills</span>
         </button>
       </div>
 
       <div class="section-title project-section-title">
-        <button class="project-collapse-btn" type="button" title="折叠项目">
-          <span>⌄</span>
-        </button>
-        <button class="project-title-action" type="button" @click="projectDialogOpen = true">
-          <Plus :size="18" />
-          <span>新建项目</span>
-        </button>
+        <div class="project-section-label">
+          <button class="project-collapse-btn" type="button" title="折叠项目">
+            <ChevronRight :size="12" />
+          </button>
+          <span>Projects</span>
+        </div>
         <div class="project-section-actions">
           <button type="button" title="更多项目操作">...</button>
-          <button type="button" title="新建项目" @click="projectDialogOpen = true">
+          <button type="button" title="Add project" @click="projectDialogOpen = true">
             <Plus :size="14" />
           </button>
         </div>
@@ -72,10 +68,15 @@
         <div v-if="!projects.length" class="empty-state">暂无项目</div>
       </div>
 
+      <div class="chat-section">
+        <div class="chat-section-title">Chats</div>
+        <div class="chat-empty">No chats</div>
+      </div>
+
       <div class="panel-footer">
         <button class="nav-action" type="button" @click="openCodexSettings">
           <Settings :size="18" />
-          <span>设置</span>
+          <span>Settings</span>
         </button>
         <div class="codex-status">
           {{ codexStatus.installed ? (codexConfig.api_key_set ? 'Codex 已配置' : 'Codex 未配置') : 'Codex 未安装' }}
@@ -87,26 +88,76 @@
     <main class="workspace-main">
       <section v-if="currentView === 'skills'" class="skills-page">
         <div class="skills-topbar">
-          <button class="skills-toolbar-btn" type="button" :disabled="skillsLoading" @click="loadUserSkills">
-            <Loader2 v-if="skillsLoading" :size="16" class="spin" />
-            <RefreshCw v-else :size="16" />
-            <span>刷新</span>
+          <div class="skills-tabs">
+            <button type="button" :class="{ active: skillsTab === 'plugins' }" @click="skillsTab = 'plugins'">插件</button>
+            <button type="button" :class="{ active: skillsTab === 'skills' }" @click="skillsTab = 'skills'">技能</button>
+          </div>
+          <div class="skills-topbar-spacer"></div>
+          <button class="skills-manage-btn" type="button" @click="openCodexSettings">
+            <Settings :size="18" />
+            <span>管理</span>
           </button>
-          <label class="skills-search">
-            <Search :size="17" />
-            <input v-model="skillsSearchQuery" placeholder="搜索技能" />
-          </label>
-          <button class="skills-new-btn" type="button" @click="openSkillInstallChat">
-            <Plus :size="18" />
-            <span>新建技能</span>
+          <button class="skills-create-btn" type="button" @click="skillsTab === 'skills' ? openSkillInstallChat() : openPluginChat({ id: 'gmail', name: 'Gmail', path: 'plugin://Gmail' })">
+            <span>创建</span>
+            <ChevronRight :size="16" />
+          </button>
+          <button class="skills-more-btn" type="button" :disabled="skillsLoading" title="刷新" @click="loadUserSkills">
+            <Loader2 v-if="skillsLoading" :size="18" class="spin" />
+            <span v-else>...</span>
           </button>
         </div>
         <div class="skills-content">
-          <div class="skills-hero">
-            <h1>Skills</h1>
-            <p>给 Codex 增加当前用户专属能力。</p>
+          <div class="skills-filter-row">
+          <label class="skills-search">
+            <Search :size="17" />
+            <input v-model="skillsSearchQuery" :placeholder="skillsTab === 'plugins' ? '搜索插件' : '搜索技能'" />
+          </label>
+            <button v-if="skillsTab === 'plugins'" class="skills-filter-btn" type="button">
+              <span>Built by OpenAI</span>
+              <ChevronRight :size="16" />
+            </button>
+            <button class="skills-filter-btn compact" type="button">
+              <span>全部</span>
+              <ChevronRight :size="16" />
+            </button>
           </div>
-          <section class="skills-section">
+          <div v-if="skillsTab === 'plugins'" class="plugins-banner">
+            <div class="plugins-banner-pill">
+              <Mail :size="17" />
+              <span><strong>Gmail</strong> 为每封我还没来得及回复的邮件起草回复</span>
+            </div>
+            <button type="button" @click="openPluginChat({ id: 'gmail', name: 'Gmail', path: 'plugin://Gmail' })">
+              在对话中试用
+            </button>
+            <span class="plugins-banner-dots"><i></i><i></i><i></i><i></i></span>
+          </div>
+          <section v-if="skillsTab === 'plugins'" class="skills-section">
+            <h2>Featured</h2>
+            <div v-if="filteredMarketplacePlugins.length" class="skills-grid">
+              <button
+                v-for="plugin in filteredMarketplacePlugins"
+                :key="plugin.id"
+                class="skill-card plugin-card"
+                type="button"
+                :class="{ installed: plugin.installed }"
+                @click="plugin.installed ? openPluginChat(plugin) : installPlugin(plugin)"
+              >
+                <span class="skill-icon" :class="`plugin-icon-${plugin.icon || plugin.id}`">
+                  <component :is="pluginIconComponent(plugin)" :size="19" />
+                </span>
+                <span class="skill-meta">
+                  <strong>{{ plugin.name }}</strong>
+                  <em>{{ plugin.description || '插件' }}</em>
+                </span>
+                <Check v-if="plugin.installed" :size="17" />
+                <Plus v-else :size="19" />
+              </button>
+            </div>
+            <div v-else class="skills-empty">
+              {{ skillsSearchQuery ? '没有匹配的插件' : '暂无插件' }}
+            </div>
+          </section>
+          <section v-else class="skills-section">
             <h2>已安装</h2>
             <div v-if="filteredSkills.length" class="skills-grid">
               <button
@@ -160,10 +211,6 @@
               <PanelLeft v-if="codexPanelCollapsed" :size="18" />
               <PanelLeftClose v-else :size="18" />
             </button>
-            <div>
-              <h1>{{ activeTask?.prompt || activeProject.name }}</h1>
-              <p>{{ activeProject.path }}</p>
-            </div>
           </div>
           <div class="head-actions">
             <button class="header-icon" type="button" title="控制台" :class="{ active: terminalOpen }" @click="toggleTerminal">
@@ -243,7 +290,7 @@
         </section>
 
         <div v-if="!isComposingThread" class="task-output">
-          <div v-if="renderedEvents.length" ref="logBox" class="conversation-box">
+          <div v-if="renderedEvents.length" ref="logBox" class="conversation-box" @scroll="handleLogScroll">
             <div v-if="taskDurationLabel" class="task-duration-line">
               <span>{{ taskDurationLabel }}</span>
               <ChevronRight :size="17" />
@@ -259,14 +306,26 @@
                 <span>{{ event.text }}</span>
               </div>
               <div v-else-if="event.kind === 'activity'" class="activity-line">
-                <span class="activity-dot"></span>
-                <span>{{ event.text }}</span>
+                <Loader2 v-if="event.streaming" :size="15" class="activity-icon spin" />
+                <component v-else :is="activityIcon(event)" :size="15" class="activity-icon" />
+                <span v-if="event.streaming" class="loading-shimmer-pure-text cadenced-shimmer cadenced-shimmer-active">
+                  {{ event.text }}
+                  <span aria-hidden="true" class="cadenced-shimmer-sweep">
+                    <span class="cadenced-shimmer-highlight">{{ event.text }}</span>
+                  </span>
+                </span>
+                <span v-else>{{ event.text }}</span>
               </div>
               <div v-else-if="event.kind === 'editing'" class="editing-line">
                 <Edit3 :size="15" />
                 <span class="editing-label">Editing</span>
-                <button type="button" class="editing-file" @click="openPreview(event.file.path)">
-                  {{ event.file.displayPath || event.file.path }}
+                <button
+                  type="button"
+                  class="editing-file"
+                  :title="event.file.displayPath || event.file.path"
+                  @click="openPreview(event.file.path)"
+                >
+                  {{ event.file.name || event.file.displayPath || event.file.path }}
                 </button>
                 <span class="change-stat additions">+{{ event.file.added }}</span>
                 <span class="change-stat deletions">-{{ event.file.removed }}</span>
@@ -274,13 +333,20 @@
               </div>
               <div v-else-if="event.kind === 'changes'" class="changes-card">
                 <div class="changes-card-head">
-                  <div class="changes-card-title">
+                  <div class="changes-card-icon">
                     <FileCode2 :size="16" />
-                    <span>{{ event.title }}</span>
+                  </div>
+                  <div class="changes-card-copy">
+                    <div class="changes-card-title">
+                      <span>{{ event.title }}</span>
+                    </div>
+                    <div class="changes-card-meta">
+                      <span class="change-stat additions">+{{ event.stats.added }}</span>
+                      <span class="change-stat deletions">-{{ event.stats.removed }}</span>
+                      <span>{{ event.files.length }} {{ event.files.length === 1 ? 'file' : 'files' }}</span>
+                    </div>
                   </div>
                   <div class="changes-card-actions">
-                    <span class="change-stat additions">+{{ event.stats.added }}</span>
-                    <span class="change-stat deletions">-{{ event.stats.removed }}</span>
                     <button
                       class="changes-undo-btn"
                       type="button"
@@ -292,32 +358,46 @@
                     <button type="button" @click="openPreview(event.files[0]?.path)">Review</button>
                   </div>
                 </div>
-                <div v-for="file in event.files" :key="`${event.key}-${file.path}`" class="changes-file-block">
-                  <button
-                    class="changes-file-row"
-                    type="button"
-                    :class="{ expanded: isChangeExpanded(event, file) }"
-                    @click="toggleChangeExpanded(event.key, file.path)"
-                  >
-                    <span class="changes-file-path">{{ file.displayPath || file.path }}</span>
-                    <span v-if="file.action" class="changes-file-action">{{ file.action }}</span>
-                    <span class="change-stat additions">+{{ file.added }}</span>
-                    <span class="change-stat deletions">-{{ file.removed }}</span>
-                    <span class="changes-open-btn" role="button" tabindex="0" title="用本地工具打开" @click.stop="openChangedFile(file.path)" @keydown.enter.stop.prevent="openChangedFile(file.path)">
-                      <ExternalLink :size="13" />
-                    </span>
-                    <ChevronUp v-if="isChangeExpanded(event, file)" :size="16" />
-                    <ChevronRight v-else :size="16" />
-                  </button>
-                  <div v-if="isChangeExpanded(event, file)" class="changes-inline-diff">
-                    <div
-                      v-for="line in previewEditorLines(file.displayPatch || file.patch || '暂无可预览内容')"
-                      :key="`${event.key}-${file.path}-${line.key}`"
-                      class="preview-code-line"
-                      :class="line.kind"
+                <button
+                  class="changes-details-toggle"
+                  type="button"
+                  :aria-expanded="isChangeDetailsExpanded(event)"
+                  @click="toggleChangeDetails(event.key)"
+                >
+                  <span>Details</span>
+                  <ChevronUp v-if="isChangeDetailsExpanded(event)" :size="16" />
+                  <ChevronRight v-else :size="16" />
+                </button>
+                <div v-if="isChangeDetailsExpanded(event)" class="changes-details-body">
+                  <div v-for="file in event.files" :key="`${event.key}-${file.path}`" class="changes-file-block">
+                    <button
+                      class="changes-file-row"
+                      type="button"
+                      :class="{ expanded: isChangeExpanded(event, file) }"
+                      @click="toggleChangeExpanded(event.key, file.path)"
                     >
-                      <span class="preview-line-number">{{ line.number }}</span>
-                      <code>{{ line.text || ' ' }}</code>
+                      <span class="changes-file-path" :title="file.displayPath || file.path">
+                        {{ file.name || file.displayPath || file.path }}
+                      </span>
+                      <span v-if="file.action" class="changes-file-action">{{ file.action }}</span>
+                      <span class="change-stat additions">+{{ file.added }}</span>
+                      <span class="change-stat deletions">-{{ file.removed }}</span>
+                      <span class="changes-open-btn" role="button" tabindex="0" title="用本地工具打开" @click.stop="openChangedFile(file.path)" @keydown.enter.stop.prevent="openChangedFile(file.path)">
+                        <ExternalLink :size="13" />
+                      </span>
+                      <ChevronUp v-if="isChangeExpanded(event, file)" :size="16" />
+                      <ChevronRight v-else :size="16" />
+                    </button>
+                    <div v-if="isChangeExpanded(event, file)" class="changes-inline-diff">
+                      <div
+                        v-for="line in previewEditorLines(file.displayPatch || file.patch || '暂无可预览内容')"
+                        :key="`${event.key}-${file.path}-${line.key}`"
+                        class="preview-code-line"
+                        :class="line.kind"
+                      >
+                        <span class="preview-line-number">{{ line.number }}</span>
+                        <code>{{ line.text || ' ' }}</code>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -344,6 +424,15 @@
                 </summary>
                 <pre>{{ event.text }}</pre>
               </details>
+              <details v-else-if="event.kind === 'toolCall'" class="tool-call-line">
+                <summary>
+                  <Loader2 v-if="event.streaming" :size="15" class="spin" />
+                  <Blocks v-else :size="15" />
+                  <span>{{ event.title || 'Using tool' }}</span>
+                  <em v-if="event.subtitle">{{ event.subtitle }}</em>
+                </summary>
+                <pre>{{ event.text }}</pre>
+              </details>
               <div v-else class="message-row" :class="event.role">
                 <div v-if="event.images?.length" class="message-image-stack">
                   <button
@@ -354,7 +443,7 @@
                     title="查看图片"
                     @click="openAttachmentPreview(image.path)"
                   >
-                    <img :src="image.url" :alt="image.name || '上传图片'" />
+                    <img :src="image.url" :alt="image.name || '上传图片'" @load="handleMessageMediaLoaded" />
                   </button>
                 </div>
                 <div class="message-bubble">
@@ -377,7 +466,7 @@
         </div>
 
         <div v-else class="new-chat-center">
-          <h1>要在 {{ activeProject.name }} 里构建什么？</h1>
+          <h1>What should we build in {{ activeProject.name }}?</h1>
         </div>
 
         <div v-if="composerRunSummaryVisible" class="composer-run-summary">
@@ -393,7 +482,6 @@
             <span class="deletions">-{{ composerChangesEvent.stats.removed }}</span>
             <em>Review here</em>
           </button>
-          <span v-if="isCurrentTaskRunning && latestTokenUsageLabel" class="token-summary">{{ latestTokenUsageLabel }}</span>
         </div>
 
         <form ref="composerEl" class="codex-composer" @submit.prevent="startTask">
@@ -446,8 +534,8 @@
           <textarea
             ref="draftInput"
             v-model="draft"
-            rows="4"
-            placeholder="描述你要 Codex 做的工作。Enter 发送，Shift + Enter 换行"
+            rows="2"
+            :placeholder="isComposingThread ? 'Ask Codex anything. @ to use plugins or mention files' : 'Ask for follow-up changes'"
             :disabled="starting"
             @input="handleDraftInput"
             @focus="handleDraftInput"
@@ -456,32 +544,37 @@
             @keydown.enter.exact.prevent="startTask"
           ></textarea>
           <div class="composer-footer">
-            <button class="round-tool" type="button" :disabled="uploadingAttachment" title="添加图片" @click="fileInput?.click()">
+            <button class="composer-icon-button" type="button" :disabled="uploadingAttachment" title="添加图片" @click="fileInput?.click()">
               <Loader2 v-if="uploadingAttachment" :size="18" class="spin" />
               <Plus v-else :size="20" />
             </button>
-            <select v-model="selectedSandbox" class="inline-select permission-select">
-              <option value="workspace-write">默认权限</option>
-              <option value="read-only">只读</option>
-              <option value="danger-full-access">完全控制</option>
-            </select>
+            <label class="composer-select-shell permission-shell">
+              <Hand :size="17" />
+              <select v-model="selectedSandbox" class="inline-select permission-select" aria-label="权限">
+                <option value="workspace-write">Default permissions</option>
+                <option value="read-only">Read only</option>
+                <option value="danger-full-access">Full access</option>
+              </select>
+              <ChevronRight :size="15" class="composer-chevron" />
+            </label>
             <div class="composer-spacer"></div>
-            <select v-model="selectedModel" class="inline-select model-select">
-              <option value="">设置默认</option>
-              <option v-if="codexConfig.model" :value="codexConfig.model">{{ codexConfig.model }}</option>
-              <option value="gpt-5.5">5.5</option>
-              <option value="gpt-5.4">5.4</option>
-              <option value="gpt-5.4-mini">5.4 Mini</option>
-              <option value="gpt-5.3-codex">5.3 Codex</option>
-            </select>
-            <select v-model="selectedReasoning" class="inline-select reasoning-select">
-              <option value="">高</option>
-              <option value="minimal">极低</option>
-              <option value="low">低</option>
-              <option value="medium">中</option>
-              <option value="high">高</option>
-              <option value="xhigh">极高</option>
-            </select>
+            <label class="composer-select-shell provider-shell">
+              <select v-model="codexConfigForm.provider" class="inline-select provider-select" aria-label="供应商" @change="handleComposerProviderChange">
+                <option v-for="provider in codexProviderOptions" :key="provider.id" :value="provider.id">
+                  {{ provider.display || provider.shortName || provider.id }}
+                </option>
+              </select>
+              <ChevronRight :size="15" class="composer-chevron" />
+            </label>
+            <label class="composer-select-shell model-shell">
+              <select v-model="selectedModel" class="inline-select model-select" aria-label="模型">
+                <option value="">设置默认</option>
+                <option v-if="codexConfig.model" :value="codexConfig.model">{{ codexConfig.model }}</option>
+                <option v-for="model in currentCodexProviderModels" :key="model" :value="model">{{ model }}</option>
+              </select>
+              <ChevronRight :size="15" class="composer-chevron" />
+            </label>
+            <span v-if="isCurrentTaskRunning" class="composer-running-dot"></span>
             <button
               class="send-btn"
               :class="{ running: isCurrentTaskRunning || starting }"
@@ -494,18 +587,27 @@
             </button>
           </div>
           <div v-if="isComposingThread" class="composer-project-meta">
-            <span>
-              <Folder :size="15" />
-              {{ activeProject.name }}
-            </span>
-            <span>
-              <HardDrive :size="15" />
-              {{ workspaceLabel }}
-            </span>
-            <span>
-              <GitBranch :size="15" />
-              {{ projectBranchLabel }}
-            </span>
+            <div class="composer-menu-wrap">
+              <button class="composer-meta-pill" type="button">
+                <Folder :size="15" />
+                <span>{{ activeProject.name }}</span>
+                <ChevronRight :size="14" class="composer-chevron" />
+              </button>
+            </div>
+            <div class="composer-menu-wrap">
+              <button class="composer-meta-pill" type="button">
+                <HardDrive :size="15" />
+                <span>{{ workspaceLabel }}</span>
+                <ChevronRight :size="14" class="composer-chevron" />
+              </button>
+            </div>
+            <div class="composer-menu-wrap">
+              <button class="composer-meta-pill" type="button">
+                <GitBranch :size="15" />
+                <span>{{ projectBranchLabel }}</span>
+                <ChevronRight :size="14" class="composer-chevron" />
+              </button>
+            </div>
           </div>
         </form>
 
@@ -664,7 +766,7 @@
           </div>
         </div>
         <p v-if="projectSource === 'local'" class="dialog-note">
-          本地目录只适合火宝后端运行在你这台电脑时使用；服务器部署时应改用 GitHub/仓库工作区。为安全起见，不能绑定火宝应用自身目录或它的父子目录。
+          本地目录只适合Lovarts.短剧后端运行在你这台电脑时使用；服务器部署时应改用 GitHub/仓库工作区。为安全起见，不能绑定Lovarts.短剧应用自身目录或它的父子目录。
         </p>
         <p v-if="projectSource === 'github'" class="dialog-note">
           支持公开仓库或当前机器 Git 已授权可访问的私有仓库；下载后的代码会保存在 Codex 工作区里。
@@ -683,8 +785,36 @@
         <h2>Codex 设置</h2>
         <p>这里配置当前用户专用的 Codex 接口，不使用服务器或开发机器上的 Codex 登录信息。</p>
         <label class="form-field">
+          <span>供应商</span>
+          <select v-model="codexConfigForm.provider" class="dialog-select" @change="applyCodexProviderPreset">
+            <option v-for="provider in codexProviderOptions" :key="provider.id" :value="provider.id">
+              {{ provider.name }}
+            </option>
+          </select>
+        </label>
+        <label class="form-field">
           <span>模型</span>
-          <input v-model="codexConfigForm.model" placeholder="例如 gpt-5.3-codex" autocomplete="off" @input="markConfigUntested" />
+          <input
+            v-model="codexConfigForm.model"
+            list="codex-model-options"
+            placeholder="例如 openai/gpt-5.5、anthropic/claude-sonnet-4.6、google/gemini-2.5-pro"
+            autocomplete="off"
+            @input="markConfigUntested"
+          />
+          <datalist id="codex-model-options">
+            <option v-for="model in currentCodexProviderModels" :key="model" :value="model" />
+          </datalist>
+          <div class="model-chip-row">
+            <button
+              v-for="model in currentCodexProviderModels.slice(0, 6)"
+              :key="model"
+              type="button"
+              :class="{ active: codexConfigForm.model === model }"
+              @click="selectCodexModel(model)"
+            >
+              {{ model }}
+            </button>
+          </div>
         </label>
         <label class="form-field">
           <span>Base URL</span>
@@ -705,6 +835,58 @@
           </button>
           <button class="primary-btn" type="button" :disabled="savingConfig || !configTestPassed" @click="saveCodexConfig">
             {{ savingConfig ? '应用中...' : '应用' }}
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div v-if="photoshopDialogOpen" class="dialog-backdrop" @click.self="photoshopDialogOpen = false">
+      <section class="project-dialog settings-dialog" role="dialog" aria-modal="true" aria-label="Photoshop 插件设置">
+        <h2>Photoshop 云端插件</h2>
+        <p>这里配置当前用户自己的 Adobe Photoshop / Firefly Services 凭证，用于云端去背景和生成蒙版。</p>
+        <label class="form-field">
+          <span>Adobe Client ID</span>
+          <input v-model="photoshopConfigForm.client_id" placeholder="Adobe Developer Console Client ID" autocomplete="off" @input="markPhotoshopUntested" />
+        </label>
+        <label class="form-field">
+          <span>Adobe Client Secret</span>
+          <input
+            v-model="photoshopConfigForm.client_secret"
+            type="password"
+            :placeholder="photoshopConfig.client_secret_set ? `已保存 ${photoshopConfig.client_secret_preview}，留空继续使用` : 'Adobe Client Secret'"
+            autocomplete="new-password"
+            @input="markPhotoshopUntested"
+          />
+        </label>
+        <label class="form-field">
+          <span>公网 Base URL</span>
+          <input v-model="photoshopConfigForm.public_base_url" placeholder="例如 https://你的域名，供 Adobe 云端读取上传图片" autocomplete="off" @input="markPhotoshopUntested" />
+        </label>
+        <label class="form-field">
+          <span>默认操作</span>
+          <select v-model="photoshopConfigForm.default_operation" class="dialog-select" @change="markPhotoshopUntested">
+            <option value="remove-background">去除背景</option>
+            <option value="mask">生成蒙版</option>
+          </select>
+        </label>
+        <label class="form-field">
+          <span>输出格式</span>
+          <select v-model="photoshopConfigForm.output_format" class="dialog-select" @change="markPhotoshopUntested">
+            <option value="png">PNG</option>
+            <option value="jpg">JPG</option>
+          </select>
+        </label>
+        <div v-if="photoshopTestMessage" class="test-result" :class="{ ok: photoshopTestPassed, error: !photoshopTestPassed }">
+          {{ photoshopTestMessage }}
+        </div>
+        <p class="dialog-note">Adobe 云端不能读取 localhost 图片。部署后请填写可公网访问的站点地址；本地开发时需要反向代理或对象存储。</p>
+        <div class="dialog-actions">
+          <button class="secondary-btn" type="button" @click="photoshopDialogOpen = false">取消</button>
+          <button class="secondary-btn" type="button" :disabled="testingPhotoshop || !canTestPhotoshopConfig" @click="testPhotoshopConfig">
+            {{ testingPhotoshop ? '测试中...' : '测试连接' }}
+          </button>
+          <button class="primary-btn" type="button" :disabled="savingPhotoshop || !photoshopTestPassed" @click="savePhotoshopConfig">
+            {{ savingPhotoshop ? '应用中...' : '应用' }}
           </button>
         </div>
       </section>
@@ -790,6 +972,7 @@ import {
   ArrowUp,
   Blocks,
   Bot,
+  CalendarDays,
   Check,
   ChevronRight,
   ChevronUp,
@@ -803,17 +986,23 @@ import {
   GitCompareArrows,
   Github,
   HardDrive,
+  Hand,
   Image,
+  Inbox,
   Loader2,
+  Mail,
   Music,
+  PenTool,
   PanelLeft,
   PanelLeftClose,
   Plus,
+  Presentation,
   RefreshCw,
   Search,
   Settings,
   ShieldCheck,
   Sparkles,
+  Table2,
   Square,
   Terminal,
   TerminalSquare,
@@ -841,15 +1030,110 @@ const currentView = ref('chat')
 const codexPanelCollapsed = ref(false)
 const projectDialogOpen = ref(false)
 const settingsDialogOpen = ref(false)
+const photoshopDialogOpen = ref(false)
 const savingConfig = ref(false)
 const testingConfig = ref(false)
 const configTestPassed = ref(false)
 const configTestMessage = ref('')
+const photoshopConfig = ref({})
+const savingPhotoshop = ref(false)
+const testingPhotoshop = ref(false)
+const photoshopTestPassed = ref(false)
+const photoshopTestMessage = ref('')
 const codexConfigForm = reactive({
+  provider: 'zenmux',
   model: '',
   base_url: '',
   api_key: '',
 })
+const photoshopConfigForm = reactive({
+  client_id: '',
+  client_secret: '',
+  public_base_url: '',
+  default_operation: 'remove-background',
+  output_format: 'png',
+})
+
+const codexProviderOptions = [
+  {
+    id: 'zenmux',
+    name: 'ZenMux（推荐，兼容多模型）',
+    shortName: 'ZenMux',
+    display: 'ZenMux',
+    baseUrl: 'https://zenmux.ai/api/v1',
+    models: [
+      'openai/gpt-5.5',
+      'openai/gpt-5.4',
+      'anthropic/claude-sonnet-4.6',
+      'anthropic/claude-opus-4.7',
+      'google/gemini-3.1-pro-preview',
+      'google/gemini-3.5-flash',
+      'deepseek/deepseek-chat',
+      'qwen/qwen3-coder',
+      'moonshot/kimi-k2',
+    ],
+  },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter（OpenAI 兼容）',
+    shortName: 'OpenRouter',
+    display: 'OpenRouter',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    models: [
+      'anthropic/claude-sonnet-4.6',
+      'anthropic/claude-opus-4.7',
+      'google/gemini-2.5-pro',
+      'google/gemini-2.5-flash',
+      'openai/gpt-5.5',
+      'deepseek/deepseek-chat',
+      'qwen/qwen3-coder',
+      'moonshotai/kimi-k2',
+    ],
+  },
+  {
+    id: 'aihubmix',
+    name: 'AiHubMix（国内聚合，OpenAI 兼容）',
+    shortName: 'AiHubMix',
+    display: 'AiHubMix',
+    baseUrl: 'https://aihubmix.com/v1',
+    models: [
+      'gpt-5.5',
+      'claude-sonnet-4-5',
+      'gemini-2.5-pro',
+      'deepseek-chat',
+      'qwen-plus',
+      'qwen-max',
+      'kimi-k2',
+    ],
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI 官方',
+    shortName: 'OpenAI',
+    display: 'OpenAI',
+    baseUrl: 'https://api.openai.com/v1',
+    models: [
+      'gpt-5.5',
+      'gpt-5.4',
+      'gpt-5.4-mini',
+      'gpt-5.3-codex',
+    ],
+  },
+  {
+    id: 'custom',
+    name: '自定义 OpenAI-compatible',
+    shortName: '自定义',
+    display: '自定义',
+    baseUrl: '',
+    models: [
+      'anthropic/claude-sonnet-4.6',
+      'google/gemini-2.5-pro',
+      'deepseek-chat',
+      'qwen3-coder',
+      'kimi-k2',
+    ],
+  },
+]
 const openProjectMenuId = ref('')
 const projectName = ref('')
 const projectSource = ref('managed')
@@ -861,7 +1145,9 @@ const slashMenuOpen = ref(false)
 const selectedSlashItem = ref(null)
 const userSkills = ref([])
 const userPlugins = ref([])
+const marketplacePlugins = ref([])
 const skillsSearchQuery = ref('')
+const skillsTab = ref('plugins')
 const skillsLoading = ref(false)
 const openSkillMenuId = ref('')
 const selectedModel = ref('')
@@ -882,6 +1168,7 @@ const previewFileMeta = ref(null)
 const previewFileLoading = ref(false)
 const previewFileError = ref('')
 const expandedChangeKeys = ref({})
+const expandedChangeDetails = ref({})
 const undoingChangeKey = ref('')
 const gitPanelOpen = ref(false)
 const gitStatus = ref(null)
@@ -898,6 +1185,7 @@ const draftInput = ref(null)
 const composerEl = ref(null)
 const terminalOutputEl = ref(null)
 const xtermHost = ref(null)
+const logPinnedToBottom = ref(true)
 let pollTimer = null
 let terminalPollTimer = null
 let terminalInstance = null
@@ -917,6 +1205,10 @@ const taskDurationLabel = computed(() => formatTaskDuration(activeTask.value))
 const activeApproval = computed(() => approvals.value[0] || null)
 const latestTokenUsage = computed(() => extractLatestTokenUsage(activeTaskLogs.value))
 const latestTokenUsageLabel = computed(() => formatTokenUsage(latestTokenUsage.value))
+const currentCodexProvider = computed(() => {
+  return codexProviderOptions.find(provider => provider.id === codexConfigForm.provider) || codexProviderOptions[0]
+})
+const currentCodexProviderModels = computed(() => currentCodexProvider.value?.models || [])
 const canCreateProject = computed(() => {
   if (projectSource.value === 'local') return Boolean(projectLocalPath.value.trim())
   if (projectSource.value === 'github') return Boolean(projectRepoUrl.value.trim())
@@ -928,6 +1220,12 @@ const canTestCodexConfig = computed(() => {
     codexConfigForm.model.trim()
     && codexConfigForm.base_url.trim()
     && (codexConfigForm.api_key.trim() || codexConfig.value.api_key_set),
+  )
+})
+const canTestPhotoshopConfig = computed(() => {
+  return Boolean(
+    photoshopConfigForm.client_id.trim()
+    && (photoshopConfigForm.client_secret.trim() || photoshopConfig.value.client_secret_set),
   )
 })
 const slashQuery = computed(() => {
@@ -954,15 +1252,23 @@ const filteredSkills = computed(() => {
     return text.includes(query)
   })
 })
+const filteredMarketplacePlugins = computed(() => {
+  const query = skillsSearchQuery.value.trim().toLowerCase()
+  const plugins = marketplacePlugins.value
+  if (!query) return plugins
+  return plugins.filter((plugin) => {
+    const text = `${plugin.name || ''} ${plugin.description || ''} ${plugin.category || ''}`.toLowerCase()
+    return text.includes(query)
+  })
+})
 const workspaceLabel = computed(() => {
-  if (!activeProject.value) return '工作空间'
-  if (activeProject.value.source === 'github') return 'GitHub 工作空间'
-  if (activeProject.value.source === 'local') return '本地项目'
-  return '本地工作空间'
+  if (!activeProject.value) return 'Workspace'
+  if (activeProject.value.source === 'github') return 'Work remotely'
+  return 'Work locally'
 })
 const projectBranchLabel = computed(() => {
-  if (!gitStatus.value?.is_repo) return activeProject.value?.source === 'github' ? 'GitHub 分支' : '本地项目分支'
-  return gitStatus.value.branch || '无分支'
+  if (!gitStatus.value?.is_repo) return 'main'
+  return gitStatus.value.branch || 'main'
 })
 
 function normalizeCodexBaseUrl(value) {
@@ -978,6 +1284,15 @@ function normalizeCodexBaseUrl(value) {
     }
   } catch {}
   return raw.replace(/\/+$/, '')
+}
+
+function inferCodexProvider(baseUrl) {
+  const raw = String(baseUrl || '').toLowerCase()
+  if (raw.includes('zenmux.ai')) return 'zenmux'
+  if (raw.includes('openrouter.ai')) return 'openrouter'
+  if (raw.includes('aihubmix.com')) return 'aihubmix'
+  if (raw.includes('api.openai.com')) return 'openai'
+  return 'custom'
 }
 const filteredTasks = computed(() => {
   if (!activeProjectId.value) return tasks.value
@@ -1006,10 +1321,10 @@ const completedChangesEvent = computed(() => {
   return buildChangesEvent('completed-file-changes-summary', '', finishedChangedFileSummaries.value)
 })
 const composerChangesEvent = computed(() => {
-  if (!isCurrentTaskRunning.value || !changedFileSummaries.value.length) return null
+  if (!isCurrentTaskRunning.value || liveEditingEvent.value || !changedFileSummaries.value.length) return null
   return buildChangesEvent('composer-live-file-changes-summary', '', changedFileSummaries.value)
 })
-const composerRunSummaryVisible = computed(() => Boolean(isCurrentTaskRunning.value && (composerChangesEvent.value || latestTokenUsageLabel.value)))
+const composerRunSummaryVisible = computed(() => Boolean(isCurrentTaskRunning.value && composerChangesEvent.value))
 const selectedPreview = computed(() => {
   const files = finishedChangedFileSummaries.value.length ? finishedChangedFileSummaries.value : changedFileSummaries.value
   if (!selectedPreviewPath.value) return files[0] || null
@@ -1074,11 +1389,21 @@ watch([
   attachments,
   selectedSlashItem,
   completedChangesEvent,
-  latestTokenUsageLabel,
+  composerRunSummaryVisible,
   isComposingThread,
 ], () => {
   nextTick(updateComposerScrollSpace)
 }, { deep: true })
+
+watch(
+  () => renderedEvents.value.map(event => `${event.key}:${event.text?.length || 0}:${event.kind}:${event.role}:${event.streaming ? 1 : 0}`).join('|'),
+  () => {
+    if (isCurrentTaskRunning.value || logPinnedToBottom.value) {
+      scrollLogs()
+    }
+  },
+  { flush: 'post' }
+)
 
 function statusLabel(status) {
   return {
@@ -1271,6 +1596,19 @@ function isChangeExpanded(event, file) {
   return false
 }
 
+function isChangeDetailsExpanded(event) {
+  if (!event?.key) return false
+  return Boolean(expandedChangeDetails.value[event.key])
+}
+
+function toggleChangeDetails(eventKey) {
+  if (!eventKey) return
+  expandedChangeDetails.value = {
+    ...expandedChangeDetails.value,
+    [eventKey]: !expandedChangeDetails.value[eventKey],
+  }
+}
+
 function toggleChangeExpanded(eventKey, filePath) {
   if (!eventKey || !filePath) return
   const key = changeExpansionKey(eventKey, filePath)
@@ -1388,6 +1726,33 @@ function parseRawEvent(event) {
   } catch {
     return null
   }
+}
+
+function officialMethod(event) {
+  return parseRawEvent(event)?.method || ''
+}
+
+function officialItem(event) {
+  const raw = parseRawEvent(event)
+  return raw?.params?.item || raw?.item || null
+}
+
+function officialItemType(event) {
+  return normalizeItemType(officialItem(event)?.type || '')
+}
+
+function isOfficialItemEvent(event, method, type = '') {
+  if (officialMethod(event) !== method) return false
+  if (!type) return true
+  return officialItemType(event) === type
+}
+
+function officialUserMessageText(item) {
+  const parts = Array.isArray(item?.content) ? item.content : []
+  const textParts = parts
+    .map((part) => part?.type === 'text' ? part.text : '')
+    .filter(Boolean)
+  return visibleUserMessageText(textParts.join('\n').trim())
 }
 
 function imagesFromUserEvent(event) {
@@ -1607,6 +1972,10 @@ function extractChangedFiles(events) {
   events.forEach((event) => {
     const raw = parseRawEvent(event)
     const patches = []
+    const item = officialItem(event)
+    if ((raw?.method === 'item/started' || raw?.method === 'item/completed') && item?.type === 'fileChange') {
+      patches.push(...extractPatchesFromFileChange(item, root))
+    }
     if (event.type === 'app.patch' && event.text) {
       patches.push(parsePatchText(event.text, '', root))
     }
@@ -1631,7 +2000,9 @@ function extractChangedFiles(events) {
 function fileChangeItemId(event) {
   const payload = parseJsonText(event?.text)
   const raw = parseRawEvent(event)
+  const item = officialItem(event)
   return payload?.id
+    || item?.id
     || raw?.params?.itemId
     || raw?.params?.item?.id
     || raw?.item?.id
@@ -1644,15 +2015,19 @@ function extractLiveFileChangeItems(events) {
   const root = activeProject.value?.path || activeTask.value?.project_path || ''
   const items = new Map()
   events.forEach((event, index) => {
-    if (event.type !== 'app.fileChange' && event.type !== 'app.diff' && event.type !== 'app.patch') return
-    const id = fileChangeItemId(event)
     const payload = parseJsonText(event.text)
     const raw = parseRawEvent(event)
+    const item = officialItem(event)
+    const isOfficialFileChange = item?.type === 'fileChange' && (raw?.method === 'item/started' || raw?.method === 'item/completed')
+    const isOfficialPatchUpdate = raw?.method === 'item/fileChange/patchUpdated' || raw?.method === 'turn/diff/updated'
+    if (!isOfficialFileChange && !isOfficialPatchUpdate && event.type !== 'app.fileChange' && event.type !== 'app.diff' && event.type !== 'app.patch') return
+    const id = fileChangeItemId(event)
     let files = []
+    if (isOfficialFileChange) files = extractPatchesFromFileChange(item, root)
     if (event.type === 'app.fileChange') files = extractPatchesFromFileChange(payload, root)
     if (event.type === 'app.diff') files = extractPatchesFromDiffPayload(payload || event.text, root)
     if (event.type === 'app.patch') files = [parsePatchText(event.text, '', root)].filter(Boolean)
-    if (!files.length && (raw?.method === 'item/fileChange/patchUpdated' || raw?.method === 'turn/diff/updated')) {
+    if (!files.length && isOfficialPatchUpdate) {
       files = extractPatchesFromRaw(raw, root)
     }
     if (!files.length) return
@@ -1666,7 +2041,8 @@ function extractLiveFileChangeItems(events) {
       || raw?.params?.status
       || raw?.params?.item?.status
       || raw?.item?.status
-      || (raw?.method === 'item/fileChange/patchUpdated' ? 'inProgress' : 'completed')
+      || item?.status
+      || (raw?.method === 'item/fileChange/patchUpdated' || raw?.method === 'item/started' ? 'inProgress' : 'completed')
     items.set(id, {
       id,
       index,
@@ -1682,7 +2058,7 @@ function extractPatchesFromFileChange(payload, root = activeProject.value?.path 
   const changes = Array.isArray(payload?.changes) ? payload.changes : []
   return changes.map((change) => {
     const path = change.path || change.filePath || change.newPath || change.oldPath || ''
-    const diff = change.diff || change.patch || change.content || ''
+    const diff = change.diff || change.patch || change.content || change.after || change.newContent || ''
     const kind = change.kind?.type || change.type || ''
     return parsePatchText(`${path ? `${path}\n` : ''}${diff}`, kind, root)
   }).filter(Boolean)
@@ -1718,7 +2094,9 @@ function extractPatchesFromRaw(raw, root = activeProject.value?.path || activeTa
   const patches = []
   const directPatch = params.patch || params.diff || params.item?.patch || ''
   const directPath = params.path || params.filePath || params.item?.path || ''
-  if (directPatch || directPath) patches.push(parsePatchText(`${directPath ? `${directPath}\n` : ''}${directPatch}`, '', root))
+  if (typeof directPatch === 'string' && directPath) {
+    patches.push(parsePatchText(`${directPath ? `${directPath}\n` : ''}${directPatch}`, '', root))
+  }
   const candidates = [
     params.diff,
     params.patch,
@@ -1730,11 +2108,15 @@ function extractPatchesFromRaw(raw, root = activeProject.value?.path || activeTa
     params.item?.changes,
   ]
   candidates.forEach((candidate) => {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      patches.push(parsePatchText(candidate, '', root))
+      return
+    }
     if (Array.isArray(candidate)) {
       candidate.forEach((item) => {
         if (!item) return
         const path = item.path || item.filePath || item.newPath || item.oldPath || item.name || ''
-        const patch = item.patch || item.diff || item.text || ''
+        const patch = item.patch || item.diff || item.text || item.content || item.after || item.newContent || ''
         const kind = item.kind?.type || item.type || ''
         patches.push(parsePatchText(`${path ? `${path}\n` : ''}${patch}`, kind, root))
       })
@@ -1850,7 +2232,9 @@ function buildChangesEvent(key, time, files) {
     role: 'tool',
     level: 'muted',
     time,
-    title: `Edited ${normalizedFiles.length} ${normalizedFiles.length === 1 ? 'file' : 'files'}`,
+    title: normalizedFiles.length === 1
+      ? `Edited ${normalizedFiles[0].name || normalizedFiles[0].displayPath || normalizedFiles[0].path || 'file'}`
+      : `Edited ${normalizedFiles.length} files`,
     files: normalizedFiles,
     stats,
   }
@@ -1888,6 +2272,19 @@ function buildLiveEditingEvent(items) {
     level: 'muted',
     file,
     extraCount: Math.max(0, files.length - 1),
+  }
+}
+
+function buildEditingEventFromFiles(files) {
+  const normalizedFiles = mergeFileSummaries(files)
+  if (!normalizedFiles.length) return null
+  return {
+    key: 'live-file-editing',
+    kind: 'editing',
+    role: 'tool',
+    level: 'muted',
+    file: normalizedFiles[normalizedFiles.length - 1],
+    extraCount: Math.max(0, normalizedFiles.length - 1),
   }
 }
 
@@ -1977,6 +2374,8 @@ function normalizeCodexEvents(events) {
   events.forEach((event, index) => {
     const time = event.ts ? formatTime(event.ts) : ''
     const key = `${event.ts || 'event'}-${index}-${event.type || event.stream || 'log'}`
+    const item = officialItem(event)
+    const itemType = normalizeItemType(item?.type || '')
 
     if (event.type === 'app.agent_delta') {
       if (!assistantDelta) assistantDelta = { key, kind: 'message', role: 'assistant', time, text: '', streaming: true }
@@ -1990,29 +2389,60 @@ function normalizeCodexEvents(events) {
       commandDelta.text += event.text || ''
       return
     }
+    if (isOfficialItemEvent(event, 'item/started', 'commandExecution')) {
+      flushAssistantDelta()
+      flushCommandDelta()
+      flushActivityLine()
+      activityLine = { key, kind: 'activity', role: 'tool', level: 'activity', time, streaming: true, text: itemToolTitle(item, 'running') }
+      return
+    }
     if (event.type === 'app.command_started') {
       flushAssistantDelta()
       flushCommandDelta()
-      activityLine = { key, kind: 'activity', role: 'tool', level: 'activity', time, text: summarizeToolEvent(event, 'running') }
+      flushActivityLine()
+      activityLine = { key, kind: 'activity', role: 'tool', level: 'activity', time, streaming: true, text: summarizeToolEvent(event, 'running') }
+      return
+    }
+    if (isOfficialItemEvent(event, 'item/started', 'fileChange')) {
+      flushAssistantDelta()
+      flushCommandDelta()
+      const files = extractPatchesFromFileChange(item)
+      if (files.length) {
+        flushActivityLine()
+        activityLine = buildEditingEventFromFiles(files)
+      }
       return
     }
     if (event.type === 'app.reasoning_delta') {
       flushAssistantDelta()
       flushCommandDelta()
-      if (!activityLine) activityLine = { key, kind: 'activity', role: 'tool', level: 'muted', time, text: 'Codex 正在思考' }
+      if (!activityLine) activityLine = { key, kind: 'activity', role: 'tool', level: 'muted', time, streaming: true, text: 'Thinking' }
       return
     }
     if (event.type === 'app.file_delta') {
       flushAssistantDelta()
       flushCommandDelta()
-      if (!liveEditingEvent.value) {
-        activityLine = { key, kind: 'activity', role: 'tool', level: 'activity', time, text: '正在写入文件' }
-      }
       return
     }
 
-    if (event.type === 'app.agent_message') assistantDelta = null
-    if (event.type === 'app.command') commandDelta = null
+    if (isOfficialItemEvent(event, 'item/completed', 'agentMessage') || event.type === 'app.agent_message') assistantDelta = null
+    if (isOfficialItemEvent(event, 'item/completed', 'commandExecution')) {
+      flushAssistantDelta()
+      flushCommandDelta()
+      activityLine = { key, kind: 'activity', role: 'tool', level: itemStatus(item, 'completed') === 'failed' ? 'error' : 'activity', time, text: itemToolTitle(item, 'completed') }
+      return
+    }
+    if (event.type === 'app.command') {
+      flushAssistantDelta()
+      flushCommandDelta()
+      activityLine = { key, kind: 'activity', role: 'tool', level: 'activity', time, text: summarizeToolEvent(event, 'completed') }
+      return
+    }
+    if (event.type === 'app.item.started' && ['mcpToolCall', 'dynamicToolCall', 'collabAgentToolCall'].includes(itemType)) {
+      flushAssistantDelta()
+      flushCommandDelta()
+      flushActivityLine()
+    }
     if (event.type !== 'app.reasoning_delta') flushActivityLine()
 
     const normalized = normalizeCodexEvent(event, index)
@@ -2022,7 +2452,7 @@ function normalizeCodexEvents(events) {
   flushAssistantDelta()
   flushCommandDelta()
   flushActivityLine()
-  const editingEvent = liveEditingEvent.value
+  const editingEvent = liveEditingEvent.value || (isCurrentTaskRunning.value ? buildEditingEventFromFiles(changedFileSummaries.value) : null)
   if (editingEvent && isCurrentTaskRunning.value) list.push(editingEvent)
   const finalChangesEvent = completedChangesEvent.value
   if (finalChangesEvent) list.push(finalChangesEvent)
@@ -2033,25 +2463,78 @@ function normalizeCodexEvent(event, index) {
   const time = event.ts ? formatTime(event.ts) : ''
   const key = `${event.ts || 'event'}-${index}-${event.type || event.stream || 'log'}`
   const raw = parseRawEvent(event)
+  const method = raw?.method || ''
+  const item = officialItem(event)
+  const type = normalizeItemType(item?.type || '')
+
+  if (method === 'item/completed' && type === 'userMessage') {
+    return { key, kind: 'message', role: 'user', time, text: officialUserMessageText(item), images: imagesFromUserEvent(event) }
+  }
+
+  if (method === 'item/started' && type === 'userMessage') return null
 
   if (event.role === 'user' || event.type === 'user_message') {
     return { key, kind: 'message', role: 'user', time, text: visibleUserMessageText(event.text), images: imagesFromUserEvent(event) }
   }
 
+  if (method === 'item/completed' && type === 'agentMessage') {
+    return { key, kind: 'message', role: 'assistant', time, text: item?.text || event.text || '' }
+  }
+
+  if (method === 'item/started' && type === 'agentMessage') return null
+
   if (event.type === 'app.agent_message') {
     return { key, kind: 'message', role: 'assistant', time, text: event.text || '' }
   }
 
-  if (event.type === 'app.command') {
+  if (type === 'reasoning' || type === 'plan' || type === 'contextCompaction' || type === 'enteredReviewMode' || type === 'exitedReviewMode') return null
+
+  if (method === 'item/started' && type === 'commandExecution') {
+    return { key, kind: 'activity', role: 'tool', level: 'activity', time, streaming: true, text: itemToolTitle(item, 'running') }
+  }
+
+  if (method === 'item/completed' && type === 'commandExecution') {
+    return { key, kind: 'tool', role: 'tool', level: itemStatus(item, 'completed') === 'failed' ? 'error' : 'activity', title: itemToolTitle(item, 'completed'), time, text: commandExecutionText(item) }
+  }
+
+  if (method === 'item/started' && type === 'fileChange') {
+    const files = extractPatchesFromFileChange(item)
+    return files.length ? buildEditingEventFromFiles(files) : null
+  }
+
+  if (method === 'item/completed' && type === 'fileChange') return null
+
+  if (type === 'webSearch') {
+    return { key, kind: 'activity', role: 'tool', level: 'activity', time, text: summarizeWebSearch({ text: JSON.stringify(item || {}) }) }
+  }
+
+  if (type === 'imageGeneration' || type === 'imageView') {
+    return buildArtifactEvent(key, time, item || {})
+  }
+
+  if (['mcpToolCall', 'dynamicToolCall', 'collabAgentToolCall'].includes(type)) {
+    const status = itemStatus(item, method === 'item/started' ? 'running' : 'completed')
+    return buildToolCallEvent(key, time, item, status)
+  }
+
+  if (event.type === 'app.photoshop_status') {
+    return { key, kind: 'activity', role: 'tool', level: 'activity', time, text: event.text || 'Working with Photoshop' }
+  }
+
+  if (event.type === 'app.command' || event.type === 'app.item.started' || event.type === 'app.item.completed') {
     return null
   }
 
   if (event.type === 'app.command_started') {
-    return { key, kind: 'activity', role: 'tool', level: 'activity', time, text: summarizeToolEvent(event, 'running') }
+    return { key, kind: 'activity', role: 'tool', level: 'activity', time, streaming: true, text: summarizeToolEvent(event, 'running') }
   }
 
   if (event.type === 'app.webSearch') {
     return { key, kind: 'activity', role: 'tool', level: 'activity', time, text: summarizeWebSearch(event) }
+  }
+
+  if (event.type === 'app.mcpToolCall.progress' || event.type === 'app.mcpToolCallProgress') {
+    return { key, kind: 'activity', role: 'tool', level: 'activity', time, streaming: true, text: event.text || 'MCP tool running' }
   }
 
   if (event.type === 'app.patch') {
@@ -2066,8 +2549,18 @@ function normalizeCodexEvent(event, index) {
     return buildArtifactEvent(key, time, parseJsonText(event.text) || raw?.params?.item || raw?.item || {})
   }
 
+  if (event.type === 'app.mcpToolCall' || event.type === 'app.dynamicToolCall' || event.type === 'app.collabAgentToolCall') {
+    const legacyItem = parseJsonText(event.text) || raw?.params?.item || raw?.item || {}
+    const status = itemStatus(legacyItem)
+    return buildToolCallEvent(key, time, legacyItem, status)
+  }
+
   if (event.type === 'app.plan') {
-    return { key, kind: 'tool', role: 'tool', title: '查看计划', level: 'muted', time, text: event.text ? `计划\n${event.text}` : '计划已更新' }
+    return { key, kind: 'tool', role: 'tool', title: 'Plan updated', level: 'muted', time, text: event.text ? `Plan\n${event.text}` : 'Plan updated' }
+  }
+
+  if (event.type === 'app.plan_delta') {
+    return { key, kind: 'activity', role: 'tool', title: 'Updating plan', level: 'muted', time, streaming: true, text: event.text || 'Updating plan' }
   }
 
   if (event.type === 'app.reasoning') return null
@@ -2080,13 +2573,14 @@ function normalizeCodexEvent(event, index) {
     'app.thread_started',
     'app.thread_status',
     'app.token_usage',
+    'app.turn.plan.updated',
   ].includes(event.type)) {
     return null
   }
 
   if (event.type === 'app.turn_failed' || event.type === 'app.error') {
     if (raw?.willRetry || raw?.error?.willRetry || event.text?.includes('"willRetry":true')) return null
-    return { key, kind: 'status', role: 'system', level: 'error', time, text: event.text || 'Codex 执行失败' }
+    return { key, kind: 'status', role: 'system', level: 'error', time, text: friendlyCodexErrorText(event.text, raw) || 'Codex 执行失败' }
   }
 
   if (raw?.type === 'item.completed') {
@@ -2129,46 +2623,182 @@ function summarizeToolEvent(event, state = 'running') {
   if (!text) return '查看命令'
   if (text.startsWith('文件变更')) return '查看文件变更'
   if (text.startsWith('计划')) return '查看计划'
+  const actionSummary = summarizeCommandActions(event, state)
+  if (actionSummary) return actionSummary
   const firstLine = text.split(/\r?\n/).find(Boolean) || ''
-  const command = firstLine.replace(/^>\s*/, '').trim()
+  const command = displayShellCommand(firstLine.replace(/^>\s*/, '').trim())
   const lower = command.toLowerCase()
   const running = state !== 'completed'
   const action = (active, done) => running ? active : done
   if (/github|git clone|install-skill-from-github|curl|wget|npm install|pnpm install|yarn add|pip install/.test(lower)) {
     const target = command.match(/(?:--repo\s+|github\.com[/:])([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)/)?.[1]
-    if (target) return `${action('正在从 GitHub 下载', '已从 GitHub 下载')}：${target}`
-    if (lower.includes('github')) return action('正在访问 GitHub', '已访问 GitHub')
-    return action('正在下载依赖', '已下载依赖')
+    if (target) return `${action('Downloading from GitHub', 'Downloaded from GitHub')} ${target}`
+    if (lower.includes('github')) return action('Accessing GitHub', 'Accessed GitHub')
+    return action('Downloading dependencies', 'Downloaded dependencies')
   }
   const readTarget = command.match(/^(?:cat|sed|nl|head|tail|less|more)\s+(?:-[^\s]+\s+)*(.+)$/)?.[1]
-  if (readTarget) return `${action('正在读取', '已读取')}：${shortCommandTarget(readTarget)}`
+  if (readTarget) return `${action('Exploring', 'Explored')} ${shortCommandTarget(readTarget)}`
 
   const searchCommand = command.match(/^(?:rg|grep)\s+(.+)$/)?.[1]
-  if (searchCommand) return `${action('正在搜索', '已搜索')}：${summarizeSearchQuery(searchCommand)}`
+  if (searchCommand) return `${action('Searching', 'Searched')} ${summarizeSearchQuery(searchCommand)}`
 
   const listTarget = command.match(/^(?:ls|find)\s*(.*)$/)?.[1]
   if (listTarget != null && /^(?:ls|find)\b/.test(lower)) {
     const target = shortCommandTarget(listTarget)
-    return target ? `${action('正在列出', '已列出')}：${target}` : action('正在列出文件', '已列出文件')
+    return target ? `${action('Listing', 'Listed')} ${target}` : action('Listing files', 'Listed files')
   }
 
   if (/^git\s+(status|diff|show|log|branch|remote|ls-files)\b/.test(lower)) {
-    return action('正在检查 Git 状态', '已检查 Git 状态')
+    return action('Checking Git status', 'Checked Git status')
   }
 
   const runScript = command.match(/^(npm|pnpm|yarn)\s+run\s+([^\s]+)/)?.[0]
-  if (runScript) return `${action('正在运行', '已运行')}：${runScript}`
+  if (runScript) return `${action('Running', 'Ran')} ${runScript}`
 
   const directUrl = command.match(/\bhttps?:\/\/[^\s'"]+/)?.[0]
   if (directUrl) {
     const host = directUrl.replace(/^https?:\/\//, '').split('/')[0]
-    return `${action('正在访问', '已访问')}：${host}`
+    return `${action('Accessing', 'Accessed')} ${host}`
   }
   if (command) {
-    const prefix = action('正在执行命令', '已执行命令')
-    return command.length > 72 ? `${prefix}：${command.slice(0, 72)}...` : `${prefix}：${command}`
+    const prefix = action('Running', 'Ran')
+    const compact = compactCommandForDisplay(command)
+    return compact.length > 96 ? `${prefix} ${compact.slice(0, 96)}...` : `${prefix} ${compact}`
   }
   return '查看命令'
+}
+
+function friendlyCodexErrorText(text, raw = null) {
+  const rawText = String(text || '')
+  const payload = typeof rawText === 'string' && rawText.trim().startsWith('{') ? parseJsonText(rawText) : null
+  const source = payload || raw || {}
+  const merged = `${rawText} ${JSON.stringify(source || {})}`
+  const status = source?.error?.codexErrorInfo?.responseTooManyFailedAttempts?.httpStatusCode
+    || source?.codexErrorInfo?.responseTooManyFailedAttempts?.httpStatusCode
+    || source?.error?.httpStatusCode
+    || source?.httpStatusCode
+    || source?.status
+  if (status === 429 || /\b429\b|too many requests|exceeded retry limit/i.test(merged)) {
+    return '请求过于频繁或当前模型额度受限（429）。请稍后重试，或切换模型/供应商/API Key。'
+  }
+  if (/401|unauthorized|invalid api key|authentication/i.test(merged)) {
+    return 'Codex API Key 无效或认证失败，请检查设置里的 API Key。'
+  }
+  if (/403|forbidden|permission/i.test(merged)) {
+    return '当前 API Key 没有访问该模型的权限，请切换模型或供应商。'
+  }
+  if (/404|not found|model/i.test(merged)) {
+    return '生成接口或模型不可用，请检查 Base URL 和模型名称。'
+  }
+  if (/stream disconnected|connection reset|reconnecting/i.test(merged)) {
+    return '模型响应流中断，请稍后重试；如果反复出现，请切换供应商或模型。'
+  }
+  return payload?.error?.message || payload?.message || rawText
+}
+
+function summarizeCommandActions(event, state = 'running') {
+  const item = rawItemFromEvent(event)
+  const actions = Array.isArray(item?.commandActions) ? item.commandActions : []
+  if (!actions.length) return ''
+  const running = state !== 'completed'
+  const counts = actions.reduce((acc, action) => {
+    const type = normalizeCommandActionType(action?.type)
+    acc[type] = (acc[type] || 0) + 1
+    return acc
+  }, {})
+  const first = actions[0] || {}
+  const firstType = normalizeCommandActionType(first.type)
+  const onlyType = actions.every(action => normalizeCommandActionType(action?.type) === firstType)
+  const targetName = first.name || basename(first.path || '') || shortCommandTarget(first.command || '')
+  const plural = (count, one, many) => count === 1 ? one : many
+  if (onlyType) {
+    const count = actions.length
+    if (firstType === 'read') {
+      return running
+        ? `Exploring ${targetName || plural(count, 'file', `${count} files`)}`
+        : `Explored ${plural(count, '1 file', `${count} files`)}`
+    }
+    if (firstType === 'list_files') return running ? 'Listing files' : 'Listed files'
+    if (firstType === 'search') {
+      const query = first.query || summarizeSearchQuery(first.command || '')
+      return running ? `Searching ${query || 'files'}` : `Searched ${query || 'files'}`
+    }
+  }
+  const explored = counts.read || 0
+  const listed = counts.list_files || 0
+  const searched = counts.search || 0
+  const unknown = counts.unknown || 0
+  const commandCount = actions.length
+  if (running) {
+    if (searched) return `Searching ${summarizeSearchQuery(first.query || first.command || '') || 'files'}`
+    if (listed) return 'Listing files'
+    if (explored) return `Exploring ${targetName || plural(explored, 'file', `${explored} files`)}`
+    return `Running ${compactCommandForDisplay(displayShellCommand(first.command || item.command || event.text || 'command'))}`
+  }
+  if (listed && commandCount > listed) return `Listed files ran ${commandCount} commands`
+  if (explored && commandCount > explored) return `Explored ${plural(explored, '1 file', `${explored} files`)} ran ${commandCount} commands`
+  if (searched && commandCount > searched) return `Searched files ran ${commandCount} commands`
+  if (unknown) {
+    if (commandCount === 1) {
+      const command = compactCommandForDisplay(displayShellCommand(first.command || item.command || event.text || 'command'))
+      return command.length > 96 ? `Ran ${command.slice(0, 96)}...` : `Ran ${command}`
+    }
+    return `Ran ${commandCount} commands`
+  }
+  return ''
+}
+
+function rawItemFromEvent(event) {
+  return officialItem(event)
+}
+
+function normalizeCommandActionType(type) {
+  const text = String(type || 'unknown')
+  if (text === 'listFiles') return 'list_files'
+  return text
+}
+
+function displayShellCommand(value) {
+  const command = String(value || '').trim()
+  const match = command.match(/^(?:\/[^\s]+\/)?(?:bash|zsh|sh)\s+-lc\s+(.+)$/)
+  if (!match) return command
+  return unquoteShellWrapper(match[1])
+}
+
+function unquoteShellWrapper(value) {
+  const raw = String(value || '').trim()
+  if (raw.length >= 2) {
+    const first = raw[0]
+    const last = raw[raw.length - 1]
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return raw.slice(1, -1)
+        .replace(/\\"/g, '"')
+        .replace(/\\'/g, "'")
+        .replace(/\\\\/g, '\\')
+        .trim()
+    }
+  }
+  return raw
+}
+
+function compactCommandForDisplay(value) {
+  return String(value || '')
+    .split(/\r?\n/)[0]
+    .replace(/\s+/g, ' ')
+    .replace(/^python3\s+-\s*<<['"]?[A-Z]+['"]?$/i, 'python3 -')
+    .trim()
+}
+
+function basename(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  return text.split(/[\\/]/).filter(Boolean).pop() || text
+}
+
+function activityIcon(event) {
+  const text = String(event?.text || '').toLowerCase()
+  if (/explor|search|list|edit|creat|delet/.test(text)) return FileCode2
+  return Terminal
 }
 
 function shortCommandTarget(value) {
@@ -2209,50 +2839,324 @@ function summarizeWebSearch(event) {
   }
 }
 
+function normalizeItemType(type) {
+  const raw = String(type || '').trim()
+  const compact = raw.replace(/[_-]+/g, '').toLowerCase()
+  if (compact === 'mcptoolcall') return 'mcpToolCall'
+  if (compact === 'dynamictoolcall') return 'dynamicToolCall'
+  if (compact === 'collabagenttoolcall' || compact === 'multiagentaction') return 'collabAgentToolCall'
+  if (compact === 'commandexecution' || compact === 'exec' || compact === 'shellcommand') return 'commandExecution'
+  if (compact === 'websearch' || compact === 'websearchgroup') return 'webSearch'
+  return raw
+}
+
+function itemStatus(item, fallback = 'running') {
+  const status = String(item?.status || item?.state || item?.result?.status || '').trim()
+  if (/fail|error|denied|declined|aborted|cancel/i.test(status)) return 'failed'
+  if (/complete|success|finished|done/i.test(status) || item?.completed === true) return 'completed'
+  if (item?.completed === false || /progress|running|pending|started|inprogress/i.test(status)) return 'running'
+  return fallback
+}
+
+function commandExecutionText(item) {
+  return [
+    item?.command || '',
+    item?.aggregatedOutput || '',
+  ].filter(Boolean).join('\n')
+}
+
+function buildToolCallEvent(key, time, item, status = itemStatus(item)) {
+  return {
+    key,
+    kind: 'toolCall',
+    role: 'tool',
+    level: status === 'failed' ? 'error' : 'activity',
+    streaming: status === 'running',
+    time,
+    title: itemToolTitle(item, status === 'running' ? 'running' : 'completed'),
+    subtitle: item?.invocation?.server || item?.namespace || item?.server || item?.model || '',
+    text: JSON.stringify(item?.result || item?.contentItems || item?.arguments || item?.invocation || item || {}, null, 2),
+  }
+}
+
+function itemToolTitle(item, state = 'running') {
+  const type = normalizeItemType(item?.type || item?.kind)
+  if (type === 'mcpToolCall') {
+    const invocation = item.invocation || {}
+    return `${state === 'running' ? 'Using' : 'Used'} ${invocation.server || item.server || 'MCP'}${invocation.tool || item.tool ? ` · ${invocation.tool || item.tool}` : ''}`
+  }
+  if (type === 'dynamicToolCall') {
+    const namespace = item.namespace || item.invocation?.namespace || ''
+    const tool = item.tool || item.invocation?.tool || item.name || 'tool'
+    return `${state === 'running' ? 'Using' : 'Used'} ${namespace ? `${namespace}.` : ''}${tool}`
+  }
+  if (type === 'collabAgentToolCall') return `${state === 'running' ? 'Using' : 'Used'} ${item.tool || 'agent'}`
+  if (type === 'webSearch') return 'Web search'
+  if (type === 'commandExecution') return summarizeToolEvent({ text: item.command || '' }, state)
+  return `${state === 'running' ? 'Using' : 'Used'} ${item.name || item.tool || type || 'tool'}`
+}
+
 function compactActivityEvents(list) {
   const compacted = []
   let pendingActivity = null
+  let summary = emptyToolActivitySummary()
+  const summaryDetails = []
+
+  const commandActivityKey = value => String(value || '')
+    .replace(/^(Running|Ran|正在运行)\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+
+  const dropMatchingRunningCommand = (completedTitle) => {
+    const completedKey = commandActivityKey(completedTitle)
+    if (!completedKey) return
+    for (let index = compacted.length - 1; index >= 0; index -= 1) {
+      const item = compacted[index]
+      if (!item || item.kind !== 'activity') continue
+      const title = String(item.text || item.title || '')
+      if (!/^(Running|正在运行)\b/i.test(title)) continue
+      if (commandActivityKey(title) === completedKey) {
+        compacted.splice(index, 1)
+        return
+      }
+    }
+  }
+
+  const flushToolActivity = () => {
+    const text = toolActivitySummaryText(summary)
+    if (text) {
+      compacted.push({
+        key: `activity-summary-${compacted.length}`,
+        kind: 'activity',
+        role: 'tool',
+        level: 'muted',
+        streaming: summary.runningCommandCount > 0
+          || summary.runningCreatedFileCount > 0
+          || summary.runningEditedFileCount > 0
+          || summary.runningDeletedFileCount > 0
+          || summary.runningExploredFileCount > 0
+          || summary.runningSearchCount > 0
+          || summary.runningListCount > 0,
+        text,
+        files: summaryDetails.flatMap(item => item.files || (item.file ? [item.file] : [])),
+        details: summaryDetails.slice(),
+      })
+    }
+    summary = emptyToolActivitySummary()
+    summaryDetails.length = 0
+  }
+
   list.forEach((event) => {
+    const eventText = String(event.text || event.title || '')
+    const isRunningCommand = (event.kind === 'activity' || event.kind === 'tool') && (event.streaming || /^(Running|正在运行)\b/i.test(eventText))
+    if (isRunningCommand) {
+      if (/^(Exploring|Reading)\b/i.test(eventText)) {
+        summary.runningExploredFileCount += 1
+        summaryDetails.push(event)
+        return
+      }
+      if (/^(Listing)\b/i.test(eventText)) {
+        summary.runningListCount += 1
+        summaryDetails.push(event)
+        return
+      }
+      if (/^(Searching|正在搜索|正在网页内查找|Web search)\b/i.test(eventText)) {
+        summary.runningSearchCount += 1
+        summaryDetails.push(event)
+        return
+      }
+      if (/^(Running|正在运行)\b/i.test(eventText)) {
+        summary.runningCommandCount += 1
+        summaryDetails.push(event)
+        return
+      }
+      flushToolActivity()
+      if (pendingActivity) {
+        compacted.push(pendingActivity)
+        pendingActivity = null
+      }
+      compacted.push(event)
+      return
+    }
+    const completedCommandTitle = event.kind === 'tool'
+      ? String(event.title || summarizeToolEvent(event, 'completed') || '')
+      : event.kind === 'activity' && /^(Ran)\b/i.test(eventText) ? eventText : ''
+    if (/^Ran\b/i.test(completedCommandTitle)) {
+      if (pendingActivity) {
+        compacted.push(pendingActivity)
+        pendingActivity = null
+      }
+      dropMatchingRunningCommand(completedCommandTitle)
+      summary.commandCount += 1
+      summaryDetails.push(event)
+      return
+    }
     if (event.kind === 'activity') {
+      const text = String(event.text || '')
+      if (/^(Exploring|Listing|Reading|Read|Listed|Explored)\b/i.test(text)) {
+        if (/^(Listing|Listed)\b/i.test(text)) summary.listCount += 1
+        else summary.exploredFileCount += 1
+        summaryDetails.push(event)
+        return
+      }
+      if (/^(Searching|Searched|正在搜索|正在网页内查找|Web search)\b/i.test(text)) {
+        summary.searchCount += 1
+        summaryDetails.push(event)
+        return
+      }
+      if (/^(Ran)\b/i.test(text)) {
+        summary.commandCount += 1
+        summaryDetails.push(event)
+        return
+      }
+      flushToolActivity()
       pendingActivity = event
       return
     }
-    if (event.kind === 'tool' && event.level === 'activity') {
+    if (event.kind === 'tool' && event.level !== 'error') {
+      const title = event.title || summarizeToolEvent(event, event.streaming ? 'running' : 'completed')
+      if (/^(Exploring|Reading|Read|Explored)\b/i.test(title)) {
+        summary.exploredFileCount += 1
+        summaryDetails.push(event)
+        return
+      }
+      if (/^(Listing|Listed)\b/i.test(title)) {
+        summary.listCount += 1
+        summaryDetails.push(event)
+        return
+      }
+      if (/^(Searching|Searched|正在搜索|正在网页内查找|Web search)\b/i.test(title)) {
+        summary.searchCount += 1
+        summaryDetails.push(event)
+        return
+      }
+      if (/^(Ran)\b/i.test(title)) {
+        summary.commandCount += 1
+        summaryDetails.push(event)
+        return
+      }
+      flushToolActivity()
       pendingActivity = {
         key: event.key,
         kind: 'activity',
         role: 'tool',
         level: 'activity',
         time: event.time,
-        text: event.title || summarizeToolEvent(event, event.streaming ? 'running' : 'completed'),
+        text: title,
         detail: event.text,
       }
       return
     }
+    if (event.kind === 'changes' && event.files?.length) {
+      event.files.forEach((file) => {
+        const bucket = changedFileActionBucket(file)
+        if (bucket === 'created') summary.createdFileCount += 1
+        else if (bucket === 'deleted') summary.deletedFileCount += 1
+        else summary.editedFileCount += 1
+      })
+      summaryDetails.push(event)
+      return
+    }
+    if (event.kind === 'editing' && event.file) {
+      const bucket = changedFileActionBucket(event.file)
+      if (bucket === 'created') summary.runningCreatedFileCount += 1
+      else if (bucket === 'deleted') summary.runningDeletedFileCount += 1
+      else summary.runningEditedFileCount += 1
+      summaryDetails.push(event)
+      return
+    }
+    flushToolActivity()
     if (pendingActivity) {
       compacted.push(pendingActivity)
       pendingActivity = null
     }
     compacted.push(event)
   })
+  flushToolActivity()
   if (pendingActivity) compacted.push(pendingActivity)
   return compacted
 }
 
+function emptyToolActivitySummary() {
+  return {
+    createdFileCount: 0,
+    runningCreatedFileCount: 0,
+    editedFileCount: 0,
+    runningEditedFileCount: 0,
+    deletedFileCount: 0,
+    runningDeletedFileCount: 0,
+    exploredFileCount: 0,
+    runningExploredFileCount: 0,
+    searchCount: 0,
+    runningSearchCount: 0,
+    listCount: 0,
+    runningListCount: 0,
+    commandCount: 0,
+    runningCommandCount: 0,
+  }
+}
+
+function changedFileActionBucket(file) {
+  const raw = `${file?.action || ''} ${file?.patch || ''}`.toLowerCase()
+  if (/\b(delete|deleted|remove|removed|已删除)\b|^\+\+\+\s+\/dev\/null/m.test(raw)) return 'deleted'
+  if (/\b(add|added|create|created|已创建|已新增)\b|^---\s+\/dev\/null/m.test(raw)) return 'created'
+  return 'edited'
+}
+
+function toolActivitySummaryText(summary) {
+  const parts = []
+  const addFilePart = (count, leading, trailing) => {
+    if (!count) return
+    const label = count === 1 ? 'file' : 'files'
+    parts.push(parts.length ? `${trailing} ${count} ${label}` : `${leading} ${count} ${label}`)
+  }
+  addFilePart(summary.createdFileCount, 'Created', 'created')
+  addFilePart(summary.runningCreatedFileCount, 'Creating', 'creating')
+  addFilePart(summary.editedFileCount, 'Edited', 'edited')
+  addFilePart(summary.runningEditedFileCount, 'Editing', 'editing')
+  addFilePart(summary.deletedFileCount, 'Deleted', 'deleted')
+  addFilePart(summary.runningDeletedFileCount, 'Deleting', 'deleting')
+  if (summary.exploredFileCount) parts.push(parts.length ? `explored ${summary.exploredFileCount} ${summary.exploredFileCount === 1 ? 'file' : 'files'}` : `Explored ${summary.exploredFileCount} ${summary.exploredFileCount === 1 ? 'file' : 'files'}`)
+  if (summary.runningExploredFileCount) parts.push(parts.length ? `exploring ${summary.runningExploredFileCount} ${summary.runningExploredFileCount === 1 ? 'file' : 'files'}` : `Exploring ${summary.runningExploredFileCount} ${summary.runningExploredFileCount === 1 ? 'file' : 'files'}`)
+  if (summary.searchCount) parts.push(parts.length ? `searched ${summary.searchCount} ${summary.searchCount === 1 ? 'time' : 'times'}` : `Searched ${summary.searchCount} ${summary.searchCount === 1 ? 'time' : 'times'}`)
+  if (summary.runningSearchCount) parts.push(parts.length ? `searching ${summary.runningSearchCount} ${summary.runningSearchCount === 1 ? 'time' : 'times'}` : `Searching ${summary.runningSearchCount} ${summary.runningSearchCount === 1 ? 'time' : 'times'}`)
+  if (summary.listCount) parts.push(parts.length ? `listed files ${summary.listCount} ${summary.listCount === 1 ? 'time' : 'times'}` : `Listed files ${summary.listCount} ${summary.listCount === 1 ? 'time' : 'times'}`)
+  if (summary.runningListCount) parts.push(parts.length ? `listing files ${summary.runningListCount} ${summary.runningListCount === 1 ? 'time' : 'times'}` : `Listing files ${summary.runningListCount} ${summary.runningListCount === 1 ? 'time' : 'times'}`)
+  if (summary.commandCount) parts.push(parts.length ? `ran ${summary.commandCount} ${summary.commandCount === 1 ? 'command' : 'commands'}` : `Ran ${summary.commandCount} ${summary.commandCount === 1 ? 'command' : 'commands'}`)
+  if (summary.runningCommandCount) parts.push(parts.length ? `running ${summary.runningCommandCount} ${summary.runningCommandCount === 1 ? 'command' : 'commands'}` : `Running ${summary.runningCommandCount} ${summary.runningCommandCount === 1 ? 'command' : 'commands'}`)
+  return parts.join(', ')
+}
+
 function scrollLogs() {
   nextTick(() => {
-    if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight
+    if (!logBox.value) return
+    const scrollToBottom = () => {
+      if (!logBox.value) return
+      logBox.value.scrollTop = logBox.value.scrollHeight
+    }
+    scrollToBottom()
+    window.requestAnimationFrame?.(scrollToBottom)
+    logPinnedToBottom.value = true
   })
 }
 
 function isLogNearBottom() {
   const el = logBox.value
   if (!el) return true
-  return el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 160
 }
 
 function maybeScrollLogs(shouldScroll) {
   if (shouldScroll) scrollLogs()
+}
+
+function handleLogScroll() {
+  logPinnedToBottom.value = isLogNearBottom()
+}
+
+function handleMessageMediaLoaded() {
+  if (logPinnedToBottom.value || isCurrentTaskRunning.value) scrollLogs()
 }
 
 function updateComposerScrollSpace() {
@@ -2263,9 +3167,11 @@ function updateComposerScrollSpace() {
   const bottom = Number.parseFloat(getComputedStyle(composer).bottom || '0') || 0
   const terminalOffset = terminalOpen.value ? 260 : 0
   const summaryHeight = workspace.querySelector?.('.composer-run-summary')?.getBoundingClientRect?.().height || 0
-  const space = Math.ceil(rect.height + summaryHeight + bottom + terminalOffset + 64)
-  workspace.style.setProperty('--composer-summary-bottom', `${Math.ceil(rect.height + bottom + 8)}px`)
-  workspace.style.setProperty('--composer-scroll-space', `${Math.max(220, space)}px`)
+  const visualGap = isCurrentTaskRunning.value ? 42 : 52
+  const space = Math.ceil(rect.height + summaryHeight + bottom + terminalOffset + visualGap + 46)
+  workspace.style.setProperty('--composer-summary-bottom', `${Math.ceil(rect.height + bottom + 14)}px`)
+  workspace.style.setProperty('--composer-scroll-space', `${Math.max(260, space)}px`)
+  if (logPinnedToBottom.value) scrollLogs()
 }
 
 async function loadStatus() {
@@ -2279,12 +3185,17 @@ async function loadCodexConfig() {
   }
 }
 
+async function loadPhotoshopConfig() {
+  photoshopConfig.value = await codexAPI.photoshopConfig()
+}
+
 async function loadUserSkills() {
   skillsLoading.value = true
   try {
     const result = await codexAPI.skills()
     userSkills.value = result.skills || []
     userPlugins.value = result.plugins || []
+    marketplacePlugins.value = result.marketplace_plugins || []
   } finally {
     skillsLoading.value = false
   }
@@ -2330,11 +3241,11 @@ async function loadActiveLogs() {
   }
   const shouldScroll = isLogNearBottom()
   activeTaskLogs.value = await codexAPI.taskLogs(activeTaskId.value)
-  maybeScrollLogs(shouldScroll)
+  maybeScrollLogs(shouldScroll || isCurrentTaskRunning.value)
 }
 
 async function refreshAll() {
-  await Promise.all([loadStatus(), loadCodexConfig(), loadUserSkills(), loadApprovals(), loadProjects(), loadTasks()])
+  await Promise.all([loadStatus(), loadCodexConfig(), loadPhotoshopConfig(), loadUserSkills(), loadApprovals(), loadProjects(), loadTasks()])
   await loadActiveLogs()
   if (gitPanelOpen.value) await loadGitStatus()
 }
@@ -2616,7 +3527,7 @@ function selectedContextPayload() {
   return {
     id: item.id || item.name,
     name: item.name,
-    type: item.type === 'skill' ? 'skill' : 'mention',
+    type: item.type === 'skill' ? 'skill' : item.type === 'plugin' ? 'plugin' : 'mention',
     path: item.path,
   }
 }
@@ -2641,6 +3552,13 @@ function findSkillCreator() {
 
 async function openSkillsPage() {
   currentView.value = 'skills'
+  skillsTab.value = 'skills'
+  await loadUserSkills()
+}
+
+async function openPluginsPage() {
+  currentView.value = 'skills'
+  skillsTab.value = 'plugins'
   await loadUserSkills()
 }
 
@@ -2710,10 +3628,85 @@ function openSkillChat(skill) {
   })
 }
 
+function pluginContextFromPlugin(plugin) {
+  return {
+    id: plugin.id || plugin.name,
+    name: plugin.name,
+    type: 'plugin',
+    path: plugin.path || `plugin://${plugin.name}`,
+  }
+}
+
+function pluginIconComponent(plugin) {
+  const icon = String(plugin?.icon || plugin?.id || '').toLowerCase()
+  if (icon.includes('github')) return Github
+  if (icon.includes('gmail') || icon.includes('mail')) return Mail
+  if (icon.includes('calendar')) return CalendarDays
+  if (icon.includes('spreadsheets')) return Table2
+  if (icon.includes('presentation')) return Presentation
+  if (icon.includes('ps') || icon.includes('photoshop')) return PenTool
+  if (icon.includes('slack') || icon.includes('teams')) return Blocks
+  if (icon.includes('notion')) return Square
+  if (icon.includes('linear') || icon.includes('statsig')) return GitCompareArrows
+  if (icon.includes('drive')) return HardDrive
+  return Blocks
+}
+
+async function installPlugin(plugin) {
+  if (!plugin?.id || skillsLoading.value) return
+  skillsLoading.value = true
+  try {
+    const result = await codexAPI.installPlugin(plugin.id)
+    userPlugins.value = result.plugins || userPlugins.value
+    marketplacePlugins.value = result.marketplace_plugins || marketplacePlugins.value.map(item => (
+      item.id === plugin.id ? { ...item, installed: true } : item
+    ))
+    toast.success(`${plugin.name} 已安装到当前用户`)
+    if (plugin.id === 'photoshop') openPhotoshopSettings()
+  } catch (err) {
+    toast.error(err.message || '安装插件失败')
+  } finally {
+    skillsLoading.value = false
+  }
+}
+
+function openPluginChat(plugin) {
+  currentView.value = 'chat'
+  if (!ensureActiveProjectForChat()) return
+  if ((plugin.id === 'photoshop' || plugin.name === 'Photoshop') && !photoshopConfig.value.client_secret_set) {
+    openPhotoshopSettings()
+  }
+  newThread()
+  selectedSlashItem.value = pluginContextFromPlugin(plugin)
+  if (plugin.id === 'photoshop' || plugin.name === 'Photoshop') {
+    draft.value = ''
+  }
+  nextTick(() => {
+    draftInput.value?.focus?.()
+  })
+}
+
+async function openPhotoshopSettings() {
+  photoshopDialogOpen.value = true
+  try {
+    await loadPhotoshopConfig()
+    photoshopConfigForm.client_id = photoshopConfig.value.client_id || ''
+    photoshopConfigForm.client_secret = ''
+    photoshopConfigForm.public_base_url = photoshopConfig.value.public_base_url || ''
+    photoshopConfigForm.default_operation = photoshopConfig.value.default_operation || 'remove-background'
+    photoshopConfigForm.output_format = photoshopConfig.value.output_format || 'png'
+    photoshopTestPassed.value = false
+    photoshopTestMessage.value = ''
+  } catch (err) {
+    toast.error(err.message || '加载 Photoshop 插件设置失败')
+  }
+}
+
 async function openCodexSettings() {
   settingsDialogOpen.value = true
   try {
     await loadCodexConfig()
+    codexConfigForm.provider = codexConfig.value.provider || inferCodexProvider(codexConfig.value.base_url || '')
     codexConfigForm.model = codexConfig.value.model || selectedModel.value || 'gpt-5.3-codex'
     codexConfigForm.base_url = normalizeCodexBaseUrl(codexConfig.value.base_url || '')
     codexConfigForm.api_key = ''
@@ -2724,9 +3717,33 @@ async function openCodexSettings() {
   }
 }
 
+function handleComposerProviderChange() {
+  applyCodexProviderPreset({ syncSelectedModel: true })
+}
+
+function applyCodexProviderPreset(options = {}) {
+  const provider = currentCodexProvider.value
+  if (provider?.baseUrl) codexConfigForm.base_url = provider.baseUrl
+  if (!codexConfigForm.model.trim() || !provider.models.includes(codexConfigForm.model.trim())) {
+    codexConfigForm.model = provider.models[0] || ''
+  }
+  if (options.syncSelectedModel) selectedModel.value = codexConfigForm.model
+  markConfigUntested()
+}
+
+function selectCodexModel(model) {
+  codexConfigForm.model = model
+  markConfigUntested()
+}
+
 function markConfigUntested() {
   configTestPassed.value = false
   configTestMessage.value = ''
+}
+
+function markPhotoshopUntested() {
+  photoshopTestPassed.value = false
+  photoshopTestMessage.value = ''
 }
 
 async function testCodexConfig() {
@@ -2737,6 +3754,7 @@ async function testCodexConfig() {
   try {
     codexConfigForm.base_url = normalizeCodexBaseUrl(codexConfigForm.base_url)
     const result = await codexAPI.testConfig({
+      provider: codexConfigForm.provider,
       model: codexConfigForm.model.trim(),
       base_url: codexConfigForm.base_url.trim(),
       api_key: codexConfigForm.api_key.trim(),
@@ -2759,6 +3777,7 @@ async function saveCodexConfig() {
   try {
     codexConfigForm.base_url = normalizeCodexBaseUrl(codexConfigForm.base_url)
     codexConfig.value = await codexAPI.updateConfig({
+      provider: codexConfigForm.provider,
       model: codexConfigForm.model.trim(),
       base_url: codexConfigForm.base_url.trim(),
       api_key: codexConfigForm.api_key.trim(),
@@ -2773,6 +3792,54 @@ async function saveCodexConfig() {
     toast.error(err.message || '应用 Codex 设置失败')
   } finally {
     savingConfig.value = false
+  }
+}
+
+async function testPhotoshopConfig() {
+  if (testingPhotoshop.value || !canTestPhotoshopConfig.value) return
+  testingPhotoshop.value = true
+  photoshopTestPassed.value = false
+  photoshopTestMessage.value = ''
+  try {
+    const result = await codexAPI.testPhotoshopConfig({
+      client_id: photoshopConfigForm.client_id.trim(),
+      client_secret: photoshopConfigForm.client_secret.trim(),
+      public_base_url: photoshopConfigForm.public_base_url.trim(),
+      default_operation: photoshopConfigForm.default_operation,
+      output_format: photoshopConfigForm.output_format,
+    })
+    photoshopTestPassed.value = true
+    photoshopTestMessage.value = result.message || 'Adobe 连接成功，请点击应用'
+    toast.success(photoshopTestMessage.value)
+  } catch (err) {
+    photoshopTestPassed.value = false
+    photoshopTestMessage.value = err.message || 'Photoshop 连接测试失败'
+    toast.error(photoshopTestMessage.value)
+  } finally {
+    testingPhotoshop.value = false
+  }
+}
+
+async function savePhotoshopConfig() {
+  if (savingPhotoshop.value || !photoshopTestPassed.value) return
+  savingPhotoshop.value = true
+  try {
+    photoshopConfig.value = await codexAPI.updatePhotoshopConfig({
+      client_id: photoshopConfigForm.client_id.trim(),
+      client_secret: photoshopConfigForm.client_secret.trim(),
+      public_base_url: photoshopConfigForm.public_base_url.trim(),
+      default_operation: photoshopConfigForm.default_operation,
+      output_format: photoshopConfigForm.output_format,
+    })
+    photoshopConfigForm.client_secret = ''
+    photoshopTestPassed.value = false
+    photoshopTestMessage.value = ''
+    photoshopDialogOpen.value = false
+    toast.success('Photoshop 插件设置已应用')
+  } catch (err) {
+    toast.error(err.message || '应用 Photoshop 插件设置失败')
+  } finally {
+    savingPhotoshop.value = false
   }
 }
 
@@ -3000,8 +4067,19 @@ async function startTask() {
     return
   }
   if (!codexConfig.value.api_key_set) {
-    await openCodexSettings()
-    toast.info('请先配置 Codex API Key')
+    if (selectedSlashItem.value?.id !== 'photoshop' && selectedSlashItem.value?.name !== 'Photoshop') {
+      await openCodexSettings()
+      toast.info('请先配置 Codex API Key')
+      return
+    }
+  }
+  if ((selectedSlashItem.value?.id === 'photoshop' || selectedSlashItem.value?.name === 'Photoshop') && !photoshopConfig.value.client_secret_set) {
+    await openPhotoshopSettings()
+    toast.info('请先配置 Photoshop 插件')
+    return
+  }
+  if ((selectedSlashItem.value?.id === 'photoshop' || selectedSlashItem.value?.name === 'Photoshop') && !attachments.value.length) {
+    toast.info('Photoshop 插件需要先上传图片')
     return
   }
   if (activeTask.value?.status === 'running') {
@@ -3104,4470 +4182,283 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style scoped>
-.codex-page {
-  display: grid;
-  width: 100%;
-  height: 100vh;
-  min-height: 0;
-  grid-template-columns: 336px minmax(0, 1fr);
-  overflow: hidden;
-  border-radius: 8px;
-  background: #1f1f1f;
-  color: #f4f4f5;
-}
-
-.project-panel {
-  display: flex;
-  min-height: 0;
-  flex-direction: column;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  background: #252527;
-}
-
-.panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 20px;
-}
-
-.panel-head h2,
-.workspace-head h1,
-.project-dialog h2,
-.empty-output h2 {
-  margin: 0;
-  font-size: 18px;
-  line-height: 1.2;
-}
-
-.panel-head p,
-.workspace-head p,
-.project-dialog p,
-.empty-output p {
-  margin: 6px 0 0;
-  color: #94949d;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.icon-btn,
-.send-btn {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 0;
-  border-radius: 8px;
-}
-
-.icon-btn {
-  background: rgba(255, 255, 255, 0.07);
-  color: #d4d4dc;
-}
-
-.create-project-btn,
-.primary-btn,
-.secondary-btn {
-  display: inline-flex;
-  height: 38px;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 0;
-  border-radius: 8px;
-  padding: 0 14px;
-  color: #fff;
-  font: inherit;
-  font-size: 14px;
-}
-
-.create-project-btn,
-.primary-btn,
-.send-btn {
-  background: #0a84ff;
-}
-
-.create-project-btn {
-  margin: 0 20px 18px;
-}
-
-.new-thread-btn {
-  display: inline-flex;
-  height: 34px;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin: 0 12px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.07);
-  color: #e4e4e7;
-  font: inherit;
-  font-size: 13px;
-}
-
-.secondary-btn {
-  background: rgba(255, 255, 255, 0.09);
-  color: #e4e4e7;
-}
-
-.secondary-btn.danger {
-  background: rgba(239, 68, 68, 0.16);
-  color: #fecaca;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.section-title {
-  padding: 12px 20px 8px;
-  color: #8e8e98;
-  font-size: 12px;
-}
-
-.project-list,
-.task-list {
-  min-height: 0;
-  overflow-y: auto;
-  padding: 0 12px 12px;
-}
-
-.project-list {
-  max-height: 34%;
-}
-
-.task-list {
-  flex: 1;
-}
-
-.project-item,
-.task-item {
-  display: flex;
-  width: 100%;
-  min-height: 64px;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  padding: 10px;
-  color: #d7d7de;
-  text-align: left;
-}
-
-.project-item:hover,
-.project-item.active,
-.task-item:hover,
-.task-item.active {
-  background: rgba(10, 132, 255, 0.18);
-  color: #fff;
-}
-
-.project-item span,
-.task-item span:last-child {
-  min-width: 0;
-}
-
-.project-item strong,
-.project-item em,
-.task-item strong,
-.task-item em {
-  display: block;
-}
-
-.project-item strong,
-.task-item strong {
-  overflow: hidden;
-  font-size: 14px;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.project-item em,
-.task-item em {
-  overflow: hidden;
-  margin-top: 4px;
-  color: #8e8e98;
-  font-size: 11px;
-  font-style: normal;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.task-status {
-  width: 9px;
-  height: 9px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: #71717a;
-}
-
-.task-status.running {
-  background: #22c55e;
-  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
-}
-
-.task-status.completed {
-  background: #0a84ff;
-}
-
-.task-status.failed {
-  background: #ef4444;
-}
-
-.task-status.cancelled {
-  background: #f59e0b;
-}
-
-.empty-state {
-  padding: 18px 10px;
-  color: #85858f;
-  font-size: 13px;
-}
-
-.workspace-main {
-  min-width: 0;
-  min-height: 0;
-}
-
-.welcome-panel,
-.codex-workspace {
-  display: flex;
-  height: 100%;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.welcome-panel {
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  padding: 24px;
-  text-align: center;
-}
-
-.brand-word {
-  color: #f97316;
-  font-size: 72px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.brand-word span:nth-child(even) {
-  color: #f05252;
-}
-
-.welcome-panel p {
-  max-width: 520px;
-  margin: 0;
-  color: #a1a1aa;
-  line-height: 1.8;
-}
-
-.workspace-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 22px 28px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.workspace-head p {
-  max-width: 720px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.head-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.model-select {
-  height: 36px;
-  min-width: 220px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  background: #2b2b2d;
-  color: #e5e7eb;
-  padding: 0 10px;
-  outline: none;
-}
-
-.model-select.compact {
-  min-width: 126px;
-}
-
-.task-output {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  padding: 20px 28px 14px;
-}
-
-.task-output-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.task-output-head strong,
-.task-output-head span {
-  display: block;
-}
-
-.task-output-head strong {
-  max-width: 720px;
-  overflow: hidden;
-  color: #f4f4f5;
-  font-size: 15px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.task-output-head span {
-  margin-top: 4px;
-  color: #a1a1aa;
-  font-size: 12px;
-}
-
-.conversation-box {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  background: #171717;
-  padding: 18px;
-}
-
-.codex-event + .codex-event {
-  margin-top: 12px;
-}
-
-.message-row {
-  display: flex;
-  flex-direction: column;
-  max-width: min(760px, 88%);
-}
-
-.message-row.user {
-  align-items: flex-end;
-  margin-left: auto;
-}
-
-.message-row.assistant {
-  align-items: flex-start;
-  margin-right: auto;
-}
-
-.message-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 5px;
-  color: #8f8f99;
-  font-size: 12px;
-}
-
-.message-meta span {
-  color: #c4c4cc;
-  font-weight: 600;
-}
-
-.message-meta em {
-  font-style: normal;
-}
-
-.message-bubble {
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 14px;
-  line-height: 1.65;
-}
-
-.message-row.user .message-bubble {
-  background: #0a84ff;
-  color: #fff;
-}
-
-.message-row.assistant .message-bubble {
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  background: #252527;
-  color: #ececf1;
-}
-
-.message-bubble pre,
-.tool-line pre {
-  margin: 0;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-  font-family: inherit;
-}
-
-.tool-line,
-.status-line {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  color: #a1a1aa;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.tool-line {
-  width: fit-content;
-  max-width: min(760px, 88%);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 8px;
-  background: #202022;
-  padding: 8px 10px;
-  color: #cbd5e1;
-}
-
-.tool-line svg {
-  margin-top: 2px;
-  color: #8f8f99;
-}
-
-.tool-line span,
-.status-line span {
-  flex: 0 0 auto;
-  color: #71717a;
-}
-
-.status-line {
-  justify-content: center;
-  color: #85858f;
-}
-
-.status-line em {
-  font-style: normal;
-}
-
-.codex-event.running .status-line em {
-  color: #93c5fd;
-}
-
-.codex-event.done .status-line em {
-  color: #86efac;
-}
-
-.codex-event.error .status-line em {
-  color: #fecaca;
-}
-
-.empty-output {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: #a1a1aa;
-  text-align: center;
-}
-
-.empty-output svg {
-  margin-bottom: 14px;
-  color: #f97316;
-}
-
-.codex-composer {
-  margin: 0 28px 24px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 10px;
-  background: #242424;
-  padding: 12px;
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.22);
-}
-
-.hidden-file-input {
-  display: none;
-}
-
-.attachment-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.file-change-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.file-change-chip {
-  display: inline-flex;
-  max-width: 240px;
-  height: 28px;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.11);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #d4d4d8;
-  padding: 0 9px;
-  font: inherit;
-  font-size: 12px;
-}
-
-.file-change-chip:hover,
-.file-change-chip.active {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-}
-
-.file-change-chip span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-change-chip em {
-  flex: 0 0 auto;
-  color: #a1a1aa;
-  font-style: normal;
-}
-
-.attachment-chip {
-  display: inline-flex;
-  max-width: 220px;
-  height: 28px;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #d4d4d8;
-  padding: 0 8px;
-  font-size: 12px;
-}
-
-.attachment-chip span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.attachment-chip button {
-  display: grid;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: #a1a1aa;
-  padding: 0;
-}
-
-.attachment-chip button:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-}
-
-.codex-composer textarea {
-  width: 100%;
-  min-height: 86px;
-  max-height: 180px;
-  resize: vertical;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.86);
-  font: inherit;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.codex-composer textarea::placeholder {
-  color: #73737a;
-}
-
-.composer-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.codex-preview-panel {
-  position: absolute;
-  top: 74px;
-  right: 20px;
-  bottom: 24px;
-  z-index: 8;
-  display: flex;
-  width: min(520px, calc(100% - 64px));
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  background: #202022;
-  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.32);
-}
-
-.preview-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 13px 14px;
-}
-
-.preview-head strong,
-.preview-head span {
-  display: block;
-}
-
-.preview-head strong {
-  color: #f4f4f5;
-  font-size: 14px;
-}
-
-.preview-head span {
-  margin-top: 4px;
-  color: #a1a1aa;
-  font-size: 12px;
-  word-break: break-all;
-}
-
-.preview-head button {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: #a1a1aa;
-}
-
-.preview-head button:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-}
-
-.preview-meta {
-  display: flex;
-  gap: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 9px 14px;
-  color: #a1a1aa;
-  font-size: 12px;
-}
-
-.preview-meta span:nth-child(2) {
-  color: #86efac;
-}
-
-.preview-meta span:nth-child(3) {
-  color: #fca5a5;
-}
-
-.preview-code {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  margin: 0;
-  background: #171717;
-  color: #d4d4d8;
-  padding: 14px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  white-space: pre;
-}
-
-.preview-empty {
-  display: grid;
-  flex: 1;
-  place-items: center;
-  color: #a1a1aa;
-  font-size: 13px;
-}
-
-.composer-hint {
-  min-width: 0;
-  overflow: hidden;
-  color: #8e8e98;
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.composer-options {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.composer-options span {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  color: #a1a1aa;
-  padding: 3px 8px;
-  font-size: 11px;
-  line-height: 1.3;
-}
-
-.attach-btn {
-  width: 34px;
-  height: 34px;
-  background: rgba(255, 255, 255, 0.07);
-}
-
-.dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-  display: grid;
-  place-items: center;
-  background: rgba(0, 0, 0, 0.62);
-}
-
-.project-dialog {
-  width: min(460px, calc(100vw - 32px));
-  max-height: min(760px, calc(100vh - 32px));
-  overflow: auto;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  background: #252527;
-  padding: 22px;
-  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.45);
-}
-
-.project-dialog input {
-  width: 100%;
-  height: 42px;
-  margin: 18px 0;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  background: #1f1f1f;
-  color: #fff;
-  padding: 0 12px;
-  outline: none;
-}
-
-.settings-dialog {
-  display: grid;
-  gap: 14px;
-}
-
-.settings-dialog input {
-  margin: 0;
-}
-
-.form-field {
-  display: grid;
-  gap: 7px;
-  color: #c5c5cc;
-  font-size: 13px;
-}
-
-.form-field span {
-  color: #9a9aa2;
-}
-
-.test-result {
-  border-radius: 10px;
-  padding: 10px 12px;
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.test-result.ok {
-  background: rgba(34, 197, 94, 0.12);
-  color: #86efac;
-}
-
-.test-result.error {
-  background: rgba(239, 68, 68, 0.12);
-  color: #fecaca;
-}
-
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.local-picker {
-  margin: -4px 0 14px;
-}
-
-.local-picker-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #9ca3af;
-  font-size: 12px;
-}
-
-
-.spin {
-  animation: spin 0.9s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-@media (max-width: 980px) {
-  .codex-page {
-    grid-template-columns: 1fr;
-  }
-
-  .project-panel {
-    display: none;
-  }
-}
-
-/* Codex App inspired surface. Keep this block last so it replaces the older dark workbench styling above. */
-.codex-page {
-  grid-template-columns: 320px minmax(0, 1fr);
-  border-radius: 0;
-  background: #fff;
-  color: #202124;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-.project-panel {
-  border-right: 1px solid #d8d8dc;
-  background: linear-gradient(90deg, #f3f3f5 0%, #eeeeef 100%);
-  color: #34343a;
-  padding: 18px 10px 12px;
-}
-
-.panel-nav {
-  display: grid;
-  gap: 4px;
-  margin-bottom: 26px;
-}
-
-.nav-action {
-  display: flex;
-  width: 100%;
-  height: 38px;
-  align-items: center;
-  gap: 12px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: #34343a;
-  padding: 0 12px;
-  font: inherit;
-  font-size: 15px;
-  text-align: left;
-}
-
-.nav-action:hover {
-  background: rgba(0, 0, 0, 0.055);
-}
-
-.nav-action:disabled {
-  opacity: 0.45;
-}
-
-.nav-action.active {
-  background: #e2e2e5;
-  color: #202124;
-}
-
-.section-title {
-  padding: 10px 12px 8px;
-  color: #909096;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.project-section-title {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 4px;
-  min-height: 34px;
-  margin: 0 0 4px;
-  border-radius: 10px;
-  padding: 0 8px;
-}
-
-.project-section-title:hover {
-  background: rgba(0, 0, 0, 0.045);
-}
-
-.project-collapse-btn,
-.project-section-actions button {
-  display: grid;
-  border: 0;
-  background: transparent;
-  color: #8f9097;
-  place-items: center;
-}
-
-.project-collapse-btn {
-  width: 18px;
-  height: 24px;
-  opacity: 0;
-}
-
-.project-section-title:hover .project-collapse-btn {
-  opacity: 1;
-}
-
-.project-section-actions {
-  display: flex;
-  gap: 2px;
-  opacity: 0;
-}
-
-.project-section-title:hover .project-section-actions {
-  opacity: 1;
-}
-
-.project-section-actions button {
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
-  font-size: 15px;
-}
-
-.project-section-actions button:hover,
-.project-collapse-btn:hover {
-  background: rgba(0, 0, 0, 0.07);
-  color: #202124;
-}
-
-.project-list,
-.task-list {
-  padding: 0 0 8px;
-}
-
-.project-list {
-  flex: 1;
-  max-height: none;
-}
-
-.task-list {
-  flex: 1;
-}
-
-.project-item,
-.task-item {
-  min-height: 40px;
-  align-items: flex-start;
-  gap: 10px;
-  margin: 0 0 4px;
-  border-radius: 10px;
-  padding: 9px 12px;
-  color: #44454b;
-}
-
-.project-group {
-  position: relative;
-  margin-bottom: 8px;
-}
-
-.project-row {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px;
-  align-items: center;
-  border-radius: 10px;
-}
-
-.project-row:hover,
-.project-row.active {
-  background: #dedee1;
-}
-
-.project-thread-list {
-  display: grid;
-  gap: 2px;
-  margin: 2px 0 10px;
-}
-
-.project-item svg {
-  margin-top: 1px;
-  color: #6d6e75;
-}
-
-.task-item:hover,
-.task-item.active {
-  background: #dedee1;
-  color: #202124;
-}
-
-.project-menu-btn,
-.task-delete-btn {
-  display: grid;
-  border: 0;
-  background: transparent;
-  color: #7f8087;
-  opacity: 0;
-  place-items: center;
-}
-
-.project-menu-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  font-size: 18px;
-  line-height: 1;
-}
-
-.project-row:hover .project-menu-btn,
-.project-menu-btn:focus,
-.task-item:hover .task-delete-btn,
-.task-delete-btn:focus {
-  opacity: 1;
-}
-
-.project-menu-btn:hover,
-.task-delete-btn:hover {
-  background: rgba(0, 0, 0, 0.07);
-  color: #202124;
-}
-
-.project-menu {
-  position: absolute;
-  top: 34px;
-  right: 4px;
-  z-index: 20;
-  min-width: 146px;
-  border: 1px solid #dedee2;
-  border-radius: 12px;
-  background: #fff;
-  padding: 6px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
-}
-
-.project-menu button {
-  display: flex;
-  width: 100%;
-  height: 34px;
-  align-items: center;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: #34343a;
-  padding: 0 10px;
-  font: inherit;
-  font-size: 14px;
-  text-align: left;
-}
-
-.project-menu button:hover {
-  background: #f1f1f3;
-}
-
-.project-menu button.danger {
-  color: #b3261e;
-}
-
-.project-item strong,
-.task-item strong {
-  color: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.25;
-}
-
-.project-item em {
-  max-width: 250px;
-}
-
-.project-item em,
-.task-item em {
-  color: #8b8c92;
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.task-item {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  min-height: 42px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px 8px 42px;
-}
-
-.task-delete-btn {
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
-}
-
-.task-title {
-  min-width: 0;
-}
-
-.task-item.active {
-  background: #d9d9dc;
-}
-
-.task-spinner {
-  display: inline-block;
-  width: 13px;
-  height: 13px;
-  margin-left: 8px;
-  border: 2px solid #c8c8ce;
-  border-top-color: #5d5e66;
-  border-radius: 50%;
-  vertical-align: -2px;
-  animation: spin 0.9s linear infinite;
-}
-
-.create-project-btn {
-  height: 34px;
-  justify-content: flex-start;
-  margin: 0 0 18px;
-  border-radius: 10px;
-  background: transparent;
-  color: #6f7077;
-  padding: 0 12px;
-  font-size: 14px;
-}
-
-.create-project-btn:hover {
-  background: rgba(0, 0, 0, 0.055);
-  color: #34343a;
-}
-
-.panel-footer {
-  display: grid;
-  gap: 6px;
-  padding-top: 12px;
-}
-
-.codex-status {
-  padding: 0 12px 4px;
-  color: #8b8c92;
-  font-size: 12px;
-}
-
-.empty-state {
-  padding: 10px 12px;
-  color: #a4a5aa;
-  font-size: 14px;
-}
-
-.workspace-main {
-  background: #fff;
-}
-
-.codex-workspace {
-  position: relative;
-  background: #fff;
-}
-
-.workspace-head {
-  height: 58px;
-  border-bottom: 1px solid #e5e5e8;
-  background: rgba(255, 255, 255, 0.92);
-  padding: 0 20px;
-}
-
-.title-cluster {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 10px;
-}
-
-.title-cluster > div {
-  min-width: 0;
-}
-
-.workspace-head h1 {
-  max-width: min(760px, calc(100vw - 620px));
-  overflow: hidden;
-  color: #202124;
-  font-size: 16px;
-  font-weight: 650;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-head p {
-  display: none;
-}
-
-.head-actions {
-  align-items: center;
-  gap: 8px;
-}
-
-.header-icon {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: #5f6068;
-}
-
-.header-icon:hover {
-  background: #f0f0f2;
-  color: #202124;
-}
-
-.header-icon.strong {
-  background: #202124;
-  color: #fff;
-}
-
-.task-output {
-  flex: 1;
-  padding: 44px 0 188px;
-}
-
-.conversation-box {
-  width: min(1040px, calc(100% - 72px));
-  margin: 0 auto;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  padding: 0;
-}
-
-.codex-event + .codex-event {
-  margin-top: 28px;
-}
-
-.message-row {
-  max-width: 100%;
-}
-
-.message-row.user {
-  align-items: flex-end;
-  margin-left: auto;
-}
-
-.message-row.assistant {
-  align-items: flex-start;
-}
-
-.message-bubble {
-  max-width: min(860px, 82%);
-  border-radius: 0;
-  padding: 0;
-  color: #202124;
-  font-size: 16px;
-  line-height: 1.72;
-}
-
-.message-row.user .message-bubble {
-  max-width: min(760px, 72%);
-  border-radius: 18px;
-  background: #f0f0f2;
-  color: #202124;
-  padding: 10px 15px;
-  font-weight: 500;
-}
-
-.message-row.assistant .message-bubble {
-  border: 0;
-  background: transparent;
-  color: #202124;
-}
-
-.message-bubble pre,
-.tool-line pre {
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-  font-family: inherit;
-}
-
-.markdown-body {
-  max-width: 860px;
-  color: inherit;
-}
-
-.markdown-body :deep(p) {
-  margin: 0 0 18px;
-}
-
-.markdown-body :deep(p:last-child) {
-  margin-bottom: 0;
-}
-
-.markdown-body :deep(ul) {
-  margin: 0 0 18px;
-  padding-left: 22px;
-}
-
-.markdown-body :deep(li) {
-  margin: 5px 0;
-}
-
-.markdown-body :deep(strong) {
-  font-weight: 700;
-}
-
-.markdown-body :deep(code) {
-  border-radius: 6px;
-  background: #f2f2f4;
-  padding: 2px 5px;
-  color: #202124;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.9em;
-}
-
-.markdown-body :deep(h1),
-.markdown-body :deep(h2),
-.markdown-body :deep(h3) {
-  margin: 22px 0 10px;
-  color: #202124;
-  font-weight: 700;
-  line-height: 1.3;
-}
-
-.markdown-body :deep(h1) {
-  font-size: 22px;
-}
-
-.markdown-body :deep(h2) {
-  font-size: 19px;
-}
-
-.markdown-body :deep(h3) {
-  font-size: 17px;
-}
-
-.tool-line,
-.status-line {
-  width: min(860px, 100%);
-  max-width: 860px;
-  align-items: center;
-  gap: 9px;
-  border: 0;
-  background: transparent;
-  color: #a0a1a7;
-  padding: 0;
-  font-size: 15px;
-  line-height: 1.5;
-}
-
-.tool-line {
-  display: block;
-  align-items: flex-start;
-  color: #8e8f95;
-}
-
-.tool-line summary {
-  display: grid;
-  width: 100%;
-  grid-template-columns: 16px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  list-style: none;
-  color: #9b9ca3;
-  font-size: 14px;
-  line-height: 20px;
-  user-select: none;
-}
-
-.tool-line summary span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tool-line summary::-webkit-details-marker {
-  display: none;
-}
-
-.tool-line summary::before {
-  content: "›";
-  display: inline-block;
-  color: #b0b1b7;
-  font-size: 18px;
-  line-height: 1;
-  transform: translateY(-1px);
-  transition: transform 0.16s ease;
-}
-
-.tool-line[open] summary::before {
-  transform: rotate(90deg) translateX(1px);
-}
-
-.tool-line pre {
-  margin: 8px 0 0 25px;
-  max-width: min(780px, 100%);
-  max-height: 260px;
-  overflow: auto;
-  border-left: 1px solid #e1e1e5;
-  padding-left: 14px;
-  color: #8e8f95;
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.tool-line svg,
-.status-line svg {
-  margin-top: 2px;
-  color: #a0a1a7;
-}
-
-.codex-event.error .status-line,
-.codex-event.error .tool-line,
-.codex-event.error .tool-line summary,
-.codex-event.error .tool-line pre {
-  color: #b3261e;
-}
-
-.codex-event.done .status-line {
-  color: #6d8a51;
-}
-
-.empty-output {
-  width: min(720px, calc(100% - 64px));
-  margin: 0 auto;
-  color: #8e8f95;
-}
-
-.empty-output svg {
-  color: #202124;
-}
-
-.empty-output h2 {
-  color: #202124;
-  font-size: 20px;
-}
-
-.empty-output p {
-  color: #8e8f95;
-  font-size: 15px;
-}
-
-.codex-composer {
-  position: absolute;
-  right: 0;
-  bottom: 20px;
-  left: 0;
-  width: min(1040px, calc(100% - 72px));
-  margin: 0 auto;
-  border: 1px solid #e1e1e5;
-  border-radius: 20px;
-  background: #fff;
-  padding: 12px 14px 12px;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.10);
-}
-
-.codex-composer textarea {
-  min-height: 94px;
-  max-height: 240px;
-  color: #202124;
-  font-size: 16px;
-  line-height: 1.55;
-}
-
-.codex-composer textarea::placeholder {
-  color: #9a9ba1;
-}
-
-.composer-footer {
-  gap: 8px;
-}
-
-.composer-spacer {
-  flex: 1;
-}
-
-.round-tool,
-.send-btn {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-}
-
-.round-tool {
-  background: transparent;
-  color: #808189;
-}
-
-.round-tool:hover {
-  background: #f2f2f4;
-  color: #202124;
-}
-
-.send-btn {
-  background: #202124;
-  color: #fff;
-}
-
-.send-btn:disabled {
-  background: #d8d8dc;
-  color: #fff;
-}
-
-.inline-select {
-  height: 34px;
-  min-width: 0;
-  appearance: none;
-  border: 0;
-  border-radius: 11px;
-  background: #f2f2f4;
-  color: #6c6d74;
-  padding: 0 28px 0 12px;
-  font: inherit;
-  font-size: 14px;
-  outline: none;
-}
-
-.inline-select:hover {
-  background: #eaeaed;
-  color: #303137;
-}
-
-.permission-select {
-  width: 188px;
-}
-
-.inline-select.model-select {
-  width: 130px;
-  min-width: 130px;
-  border: 0;
-  background: #f2f2f4;
-  color: #6c6d74;
-}
-
-.reasoning-select {
-  width: 84px;
-}
-
-.attachment-strip {
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.attachment-chip {
-  border: 1px solid #e1e1e5;
-  background: #f7f7f8;
-  color: #606168;
-}
-
-.attachment-chip button {
-  color: #8e8f95;
-}
-
-.dialog-backdrop {
-  background: rgba(0, 0, 0, 0.18);
-}
-
-.project-dialog {
-  border: 1px solid #e1e1e5;
-  background: #fff;
-  color: #202124;
-  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.16);
-}
-
-.project-dialog h2 {
-  color: #202124;
-}
-
-.project-dialog p {
-  color: #76777f;
-}
-
-.project-dialog input {
-  border: 1px solid #dcdce1;
-  background: #fff;
-  color: #202124;
-}
-
-.primary-btn,
-.secondary-btn {
-  border-radius: 10px;
-}
-
-.primary-btn {
-  background: #202124;
-  color: #fff;
-}
-
-.secondary-btn {
-  background: #f2f2f4;
-  color: #34343a;
-}
-
-@media (max-width: 980px) {
-  .codex-page {
-    grid-template-columns: 1fr;
-  }
-
-  .project-panel {
-    display: none;
-  }
-
-  .workspace-head h1 {
-    max-width: calc(100vw - 190px);
-  }
-
-  .conversation-box,
-  .codex-composer,
-  .empty-output {
-    width: calc(100% - 28px);
-  }
-
-  .permission-select {
-    width: 150px;
-  }
-}
-
-/* Codex App level surface. */
+<style src="../assets/styles/codex-huobao.css"></style>
+<style>
+/* Huobao Vue compatibility for the migrated Ideart Codex surface. */
 .codex-page {
   grid-template-columns: 300px minmax(0, 1fr);
-  background: #ffffff;
-  color: #1f1f23;
+  background: #f4f4f5;
 }
 
 .codex-page.panel-collapsed {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: 0 minmax(0, 1fr);
 }
 
 .codex-page.panel-collapsed .project-panel {
   display: none;
 }
 
-.project-panel {
-  border-right: 1px solid #dedee2;
-  background: #f4f4f5;
-  color: #2f3035;
-  box-shadow: none;
-}
-
-.panel-toolbar {
-  display: flex;
-  height: 42px;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
-  padding: 0 12px;
-  color: #202124;
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.panel-toggle,
-.header-icon,
-.round-tool,
-.send-btn {
-  cursor: pointer;
-}
-
-.panel-toggle {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border: 1px solid #d9d9de;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #5f6068;
-}
-
-.panel-toggle:hover,
-.nav-action:hover,
-.create-project-btn:hover,
-.header-icon:hover,
-.round-tool:hover {
-  background: #e9e9ec;
-  color: #202124;
-}
-
-.nav-action {
-  color: #46474e;
-}
-
-.section-title,
-.codex-status,
-.empty-state {
-  color: #8b8c92;
-}
-
-.project-item,
-.task-item {
-  color: #3f4046;
-}
-
-.project-item svg {
-  color: #6e7078;
-}
-
-.project-item:hover,
-.project-item.active,
-.task-item:hover,
-.task-item.active {
-  background: #e6e6e9;
-  color: #202124;
-}
-
-.project-item strong,
-.task-item strong {
-  color: inherit;
-}
-
-.project-item em,
-.task-item em {
-  color: #8f9097;
-}
-
-.create-project-btn {
-  color: #707179;
-}
-
-.workspace-main,
 .codex-workspace {
-  background: #ffffff;
-}
-
-.workspace-head {
-  border-bottom: 1px solid #e7e7ea;
-  background: rgba(255, 255, 255, 0.96);
-}
-
-.workspace-head h1 {
-  color: #202124;
-}
-
-.header-icon {
-  color: #6b6c73;
-}
-
-.header-icon.strong {
-  background: #ef4444;
-  color: #fff;
-}
-
-.conversation-box {
-  color: #202124;
-}
-
-.message-bubble,
-.message-row.assistant .message-bubble {
-  color: #202124;
-}
-
-.message-row.user .message-bubble {
-  background: #f0f0f2;
-  color: #202124;
-}
-
-.tool-line,
-.status-line,
-.activity-line,
-.tool-line pre {
-  color: #9a9ba1;
-}
-
-.tool-line svg,
-.status-line svg,
-.activity-line svg {
-  color: #a7a8ae;
-}
-
-.activity-line {
-  display: grid;
-  width: min(860px, 100%);
-  grid-template-columns: 16px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  color: #8f9097;
-  font-size: 14px;
-  line-height: 20px;
-}
-
-.activity-line span:last-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.activity-dot {
-  width: 6px;
-  height: 6px;
-  margin-left: 5px;
-  border-radius: 50%;
-  background: #a7a8ae;
-  animation: activityPulse 1.3s ease-in-out infinite;
-}
-
-@keyframes activityPulse {
-  0%, 100% { opacity: 0.35; transform: scale(0.9); }
-  50% { opacity: 1; transform: scale(1.12); }
-}
-
-.codex-event.error .status-line,
-.codex-event.error .tool-line,
-.codex-event.error .tool-line pre {
-  color: #fca5a5;
-}
-
-.codex-event.done .status-line {
-  color: #86efac;
-}
-
-.empty-output,
-.empty-output p {
-  color: #8d8e95;
-}
-
-.empty-output h2,
-.empty-output svg {
-  color: #202124;
-}
-
-.codex-composer {
-  border: 1px solid #e0e0e4;
-  background: #ffffff;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.12);
-}
-
-.slash-menu {
-  position: absolute;
-  right: 14px;
-  bottom: calc(100% + 10px);
-  left: 14px;
-  z-index: 35;
-  display: grid;
-  max-height: min(360px, 46vh);
-  overflow-y: auto;
-  border: 1px solid #dedee2;
-  border-radius: 14px;
-  background: #ffffff;
-  padding: 7px;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.16);
-}
-
-.slash-menu-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 10px 7px;
-  color: #77787f;
-  font-size: 12px;
-  line-height: 1;
-}
-
-.slash-menu-head span {
-  color: #5f6068;
-  font-weight: 650;
-}
-
-.slash-menu-head small {
-  color: #a0a1a7;
-  font-size: 12px;
-}
-
-.slash-menu-item {
-  display: grid;
-  width: 100%;
-  min-height: 56px;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: #202124;
-  padding: 8px 10px;
-  font: inherit;
-  text-align: left;
-}
-
-.slash-menu-item:hover:not(:disabled) {
-  background: #f0f0f2;
-}
-
-.slash-icon {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border-radius: 9px;
-  background: #f3f3f5;
-  color: #5f6068;
-  font-size: 16px;
-}
-
-.slash-menu-item strong,
-.slash-menu-item em {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.slash-menu-item strong {
-  color: #202124;
-  font-size: 14px;
-  font-weight: 650;
-  line-height: 1.25;
-}
-
-.slash-menu-item em {
-  margin-top: 3px;
-  color: #85868d;
-  font-size: 12px;
-  font-style: normal;
-  line-height: 1.3;
-}
-
-.slash-menu-item small {
-  border-radius: 999px;
-  background: #f5f5f6;
-  color: #8b8c92;
-  padding: 3px 7px;
-  font-size: 11px;
-  line-height: 1;
-}
-
-.slash-menu-item.muted {
-  cursor: default;
-}
-
-.codex-composer textarea {
-  color: #202124;
-}
-
-.codex-composer textarea::placeholder {
-  color: #9899a0;
-}
-
-.round-tool {
-  color: #7b7c84;
-}
-
-.inline-select,
-.inline-select.model-select {
-  background: #f0f0f2;
-  color: #61626a;
-}
-
-.inline-select:hover,
-.inline-select.model-select:hover {
-  background: #e7e7ea;
-  color: #202124;
-}
-
-.send-btn {
-  background: #202124;
-  color: #fff;
-}
-
-.send-btn:disabled {
-  background: #d8d8dc;
-  color: #fff;
-}
-
-.attachment-chip {
-  border-color: #dedee2;
-  background: #f7f7f8;
-  color: #5f6068;
-}
-
-.file-change-chip {
-  border-color: #dedee2;
-  background: #f7f7f8;
-  color: #4b4c54;
-}
-
-.file-change-chip:hover,
-.file-change-chip.active {
-  border-color: #c9cad0;
-  background: #ededf0;
-  color: #202124;
-}
-
-.file-change-chip em {
-  color: #85868d;
-}
-
-.codex-preview-panel {
-  border-color: #dedee3;
-  background: #ffffff;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.14);
-}
-
-.preview-head {
-  border-bottom-color: #e7e7ea;
-}
-
-.preview-head strong {
-  color: #202124;
-}
-
-.preview-head span,
-.preview-head button,
-.preview-meta {
-  color: #77787f;
-}
-
-.preview-head button:hover {
-  background: #f0f0f2;
-  color: #202124;
-}
-
-.preview-meta {
-  border-bottom-color: #eeeeF1;
-}
-
-.preview-meta span:nth-child(2) {
-  color: #148a42;
-}
-
-.preview-meta span:nth-child(3) {
-  color: #c24135;
-}
-
-.preview-code {
-  background: #fbfbfc;
-  color: #2f3036;
-}
-
-.preview-empty {
-  color: #8f9097;
-}
-
-.dialog-backdrop {
-  background: rgba(0, 0, 0, 0.22);
-}
-
-.project-dialog {
-  border-color: #dedee2;
-  background: #ffffff;
-  color: #202124;
-}
-
-.project-dialog h2 {
-  color: #202124;
-}
-
-.project-dialog p {
-  color: #77787f;
-}
-
-.project-dialog input {
-  border-color: #d8d8dd;
-  background: #fff;
-  color: #202124;
-}
-
-.form-field {
-  color: #55565d;
-}
-
-.form-field span {
-  color: #77787f;
-}
-
-.test-result.ok {
-  background: #edf8f0;
-  color: #1f7a3d;
-}
-
-.test-result.error {
-  background: #fff0f0;
-  color: #b3261e;
-}
-
-.project-source-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin: 16px 0 12px;
-}
-
-.project-source-tabs button {
-  height: 36px;
-  border: 1px solid #dedee2;
-  border-radius: 10px;
-  background: #f3f3f5;
-  color: #5f6068;
-  font: inherit;
-}
-
-.project-source-tabs button.active {
-  border-color: #202124;
-  background: #202124;
-  color: #fff;
-}
-
-.dialog-note {
-  margin-top: -8px;
-  color: #77787f;
-  font-size: 12px;
-}
-
-.approval-backdrop {
-  background: rgba(0, 0, 0, 0.28);
-}
-
-.approval-dialog {
-  width: min(560px, calc(100vw - 32px));
-}
-
-.approval-summary {
-  display: grid;
-  gap: 12px;
-  margin: 16px 0 18px;
-}
-
-.approval-summary label {
-  display: grid;
-  gap: 7px;
-  margin: 0;
-}
-
-.approval-summary span {
-  color: #77787f;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.approval-summary code,
-.approval-summary pre {
-  max-height: 210px;
-  overflow: auto;
-  border: 1px solid #e1e1e5;
-  border-radius: 10px;
-  background: #f7f7f8;
-  color: #202124;
-  padding: 10px 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.55;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.primary-btn {
-  background: #202124;
-}
-
-.secondary-btn {
-  background: #f1f1f3;
-  color: #34343a;
-}
-
-/* Project tree polish: project rows are headings, threads are the selectable items. */
-.project-list {
-  padding-right: 6px;
-}
-
-.project-group {
-  margin-bottom: 14px;
-}
-
-.project-item {
-  min-height: 34px;
-  margin: 0;
-  border-radius: 8px;
-  background: transparent;
-  padding: 6px 10px;
-  color: #34343a;
-}
-
-.project-item.active,
-.project-item:hover {
-  background: transparent;
-  color: #202124;
-}
-
-.project-row:hover,
-.project-row.active {
-  background: #e3e3e6;
-}
-
-.project-item strong {
-  font-size: 14px;
-  font-weight: 650;
-}
-
-.project-item em {
-  max-width: 245px;
-  margin-top: 2px;
-  color: #9a9ba1;
-  font-size: 11px;
-}
-
-.project-thread-list {
-  gap: 1px;
-  margin: 2px 0 0 28px;
-  padding-left: 10px;
-  border-left: 1px solid #dedee2;
-}
-
-.task-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  min-height: 34px;
-  margin: 0;
-  border-radius: 8px;
-  background: transparent;
-  padding: 6px 8px;
-  color: #5f6068;
-}
-
-.task-item:hover {
-  background: #e9e9ec;
-  color: #202124;
-}
-
-.task-item.active {
-  background: #dedee2;
-  color: #202124;
-}
-
-.task-item strong {
-  font-size: 13px;
-  font-weight: 580;
-}
-
-.task-item em {
-  margin-top: 1px;
-  color: #8f9097;
-  font-size: 11px;
-}
-
-.task-spinner {
-  width: 12px;
-  height: 12px;
-  border-color: #c7c7cd;
-  border-top-color: #202124;
-}
-
-/* Scroll behavior: the message list owns vertical scrolling, not the page shell. */
-.workspace-main,
-.codex-workspace {
-  min-height: 0;
-  overflow: hidden;
-}
-
-.codex-workspace {
-  --composer-scroll-space: 292px;
-  --composer-summary-bottom: 188px;
-}
-
-.codex-workspace.terminal-visible {
-  --composer-scroll-space: 548px;
-  --composer-summary-bottom: 446px;
-}
-
-.task-output {
-  min-height: 0;
-  overflow: hidden;
-}
-
-.conversation-box {
   height: 100%;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding-bottom: var(--composer-scroll-space);
-  scroll-padding-bottom: var(--composer-scroll-space);
-  scrollbar-width: thin;
-  scrollbar-color: rgba(32, 33, 36, 0.28) transparent;
 }
 
-.conversation-box::-webkit-scrollbar,
-.preview-code-editor::-webkit-scrollbar,
-.slash-menu::-webkit-scrollbar,
-.project-list::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.conversation-box::-webkit-scrollbar-track,
-.preview-code-editor::-webkit-scrollbar-track,
-.slash-menu::-webkit-scrollbar-track,
-.project-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.conversation-box::-webkit-scrollbar-thumb,
-.preview-code-editor::-webkit-scrollbar-thumb,
-.slash-menu::-webkit-scrollbar-thumb,
-.project-list::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background: rgba(32, 33, 36, 0.28);
-  background-clip: content-box;
-}
-
-.conversation-box::-webkit-scrollbar-thumb:hover,
-.preview-code-editor::-webkit-scrollbar-thumb:hover,
-.slash-menu::-webkit-scrollbar-thumb:hover,
-.project-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(32, 33, 36, 0.42);
-  background-clip: content-box;
-}
-
-/* Codex App alignment layer. Keep this last so older page experiments cannot leak through. */
-.codex-page {
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
-  letter-spacing: 0;
-  grid-template-columns: 300px minmax(0, 1fr);
-  background: #ffffff;
-  color: #202124;
+.workspace-main {
+  border-top-left-radius: 18px;
+  border-bottom-left-radius: 18px;
+  box-shadow:
+    0 2px 4px -1px rgba(0, 0, 0, 0.08),
+    0 0 0 0.5px rgba(32, 33, 36, 0.14);
 }
 
 .project-panel {
-  padding: 10px 10px 12px;
-  border-right: 1px solid #dedee2;
-  background: #f4f4f5;
-}
-
-.panel-toolbar {
-  height: 38px;
-  margin-bottom: 10px;
-  padding: 0 14px;
-  font-size: 15px;
-  font-weight: 650;
-}
-
-.panel-nav {
-  gap: 2px;
-  margin-bottom: 14px;
-}
-
-.nav-action,
-.create-project-btn {
-  height: 34px;
-  border-radius: 9px;
-  color: #4f5057;
-  font-size: 14px;
-}
-
-.section-title {
-  color: #85868d;
-  font-size: 13px;
-  font-weight: 560;
-}
-
-.project-section-title {
-  position: relative;
-  grid-template-columns: minmax(0, 1fr) auto;
-  min-height: 34px;
-  gap: 8px;
-  margin: 0 0 4px;
-  padding: 0 9px;
+  padding: 14px 18px 14px;
 }
 
 .project-collapse-btn {
-  position: absolute;
-  top: 5px;
-  left: -8px;
-  z-index: 1;
+  display: none;
 }
 
-.project-title-action {
-  display: inline-flex;
-  min-height: 34px;
-  min-width: 0;
-  flex: 1;
-  align-items: center;
-  gap: 8px;
-  border: 0;
-  background: transparent;
-  color: #303137;
-  padding: 0;
-  font: inherit;
+.project-section-title {
+  margin-top: 30px;
+  padding-left: 10px;
+}
+
+.project-section-label {
+  color: #a0a1a7;
   font-size: 13px;
-  font-weight: 650;
-  line-height: 1;
-  text-align: left;
-  cursor: pointer;
-}
-
-.project-title-action svg {
-  flex: 0 0 auto;
-  color: #6d6e75;
-}
-
-.project-title-action:hover {
-  color: #202124;
-}
-
-.project-list {
-  flex: 1;
-  max-height: none;
-  padding: 0 4px 8px 0;
-}
-
-.project-list .empty-state {
-  padding: 10px 8px 8px 18px;
-  color: #8a8b92;
-  font-size: 13px;
-}
-
-.project-row {
-  grid-template-columns: minmax(0, 1fr) 26px;
-  border-radius: 9px;
-}
-
-.project-row:hover,
-.project-row.active {
-  background: transparent;
-}
-
-.project-row:hover .project-item {
-  color: #202124;
-}
-
-.project-item {
-  min-height: 34px;
-  gap: 8px;
-  padding: 6px 9px;
-  color: #303137;
-}
-
-.project-item:hover,
-.project-item.active {
-  background: transparent;
+  font-weight: 500;
 }
 
 .project-item strong {
   font-size: 13px;
-  font-weight: 650;
-}
-
-.project-thread-list {
-  margin: 2px 0 10px 27px;
-  padding-left: 9px;
-  border-left: 1px solid #dedee2;
+  font-weight: 500;
 }
 
 .task-item {
-  min-height: 33px;
-  grid-template-columns: minmax(0, 1fr) auto 16px 24px;
-  border-radius: 8px;
-  padding: 6px 7px;
-  color: #606168;
-}
-
-.task-item:hover {
-  background: #eaeaed;
-}
-
-.task-item.active {
-  background: #e6e6e9;
-  color: #202124;
+  min-height: 34px;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 .task-item strong {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
   font-size: 13px;
-  font-weight: 560;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.task-title {
-  min-width: 0;
+  font-weight: 600;
 }
 
 .task-time {
-  color: #92939a;
   font-size: 11px;
-  line-height: 1;
-  white-space: nowrap;
 }
 
-.codex-workspace {
-  position: relative;
-  background: #ffffff;
-  --codex-track-width: min(48rem, calc(100% - 96px));
-  --conversation-block-gap: 12px;
-  --conversation-tool-assistant-gap: 16px;
-  --codex-chat-font-size: 15px;
-  --codex-chat-code-font-size: 13px;
+.chat-section {
+  flex: 0 0 auto;
+  padding: 14px 0 20px 0;
+}
+
+.chat-section-title,
+.chat-empty {
+  color: #b6b7bc;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.chat-section-title {
+  margin-bottom: 20px;
+}
+
+.chat-empty {
+  color: #c6c7cb;
 }
 
 .codex-workspace.composing {
   justify-content: center;
-  padding-bottom: 86px;
-}
-
-.new-chat-center {
-  width: var(--codex-track-width);
-  margin: 0 auto 24px;
-  text-align: center;
-}
-
-.new-chat-center h1 {
-  margin: 0;
-  color: #202124;
-  font-size: 29px;
-  font-weight: 560;
-  letter-spacing: 0;
-}
-
-.workspace-head {
-  height: 56px;
-  flex: 0 0 56px;
-  border-bottom: 1px solid #e7e7ea;
-  background: rgba(255, 255, 255, 0.96);
-  padding: 0 24px;
-}
-
-.title-cluster {
-  gap: 12px;
-}
-
-.workspace-head h1 {
-  max-width: min(760px, calc(100vw - 620px));
-  color: #202124;
-  font-size: 15px;
-  font-weight: 650;
-}
-
-.header-icon,
-.panel-toggle {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-}
-
-.header-icon.active {
-  background: #ececef;
-  color: #202124;
-}
-
-.git-popover {
-  position: absolute;
-  top: 50px;
-  right: 20px;
-  z-index: 40;
-  width: 334px;
-  border: 1px solid #dedee3;
-  border-radius: 18px;
-  background: #ffffff;
-  padding: 10px;
-  color: #202124;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.16);
-}
-
-.git-popover-head {
-  display: flex;
-  height: 32px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 4px 4px 6px;
-}
-
-.git-popover-head h2 {
-  margin: 0;
-  color: #202124;
-  font-size: 15px;
-  font-weight: 680;
-  line-height: 1;
-}
-
-.git-popover-head button {
-  display: inline-flex;
-  width: 28px;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: #77787f;
-  cursor: pointer;
-}
-
-.git-popover-head button:hover:not(:disabled) {
-  background: #f1f1f3;
-  color: #202124;
-}
-
-.git-row {
-  display: grid;
-  min-height: 35px;
-  grid-template-columns: 20px minmax(0, 1fr) auto auto auto;
-  align-items: center;
-  gap: 8px;
-  border-radius: 10px;
-  padding: 0 9px;
-  color: #42434a;
-  font-size: 13px;
-}
-
-.git-row:hover {
-  background: #f7f7f8;
-}
-
-.git-row svg {
-  color: #77787f;
-}
-
-.git-row span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.git-row strong,
-.git-row em {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 560;
-  white-space: nowrap;
-}
-
-.git-additions {
-  color: #1a7f37;
-}
-
-.git-deletions {
-  color: #cf222e;
-}
-
-.git-commit-box {
-  display: grid;
-  gap: 8px;
-  margin-top: 9px;
-  border-top: 1px solid #eeeeef;
-  padding: 11px 2px 0;
-}
-
-.git-section-label {
-  padding: 0 7px;
-  color: #85868d;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.git-commit-box input {
-  width: 100%;
-  height: 36px;
-  border: 1px solid #dedee3;
-  border-radius: 10px;
-  outline: none;
-  background: #fff;
-  color: #202124;
-  padding: 0 11px;
-  font: inherit;
-  font-size: 13px;
-}
-
-.git-commit-box input:focus {
-  border-color: #b8b8c0;
-  box-shadow: 0 0 0 3px rgba(32, 33, 36, 0.06);
-}
-
-.git-action {
-  display: inline-flex;
-  height: 34px;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  border: 1px solid #dedee3;
-  border-radius: 10px;
-  background: #fff;
-  color: #303137;
-  padding: 0 12px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 620;
-  cursor: pointer;
-}
-
-.git-action:hover:not(:disabled) {
-  background: #f3f3f5;
-}
-
-.git-action.primary {
-  border-color: #202124;
-  background: #202124;
-  color: #fff;
-}
-
-.git-action.primary:hover:not(:disabled) {
-  background: #111214;
-}
-
-.git-action:disabled {
-  cursor: not-allowed;
-  opacity: 0.48;
-}
-
-.git-auth-line,
-.git-empty {
-  margin-top: 10px;
-  border-radius: 10px;
-  background: #f7f7f8;
-  color: #77787f;
-  padding: 9px 10px;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.git-auth-line.ok {
-  color: #1a7f37;
-  background: #eef8f1;
-}
-
-.task-output {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  padding: 36px 0 178px;
-}
-
-.conversation-box {
-  width: var(--codex-track-width);
-  height: 100%;
-  margin: 0 auto;
-  border: 0;
-  background: transparent;
-  padding: 0 0 18px;
-}
-
-.codex-event + .codex-event {
-  margin-top: var(--conversation-block-gap);
-}
-
-.codex-event.activity + .codex-event.assistant,
-.codex-event.editing + .codex-event.assistant,
-.codex-event.tool + .codex-event.assistant {
-  margin-top: var(--conversation-tool-assistant-gap);
-}
-
-.task-duration-line {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 4px;
-  margin: 0 0 16px;
-  border-bottom: 1px solid #e8e8eb;
-  padding-bottom: 10px;
-  color: #77787f;
-  font-size: var(--codex-chat-font-size);
-  line-height: 22px;
-}
-
-.task-duration-line svg {
-  color: #9a9ba1;
-}
-
-.message-row {
-  max-width: 100%;
-}
-
-.message-row.user {
-  align-items: flex-end;
-  margin-left: auto;
-}
-
-.message-row.assistant {
-  align-items: flex-start;
-  margin-right: auto;
-}
-
-.message-image-stack {
-  display: flex;
-  max-width: min(640px, 72%);
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-  margin: 0 0 8px auto;
-}
-
-.message-image-thumb {
-  position: relative;
-  width: 64px;
-  height: 64px;
-  overflow: hidden;
-  border: 1px solid #dedee3;
-  border-radius: 8px;
-  background: #f7f7f8;
-  padding: 0;
-  cursor: pointer;
-}
-
-.message-image-thumb img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.message-image-thumb:hover {
-  border-color: #b8b8c0;
-  background: #f5f5f6;
-}
-
-.message-bubble {
-  max-width: 100%;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: #202124;
-  font-size: var(--codex-chat-font-size);
-  font-weight: 400;
-  line-height: 1.68;
-}
-
-.message-row.user .message-bubble {
-  max-width: min(640px, 78%);
-  border-radius: 17px;
-  background: #f1f1f3;
-  color: #202124;
-  padding: 10px 15px;
-  font-size: var(--codex-chat-font-size);
-  font-weight: 500;
-  line-height: 1.5;
-}
-
-.message-row.assistant .message-bubble {
-  border: 0;
-  background: transparent;
-}
-
-.message-row.user .message-bubble:empty {
-  display: none;
-}
-
-.markdown-body {
-  max-width: 100%;
-  color: #202124;
-  font-size: var(--codex-chat-font-size);
-  line-height: 1.68;
-}
-
-.markdown-body :deep(p) {
-  margin: 0 0 17px;
-}
-
-.markdown-body :deep(p:last-child) {
-  margin-bottom: 0;
-}
-
-.markdown-body :deep(ul),
-.markdown-body :deep(ol) {
-  margin: 0 0 16px;
-  padding-left: 22px;
-}
-
-.markdown-body :deep(li) {
-  margin: 4px 0;
-}
-
-.markdown-body :deep(code) {
-  border-radius: 5px;
-  background: #f2f2f4;
-  padding: 1px 5px;
-  color: #202124;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.88em;
-}
-
-.markdown-body :deep(.project-file-link) {
-  display: inline-flex;
-  align-items: center;
-  min-height: 22px;
-  border: 0;
-  border-radius: 6px;
-  background: rgba(10, 132, 255, 0.08);
-  color: #0a66d8;
-  padding: 1px 6px;
-  font: inherit;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.92em;
-  cursor: pointer;
-}
-
-.markdown-body :deep(.project-file-link:hover) {
-  background: rgba(10, 132, 255, 0.13);
-  color: #004eb8;
-}
-
-.activity-line,
-.tool-line,
-.editing-line,
-.changes-card,
-.artifact-card,
-.status-line {
-  width: 100%;
-  max-width: 100%;
-  color: #9a9ba1;
-  font-size: var(--codex-chat-font-size);
-  line-height: 20px;
-}
-
-.editing-line {
-  display: inline-flex;
-  width: fit-content;
-  max-width: 100%;
-  align-items: center;
-  gap: 6px;
-  color: #9a9ba1;
-  font-size: var(--codex-chat-font-size);
-}
-
-.editing-line svg {
-  flex: 0 0 auto;
-  color: #9a9ba1;
-}
-
-.editing-label {
-  color: #9a9ba1;
-  font-weight: 400;
-}
-
-.editing-file {
-  min-width: 0;
-  overflow: hidden;
-  border: 0;
-  background: transparent;
-  color: #0a66d8;
-  padding: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: var(--codex-chat-code-font-size);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.editing-file:hover {
-  color: #004eb8;
-  text-decoration: underline;
-}
-
-.editing-extra {
-  flex: 0 0 auto;
-  color: #96979d;
-  font-size: 13px;
-}
-
-.artifact-card {
-  display: grid;
-  max-width: 420px;
-  grid-template-columns: 64px minmax(0, 1fr) 28px;
-  align-items: center;
-  gap: 10px;
-  border: 1px solid #dedee3;
-  border-radius: 12px;
-  background: #fff;
-  padding: 8px;
-  color: #202124;
-}
-
-.artifact-card:hover {
-  background: #f8f8f9;
-  border-color: #d2d2d8;
-}
-
-.artifact-preview {
-  display: grid;
-  width: 64px;
-  height: 64px;
-  place-items: center;
-  overflow: hidden;
-  border: 1px solid #dedee3;
-  border-radius: 8px;
-  background: #f7f7f8;
-  color: #77787f;
-  padding: 0;
-  cursor: pointer;
-}
-
-.artifact-preview img,
-.artifact-preview video {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.artifact-body {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  text-align: left;
-  cursor: pointer;
-}
-
-.artifact-title,
-.artifact-subtitle {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.artifact-title {
-  color: #202124;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.artifact-subtitle {
-  color: #77787f;
-  font-size: 12px;
-}
-
-.artifact-open {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: #85868d;
-  padding: 0;
-  cursor: pointer;
-  opacity: 0;
-}
-
-.artifact-card:hover .artifact-open,
-.artifact-card:focus-within .artifact-open {
-  opacity: 1;
-}
-
-.artifact-open:hover {
-  background: #ececef;
-  color: #202124;
-}
-
-.activity-line {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: #9a9ba1;
-}
-
-.activity-dot {
-  width: 6px;
-  height: 6px;
-  margin-left: 3px;
-  border-radius: 50%;
-  background: #c7c7cd;
-}
-
-.tool-line {
-  display: block;
-  border: 0;
-  background: transparent;
-  padding: 0;
-}
-
-.tool-line summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: #96979d;
-  font-size: var(--codex-chat-font-size);
-  line-height: 20px;
-  cursor: pointer;
-}
-
-.tool-line pre {
-  margin: 8px 0 0 22px;
-  max-height: 240px;
-  border-left: 1px solid #e2e2e6;
-  color: #77787f;
-  padding-left: 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: var(--codex-chat-code-font-size);
-  line-height: 1.55;
-}
-
-.changes-card {
-  overflow: hidden;
-  border: 1px solid #dedee3;
-  border-radius: 14px;
-  background: #ffffff;
-  color: #202124;
-  box-shadow: none;
-}
-
-.changes-card-head {
-  display: flex;
-  min-height: 48px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  border-bottom: 1px solid #eeeeef;
-  padding: 8px 16px;
-}
-
-.changes-card-title,
-.changes-card-actions {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-}
-
-.changes-card-title {
-  color: #202124;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.changes-card-title .spin {
-  color: #5f6067;
-}
-
-.changes-live-badge {
-  border-radius: 999px;
-  background: #f0f0f2;
-  color: #696a72;
-  padding: 1px 7px;
-  font-size: 11.5px;
-  font-style: normal;
-  font-weight: 500;
-  line-height: 18px;
-}
-
-.changes-card-title svg {
-  color: #6b6c73;
-  flex: 0 0 auto;
-}
-
-.changes-card-actions {
-  flex: 0 0 auto;
-}
-
-.changes-card-actions button {
-  height: 28px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  color: #5f6067;
-  padding: 0 9px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.changes-card-actions button:hover {
-  background: #f3f3f5;
-}
-
-.changes-card-actions button:disabled {
-  opacity: 0.58;
-  cursor: default;
-}
-
-.changes-file-block + .changes-file-block {
-  border-top: 1px solid #eeeeef;
-}
-
-.changes-file-row {
-  display: grid;
-  width: 100%;
-  grid-template-columns: minmax(0, 1fr) auto 54px 54px 25px 18px;
-  align-items: center;
-  gap: 8px;
-  border: 0;
-  background: transparent;
-  padding: 11px 16px;
-  color: #3f4046;
-  text-align: left;
-  cursor: pointer;
-}
-
-.changes-file-row:hover,
-.changes-file-row.active,
-.changes-file-row.expanded {
-  background: #f8f8f9;
-}
-
-.changes-file-path {
-  overflow: hidden;
-  color: #2f3036;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: var(--codex-chat-code-font-size);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.changes-file-action {
-  border-radius: 999px;
-  background: #f0f0f2;
-  color: #74757c;
-  padding: 1px 7px;
-  font-size: 12px;
-  line-height: 20px;
-  white-space: nowrap;
-}
-
-.changes-file-meta {
-  color: #8c8d94;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.changes-open-btn {
-  display: grid;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: #8b8c93;
-  padding: 0;
-  cursor: pointer;
-  opacity: 0;
-}
-
-.changes-file-row:hover .changes-open-btn,
-.changes-file-row:focus-within .changes-open-btn,
-.changes-file-row.expanded .changes-open-btn {
-  opacity: 1;
-}
-
-.changes-open-btn:hover {
-  background: #ececef;
-  color: #202124;
-}
-
-.changes-file-row > svg {
-  color: #85868d;
-  justify-self: center;
-}
-
-.changes-inline-diff {
-  max-height: 360px;
-  overflow: auto;
-  border-top: 1px solid #eeeeef;
-  background: #ffffff;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12.5px;
-  line-height: 1.6;
-}
-
-.changes-inline-diff .preview-code-line {
-  min-width: max-content;
-}
-
-.changes-inline-diff .preview-code-line code {
-  padding-right: 18px;
-}
-
-.change-stat {
-  color: #76777e;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 14px;
-  text-align: right;
-  white-space: nowrap;
-}
-
-.change-stat.additions {
-  color: #1a7f37;
-}
-
-.change-stat.deletions {
-  color: #cf222e;
-}
-
-.codex-composer {
-  position: absolute;
-  right: 0;
-  bottom: 16px;
-  left: 0;
-  width: var(--codex-track-width);
-  margin: 0 auto;
-  border: 1px solid #d9d9de;
-  border-radius: 18px;
-  background: #ffffff;
-  padding: 10px 12px 10px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.11);
-}
-
-.codex-workspace.terminal-visible .task-output {
-  padding-bottom: 428px;
-}
-
-.codex-workspace.terminal-visible .codex-composer {
-  bottom: 274px;
+  padding-bottom: 220px;
 }
 
 .codex-workspace.composing .codex-composer {
   position: relative;
-  right: auto;
-  bottom: auto;
-  left: auto;
-  width: min(960px, calc(100% - 128px));
-  margin: 0 auto;
-  border-radius: 18px 18px 0 0;
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.1);
 }
 
-.codex-workspace.composing .codex-composer textarea {
-  min-height: 54px;
-  max-height: 140px;
+.new-chat-center {
+  margin-bottom: 58px;
 }
 
-.composer-project-meta {
-  display: flex;
-  height: 42px;
-  align-items: center;
-  gap: 24px;
-  margin: 10px -12px -10px;
-  border-radius: 0 0 18px 18px;
-  background: #f3f3f4;
-  color: #77787f;
-  padding: 0 16px;
-  font-size: 13px;
+.new-chat-center h1 {
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1.2;
 }
 
-.composer-project-meta span {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-.composer-project-meta svg {
-  flex: 0 0 auto;
-  color: #85868d;
+.codex-composer {
+  border-radius: 24px;
+  padding: 8px 10px 0;
 }
 
 .codex-composer textarea {
-  min-height: 44px;
-  max-height: 150px;
-  resize: none;
-  color: #202124;
-  font-size: 14.5px;
-  line-height: 1.45;
-}
-
-.codex-composer textarea::placeholder {
-  color: #96979d;
+  min-height: 42px;
+  padding: 0 2px;
+  font-size: 14px;
+  line-height: 20px;
 }
 
 .composer-footer {
+  min-height: 32px;
+  margin-top: 6px;
+}
+
+.composer-select-shell {
+  height: 30px;
+  font-size: 13px;
+}
+
+.provider-shell,
+.model-shell {
+  border-radius: 10px;
+  background: #f4f4f5;
+  padding: 0 12px;
+}
+
+.provider-shell {
+  max-width: 96px;
+}
+
+.model-shell {
+  max-width: 150px;
+}
+
+.composer-project-meta {
+  height: 42px;
+  margin: 0 -10px;
+  border-radius: 0 0 22px 22px;
+  padding: 0 16px;
+  font-size: 13px;
+}
+
+.composer-meta-pill {
+  height: 30px;
+  font-size: 13px;
+}
+
+.send-btn,
+.composer-icon-button {
+  width: 32px;
+  height: 32px;
+}
+
+.workspace-head h1 {
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.workspace-head p {
+  margin: 0;
+  color: #77787f;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.message-bubble,
+.markdown-body {
+  font-size: 14px;
+  line-height: 1.58;
+}
+
+.message-row.user .message-bubble {
+  font-size: 14px;
+  line-height: 1.45;
+  padding: 8px 12px;
+}
+
+.conversation-box {
+  display: block;
+}
+
+.codex-event {
+  width: 100%;
+}
+
+.changes-card-head {
+  display: grid;
+  width: min(620px, 100%);
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+}
+
+.changes-card-copy {
+  min-width: 0;
+}
+
+.changes-card-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.changes-card-meta {
+  display: inline-flex;
+  gap: 7px;
+  color: #8c8d94;
+  font-size: 13px;
+}
+
+.changes-details-toggle {
+  display: inline-flex;
+  height: 26px;
   align-items: center;
-  gap: 9px;
-  margin-top: 7px;
-}
-
-.round-tool,
-.send-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-}
-
-.round-tool {
+  gap: 4px;
   border: 0;
+  border-radius: 7px;
   background: transparent;
   color: #77787f;
+  padding: 0 7px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
 }
 
-.round-tool:hover {
-  background: #f1f1f3;
+.changes-details-toggle:hover {
+  background: #f3f3f5;
   color: #202124;
 }
 
-.send-btn {
-  border: 0;
-  background: #1f2024;
-  color: #ffffff;
-}
-
-.send-btn svg {
-  stroke-width: 2.5;
-}
-
-.send-btn:hover:not(:disabled) {
-  background: #111214;
-}
-
-.send-btn:disabled {
-  background: #e4e4e7;
-  color: #ffffff;
-}
-
-.send-btn.running {
-  background: #1f2024;
-  color: #ffffff;
-}
-
-.stop-icon {
-  display: block;
-  width: 11px;
-  height: 11px;
-  border-radius: 2px;
-  background: currentColor;
+.changes-details-body {
+  margin-top: 8px;
 }
 
 .inline-select {
-  height: 32px;
+  min-width: 0;
+  height: 100%;
   border: 0;
-  outline: none;
-  border-radius: 11px;
-  background: #f1f1f3;
-  color: #696a72;
-  padding: 0 13px;
-  font-size: 13px;
-}
-
-.inline-select:hover {
-  background: #e9e9ec;
-  color: #202124;
+  outline: 0;
+  appearance: none;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
 }
 
 .permission-select {
-  width: 124px;
-  background: transparent;
-  color: #7b7c84;
-  padding-left: 4px;
+  width: 132px;
 }
 
-.permission-select:hover {
-  background: #f1f1f3;
+.provider-select {
+  width: 92px;
 }
 
-.inline-select.model-select {
-  width: 126px;
-  min-width: 126px;
+.model-select {
+  width: 170px;
 }
 
-.reasoning-select {
-  width: 74px;
-}
-
-.attachment-strip,
-.selected-context-strip,
-.file-change-strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.attachment-strip {
-  align-items: flex-start;
-}
-
-.selected-context-strip {
-  margin-bottom: 4px;
-}
-
-.composer-run-summary {
-  display: flex;
-  position: absolute;
-  right: 0;
-  bottom: var(--composer-summary-bottom);
-  left: 0;
-  width: var(--codex-track-width);
-  min-height: 29px;
-  align-items: center;
-  gap: 8px;
-  margin: 0 auto 8px;
-  pointer-events: none;
-  z-index: 4;
-}
-
-.codex-workspace.composing .composer-run-summary {
-  display: none;
-}
-
-.selected-context-chip {
-  display: inline-flex;
-  height: 26px;
-  max-width: 260px;
-  align-items: center;
-  gap: 5px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: #2d7fe5;
-  padding: 0 4px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.selected-context-chip:hover {
-  background: #edf5ff;
-}
-
-.selected-context-chip span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.image-preview-chip {
-  position: relative;
-  display: block;
-  width: 112px;
-  max-width: none;
-  height: 112px;
-  max-height: none;
-  flex: 0 0 112px;
-  overflow: hidden;
-  border: 1px solid #dedee3;
-  border-radius: 12px;
-  background: #f7f7f8;
-  padding: 0;
-  color: inherit;
-}
-
-.image-preview-trigger {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  cursor: zoom-in;
-}
-
-.image-preview-trigger img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.image-preview-remove {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  display: grid;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: rgba(32, 33, 36, 0.86);
-  color: #fff;
-  padding: 0;
-  cursor: pointer;
-}
-
-.image-preview-remove:hover {
-  background: #111214;
-}
-
-.image-lightbox {
-  position: fixed;
-  z-index: 1200;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  background: rgba(0, 0, 0, 0.9);
-  padding: 86px 96px 112px;
-}
-
-.image-lightbox-actions {
-  position: fixed;
-  top: 18px;
-  right: 18px;
-  display: inline-flex;
-  gap: 10px;
-}
-
-.image-lightbox-round,
-.image-lightbox-round:visited {
-  display: grid;
-  width: 56px;
-  height: 56px;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: #f7f7f8;
-  color: #17181c;
-  padding: 0;
-  cursor: pointer;
-  text-decoration: none;
-}
-
-.image-lightbox-round:hover {
-  background: #ffffff;
-}
-
-.image-lightbox-stage {
-  display: flex;
-  width: 100%;
-  height: 100%;
-  align-items: center;
-  justify-content: center;
-  transform-origin: center center;
-  transition: transform 0.12s ease;
-}
-
-.image-lightbox-img {
-  display: block;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  border-radius: 10px;
-}
-
-.image-lightbox-zoom {
-  position: fixed;
-  left: 50%;
-  bottom: 42px;
-  display: inline-flex;
-  height: 58px;
-  min-width: 214px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  transform: translateX(-50%);
-  border-radius: 999px;
-  background: #f7f7f8;
-  padding: 4px;
-  color: #202124;
-  font-size: 17px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22);
-}
-
-.image-lightbox-zoom button {
-  display: grid;
-  width: 50px;
-  height: 50px;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: #dedfe2;
-  color: #202124;
-  padding: 0;
-  font-size: 24px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.image-lightbox-zoom button:hover {
-  background: #d2d3d6;
-}
-
-.change-summary {
-  display: inline-flex;
-  height: 48px;
-  min-width: min(100%, 560px);
-  align-items: center;
-  gap: 8px;
-  justify-content: flex-start;
-  border: 1px solid #dedee3;
-  border-radius: 15px;
-  background: #fff;
-  color: #686970;
-  padding: 0 16px;
-  font-size: 12px;
-  font: inherit;
-  font-size: 15px;
-  cursor: pointer;
-  pointer-events: auto;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
-  white-space: nowrap;
-}
-
-.change-summary:hover {
-  background: #f7f7f8;
-  color: #202124;
-}
-
-.change-summary .additions {
-  color: #1a7f37;
-}
-
-.change-summary .deletions {
-  color: #cf222e;
-}
-
-.change-summary em {
-  margin-left: auto;
-  color: #202124;
-  font-style: normal;
-  font-weight: 550;
-}
-
-.token-summary {
-  display: inline-flex;
-  height: 34px;
-  align-items: center;
-  border: 1px solid #e1e1e5;
-  border-radius: 999px;
-  background: #f7f7f8;
-  color: #77787f;
-  padding: 0 13px;
-  font-size: 14px;
-  pointer-events: auto;
-  white-space: nowrap;
-}
-
-.attachment-chip,
-.file-change-chip {
-  height: 27px;
-  max-width: 220px;
-  border: 1px solid #dedee3;
-  border-radius: 999px;
-  background: #f7f7f8;
-  color: #505158;
-  font-size: 12px;
-}
-
-.file-change-chip.active,
-.file-change-chip:hover,
-.attachment-chip:hover {
-  background: #ededf0;
-  color: #202124;
-}
-
-.file-change-chip em {
-  color: #85868d;
-}
-
-.codex-preview-panel {
-  top: 68px;
-  right: 18px;
-  bottom: 18px;
-  width: min(720px, calc(100% - 56px));
-  border: 1px solid #dedee3;
-  border-radius: 12px;
-  background: #ffffff;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.15);
-}
-
-.preview-head {
-  border-bottom: 1px solid #e7e7ea;
-  padding: 12px 13px;
-}
-
-.preview-head strong {
-  color: #202124;
-  font-size: 13px;
-  font-weight: 650;
-}
-
-.preview-head span,
-.preview-meta {
-  color: #77787f;
-  font-size: 12px;
-}
-
-.preview-head button {
-  color: #77787f;
-}
-
-.preview-head button:hover {
-  background: #f0f0f2;
-  color: #202124;
-}
-
-.preview-code-editor {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  background: #ffffff;
-  color: #303137;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12.75px;
-  line-height: 1.6;
-  white-space: pre;
-}
-
-.preview-code-line {
-  display: grid;
-  min-width: max-content;
-  grid-template-columns: 56px minmax(0, 1fr);
-}
-
-.preview-code-line:hover {
-  background: #f7f7f8;
-}
-
-.preview-code-line code {
-  display: block;
-  min-height: 21px;
-  border-left: 1px solid #ececef;
-  padding: 1px 16px;
-  color: inherit;
-  font: inherit;
-}
-
-.preview-line-number {
-  display: block;
-  min-height: 21px;
-  user-select: none;
-  background: #fafafa;
-  color: #8f9097;
-  padding: 1px 12px 1px 0;
-  text-align: right;
-}
-
-.preview-code-line.added {
-  background: #e9f7ec;
-}
-
-.preview-code-line.added .preview-line-number {
-  color: #1a7f37;
-}
-
-.preview-code-line.removed {
-  background: #ffebe9;
-}
-
-.preview-code-line.removed .preview-line-number {
-  color: #cf222e;
-}
-
-.preview-code-line.hunk {
-  background: #eef4ff;
-  color: #57606a;
-}
-
-.preview-code-line.meta {
-  color: #77787f;
-}
-
-.preview-tabs {
-  display: inline-flex;
-  align-self: flex-start;
-  gap: 4px;
-  margin: 0 12px 10px;
-  border-radius: 9px;
-  background: #f1f1f3;
-  padding: 3px;
-}
-
-.preview-tabs button {
-  height: 26px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: #77787f;
-  padding: 0 10px;
-  font-size: 12px;
-}
-
-.preview-tabs button.active {
-  background: #fff;
-  color: #202124;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-}
-
-.preview-file-view {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.preview-file-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  border-top: 1px solid #ececef;
-  border-bottom: 1px solid #ececef;
-  background: #fafafa;
-  padding: 7px 12px;
-  color: #77787f;
-  font-size: 12px;
-}
-
-.preview-media-stage {
-  display: grid;
-  min-height: 0;
-  flex: 1;
-  place-items: center;
-  overflow: auto;
-  background: #f7f7f8;
-  padding: 18px;
-}
-
-.preview-media-stage.audio {
-  align-content: center;
-  gap: 16px;
-  color: #77787f;
-}
-
-.preview-media-stage.audio audio {
-  width: min(520px, 100%);
-}
-
-.preview-media-image {
-  display: block;
-  max-width: 100%;
-  max-height: 100%;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  object-fit: contain;
-}
-
-.preview-media-video {
-  width: min(100%, 920px);
-  max-height: 100%;
-  border-radius: 8px;
-  background: #000;
-}
-
-.preview-pdf-frame {
-  min-height: 0;
-  flex: 1;
-  width: 100%;
-  border: 0;
-  background: #f7f7f8;
-}
-
-.preview-markdown {
-  min-height: 0;
-  flex: 1;
-  overflow: auto;
-  padding: 18px 22px;
-  color: #202124;
-  font-size: 13px;
-  line-height: 1.65;
-}
-
-.preview-table-wrap {
-  min-height: 0;
-  flex: 1;
-  overflow: auto;
-  background: #fff;
-}
-
-.preview-table {
-  width: max-content;
-  min-width: 100%;
-  border-collapse: collapse;
-  color: #303137;
-  font-size: 12px;
-}
-
-.preview-table td {
-  max-width: 280px;
-  border: 1px solid #ececef;
-  padding: 6px 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.preview-table tr:first-child td {
-  background: #fafafa;
-  color: #55565c;
-  font-weight: 600;
-}
-
-.preview-unsupported {
-  display: grid;
-  min-height: 0;
-  flex: 1;
-  place-content: center;
-  justify-items: center;
-  gap: 9px;
-  padding: 24px;
-  color: #77787f;
-  text-align: center;
-}
-
-.preview-unsupported strong {
-  color: #202124;
-  font-size: 13px;
-  font-weight: 650;
-}
-
-.preview-unsupported span {
-  max-width: 420px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-}
-
-.preview-unsupported button {
-  height: 30px;
-  border: 1px solid #dedee3;
-  border-radius: 7px;
-  background: #fff;
-  color: #202124;
-  padding: 0 12px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.preview-unsupported button:hover {
-  background: #f3f3f4;
-}
-
-.approval-dialog {
-  width: min(560px, calc(100vw - 32px));
-  border-radius: 14px;
-}
-
-.approval-card-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 11px;
-}
-
-.approval-card-head svg {
-  flex: 0 0 auto;
-  margin-top: 2px;
-  color: #202124;
-}
-
-.approval-card-head h2 {
-  font-size: 17px;
-  font-weight: 680;
-}
-
-.approval-card-head p {
-  font-size: 13px;
-}
-
-.approval-action-line {
-  margin: 14px 0 4px;
-  border: 1px solid #dedee3;
-  border-radius: 11px;
-  background: #f7f7f8;
-  padding: 10px 12px;
-  color: #303137;
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.approval-summary {
-  gap: 10px;
-  margin: 14px 0 18px;
-}
-
-.approval-summary span {
-  color: #77787f;
-  font-size: 12px;
-}
-
-.approval-summary code,
-.approval-summary pre {
-  border-radius: 10px;
-  background: #f8f8f9;
-  font-size: 12px;
-}
-
-.skills-page {
-  display: flex;
-  height: 100%;
-  min-height: 0;
-  flex-direction: column;
-  background: #fff;
-  color: #202124;
-}
-
-.skills-topbar {
-  display: flex;
-  height: 64px;
-  flex: 0 0 64px;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 14px;
-  padding: 0 28px;
-}
-
-.skills-toolbar-btn,
-.skills-new-btn {
-  display: inline-flex;
-  height: 36px;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  border: 0;
-  border-radius: 11px;
-  background: transparent;
-  color: #77787f;
-  padding: 0 12px;
-  font: inherit;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.skills-toolbar-btn:hover {
-  background: #f1f1f3;
-  color: #202124;
-}
-
-.skills-search {
-  display: inline-flex;
-  width: 280px;
-  height: 36px;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid #dedee3;
-  border-radius: 12px;
-  background: #fff;
-  color: #8a8b92;
-  padding: 0 12px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-}
-
-.skills-search input {
-  width: 100%;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: #202124;
-  font: inherit;
-  font-size: 14px;
-}
-
-.skills-new-btn {
-  border-radius: 12px;
-  background: #202124;
-  color: #fff;
-  padding: 0 16px;
-  font-weight: 650;
-}
-
-.skills-new-btn:hover {
-  background: #111214;
-}
-
-.skills-content {
-  width: min(1040px, calc(100% - 96px));
-  margin: 58px auto 0;
-}
-
-.skills-hero h1 {
-  margin: 0;
-  color: #202124;
-  font-size: 32px;
-  font-weight: 680;
-  letter-spacing: 0;
-}
-
-.skills-hero p {
-  margin: 10px 0 46px;
-  color: #8b8c92;
-  font-size: 17px;
-}
-
-.skills-section h2 {
-  margin: 0 0 24px 8px;
-  color: #505158;
-  font-size: 15px;
-  font-weight: 650;
-}
-
-.skills-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px 38px;
-}
-
-.skill-card {
-  position: relative;
-  display: grid;
-  min-height: 76px;
-  grid-template-columns: 54px minmax(0, 1fr) 22px;
-  align-items: center;
-  gap: 14px;
-  border: 0;
-  border-radius: 16px;
-  background: transparent;
-  color: #202124;
-  padding: 10px 14px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.skill-card:hover,
-.skill-card.selected {
-  background: #f0f0f2;
-}
-
-.skill-icon {
-  display: inline-flex;
-  width: 44px;
-  height: 44px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 11px;
-  background: #f5f5f6;
-  color: #2d7fe5;
-}
-
-.skill-meta {
-  min-width: 0;
-}
-
-.skill-meta strong {
-  display: block;
-  overflow: hidden;
-  color: #202124;
-  font-size: 15px;
-  font-weight: 680;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.skill-meta em {
-  display: block;
-  overflow: hidden;
-  margin-top: 4px;
-  color: #77787f;
-  font-size: 13px;
-  font-style: normal;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.skill-card > svg {
-  color: #b4b5ba;
-}
-
-.skill-menu-wrap {
-  position: relative;
-  display: inline-flex;
-  justify-content: flex-end;
-}
-
-.skill-menu-btn {
-  display: inline-flex;
-  width: 28px;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: #8a8b92;
-  font: inherit;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.skill-menu-btn:hover {
-  background: #e4e4e7;
-  color: #202124;
-}
-
-.skill-menu {
-  position: absolute;
-  top: 30px;
-  right: 0;
-  z-index: 20;
-  min-width: 128px;
-  border: 1px solid #dedee3;
-  border-radius: 12px;
-  background: #fff;
-  padding: 6px;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.14);
-}
-
-.skill-menu button {
-  display: flex;
-  width: 100%;
-  height: 34px;
-  align-items: center;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: #b3261e;
-  padding: 0 10px;
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.skill-menu button:hover {
-  background: #f5f5f6;
-}
-
-.skills-empty {
-  border-radius: 16px;
-  background: #f7f7f8;
-  color: #8b8c92;
-  padding: 28px;
-  font-size: 14px;
-}
-
-.terminal-drawer {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 12;
-  display: flex;
-  height: 250px;
-  flex-direction: column;
-  border-top: 1px solid #dedee3;
-  background: #fff;
-  color: #202124;
-  box-shadow: 0 -18px 42px rgba(0, 0, 0, 0.08);
-}
-
-.terminal-tabs {
-  display: flex;
-  height: 44px;
-  align-items: center;
-  gap: 8px;
-  border-bottom: 1px solid #eeeeef;
-  padding: 0 12px;
-}
-
-.terminal-tab,
-.terminal-add,
-.terminal-close {
-  display: inline-flex;
-  height: 30px;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: #6f7077;
-  font: inherit;
-  cursor: pointer;
-}
-
-.terminal-tab {
-  max-width: 210px;
-  gap: 7px;
-  padding: 0 12px;
-  font-size: 13px;
-}
-
-.terminal-tab.active {
-  background: #f1f1f3;
-  color: #202124;
-}
-
-.terminal-tab span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.terminal-tab em {
-  color: #9b9ca3;
-  font-size: 12px;
-  font-style: normal;
-}
-
-.terminal-add,
-.terminal-close {
-  width: 30px;
-  flex: 0 0 auto;
-}
-
-.terminal-add:hover,
-.terminal-close:hover,
-.terminal-tab:hover {
-  background: #f1f1f3;
-  color: #202124;
-}
-
-.terminal-close {
-  margin-left: auto;
-}
-
-.terminal-output {
-  min-height: 0;
-  flex: 1;
-  overflow: auto;
-  padding: 8px 14px 12px;
-}
-
-.xterm-host {
-  width: 100%;
-  height: 100%;
-}
-
-.terminal-output :deep(.xterm) {
-  height: 100%;
-  padding: 0;
-}
-
-.terminal-output :deep(.xterm-viewport) {
-  background: transparent !important;
-}
-
-.terminal-output :deep(.xterm-screen) {
-  background: transparent !important;
-}
-
-.terminal-empty {
-  color: #8b8c92;
-  font-size: 13px;
+.composer-project-meta {
+  margin: 9px -8px -8px;
 }
 
 @media (max-width: 980px) {
-  .conversation-box,
-  .codex-composer,
-  .empty-output {
-    width: calc(100% - 28px);
+  .codex-page {
+    grid-template-columns: 0 minmax(0, 1fr);
   }
 
-  .codex-preview-panel {
-    top: 64px;
-    right: 14px;
-    bottom: 14px;
-    left: 14px;
-    width: auto;
+  .project-panel {
+    display: none;
   }
 }
 </style>

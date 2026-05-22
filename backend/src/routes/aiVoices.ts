@@ -1,7 +1,7 @@
 /**
  * AI 音色管理
  * GET  /api/v1/ai-voices       - 获取音色列表
- * POST /api/v1/ai-voices/sync  - 从火宝/MiniMax 音频链路同步音色
+ * POST /api/v1/ai-voices/sync  - 从Lovarts.短剧/MiniMax 音频链路同步音色
  */
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
@@ -16,11 +16,11 @@ app.get('/', async (c) => {
   const provider = c.req.query('provider') || 'minimax'
   let rows = db.select().from(schema.aiVoices)
     .where(eq(schema.aiVoices.provider, provider))
-    .all()
+    .execute()
   if (!rows.length && provider === 'chatfire') {
     rows = db.select().from(schema.aiVoices)
       .where(eq(schema.aiVoices.provider, 'minimax'))
-      .all()
+      .execute()
   }
 
   const parsed = rows.map(r => ({
@@ -36,10 +36,10 @@ app.get('/', async (c) => {
 
 // POST /ai-voices/sync
 app.post('/sync', async (c) => {
-  // 从数据库获取火宝或 MiniMax 的音频配置
+  // 从数据库获取Lovarts.短剧或 MiniMax 的音频配置
   const rows = db.select().from(schema.aiServiceConfigs)
     .where(eq(schema.aiServiceConfigs.serviceType, 'audio'))
-    .all()
+    .execute()
     .filter(r => r.isActive && ['chatfire', 'minimax'].includes((r.provider || '').toLowerCase()))
     .sort((a, b) => (b.priority || 0) - (a.priority || 0))
 
@@ -76,7 +76,7 @@ app.post('/sync', async (c) => {
 
   // 先清空旧数据
   const provider = config.provider || 'minimax'
-  db.delete(schema.aiVoices).where(eq(schema.aiVoices.provider, provider)).run()
+  await db.delete(schema.aiVoices).where(eq(schema.aiVoices.provider, provider)).execute()
 
   // 批量插入新数据
   const insertRows = voices.map((v: any) => ({
@@ -89,7 +89,7 @@ app.post('/sync', async (c) => {
   }))
 
   if (insertRows.length > 0) {
-    db.insert(schema.aiVoices).values(insertRows).run()
+    await db.insert(schema.aiVoices).values(insertRows).execute()
   }
 
   return success(c, { count: insertRows.length, message: `Synced ${insertRows.length} voices` })

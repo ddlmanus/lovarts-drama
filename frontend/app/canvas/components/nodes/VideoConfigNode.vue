@@ -1,48 +1,31 @@
 <template>
   <!-- Video config node wrapper | 视频配置节点包裹层 -->
   <div class="video-config-node-wrapper relative" @mouseenter="showHandleMenu = true" @mouseleave="showHandleMenu = false">
-    <!-- Video config node | 视频配置节点 -->
-    <div class="video-config-node bg-[var(--bg-secondary)] rounded-xl border min-w-[300px] transition-all duration-200"
-      :class="data.selected ? 'border-1 border-blue-500 shadow-lg shadow-blue-500/20' : 'border border-[var(--border-color)]'">
-      <!-- Header | 头部 -->
-      <div class="flex items-center justify-between px-3 py-2 border-b border-[var(--border-color)]">
-        <span
-          v-if="!isEditingLabel"
-          @dblclick="startEditLabel"
-          class="text-sm font-medium text-[var(--text-secondary)] cursor-text hover:bg-[var(--bg-tertiary)] px-1 rounded transition-colors"
-          title="双击编辑名称"
-        >{{ data.label || '视频生成' }}</span>
-        <input
-          v-else
-          ref="labelInputRef"
-          v-model="editingLabelValue"
-          @blur="finishEditLabel"
-          @keydown.enter="finishEditLabel"
-          @keydown.escape="cancelEditLabel"
-          class="text-sm font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] px-1 rounded outline-none border border-blue-500"
-        />
-        <div class="flex items-center gap-1">
-          <button @click="handleDuplicate" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors" title="复制节点">
-            <n-icon :size="14">
-              <CopyOutline />
-            </n-icon>
-          </button>
-          <button @click="handleDelete" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors" title="删除节点">
-            <n-icon :size="14">
-              <TrashOutline />
-            </n-icon>
-          </button>
-        </div>
-      </div>
+    <NodeTitle
+      :label="data.label || '视频生成'"
+      :icon="VideocamOutline"
+      :editing="isEditingLabel"
+      v-model="editingLabelValue"
+      @start-edit="startEditLabel"
+      @finish-edit="finishEditLabel"
+      @cancel-edit="cancelEditLabel"
+    />
 
+    <!-- Video config node | 视频配置节点 -->
+    <div class="video-config-node canvas-node-card rounded-xl min-w-[300px] transition-all duration-200"
+      :class="{ 'is-selected': data.selected }">
       <!-- Config options | 配置选项 -->
       <div class="p-3 space-y-3">
         <!-- Model selector | 模型选择 -->
         <div class="flex items-center justify-between">
           <span class="text-xs text-[var(--text-secondary)]">模型</span>
-          <n-dropdown :options="modelOptions" @select="handleModelSelect">
+          <n-dropdown :options="modelOptions" :render-label="renderModelOptionLabel" @select="handleModelSelect">
             <button class="flex items-center gap-1 text-sm text-[var(--text-primary)] hover:text-[var(--accent-color)]">
-              {{ displayModelName }}
+              <span class="canvas-model-label">
+                <span>{{ displayModelName }}</span>
+                <span v-if="isPlatformModel(currentModelConfig)" class="canvas-model-badge official">官网</span>
+                <span v-if="isVipModel(currentModelConfig)" class="canvas-model-badge vip">VIP</span>
+              </span>
               <n-icon :size="12"><ChevronDownOutline /></n-icon>
             </button>
           </n-dropdown>
@@ -51,9 +34,22 @@
         <!-- Aspect ratio selector | 宽高比选择 -->
         <div class="flex items-center justify-between">
           <span class="text-xs text-[var(--text-secondary)]">比例</span>
-          <n-dropdown :options="ratioOptions" @select="handleRatioSelect">
+          <n-dropdown :options="ratioOptions" scrollable :menu-props="limitedDropdownMenuProps" @select="handleRatioSelect">
             <button class="flex items-center gap-1 text-sm text-[var(--text-primary)] hover:text-[var(--accent-color)]">
               {{ localRatio }}
+              <n-icon :size="12">
+                <ChevronForwardOutline />
+              </n-icon>
+            </button>
+          </n-dropdown>
+        </div>
+
+        <!-- Resolution selector | 分辨率选择 -->
+        <div v-if="resolutionOptions.length" class="flex items-center justify-between">
+          <span class="text-xs text-[var(--text-secondary)]">分辨率</span>
+          <n-dropdown :options="resolutionOptions" scrollable :menu-props="limitedDropdownMenuProps" @select="handleResolutionSelect">
+            <button class="flex items-center gap-1 text-sm text-[var(--text-primary)] hover:text-[var(--accent-color)]">
+              {{ displayResolution }}
               <n-icon :size="12">
                 <ChevronForwardOutline />
               </n-icon>
@@ -64,7 +60,7 @@
         <!-- Duration selector | 时长选择 -->
         <div class="flex items-center justify-between">
           <span class="text-xs text-[var(--text-secondary)]">时长</span>
-          <n-dropdown :options="durationOptions" @select="handleDurationSelect">
+          <n-dropdown :options="durationOptions" scrollable :menu-props="limitedDropdownMenuProps" @select="handleDurationSelect">
             <button class="flex items-center gap-1 text-sm text-[var(--text-primary)] hover:text-[var(--accent-color)]">
               {{ localDuration }}s
               <n-icon :size="12">
@@ -143,44 +139,55 @@
  * Video config node component | 视频配置节点组件
  * Configuration panel for video generation with API integration
  */
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, nextTick, h } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { NIcon, NDropdown, NSpin } from 'naive-ui'
-import { ChevronForwardOutline, ChevronDownOutline, TrashOutline, VideocamOutline, CopyOutline, CreateOutline } from '@vicons/ionicons5'
+import { ChevronForwardOutline, ChevronDownOutline, VideocamOutline } from '@vicons/ionicons5'
 import { useVideoGeneration } from '../../hooks'
-import { updateNode, removeNode, duplicateNode, addNode, addEdge, nodes, edges } from '../../stores/canvas'
+import { updateNode, addNode, addEdge, nodes, edges } from '../../stores/canvas'
 import NodeHandleMenu from './NodeHandleMenu.vue'
-import { useModelStore } from '../../stores/pinia'
-import { getModelRatioOptions, getModelDurationOptions, getModelConfig, DEFAULT_VIDEO_MODEL } from '../../stores/models'
-
-// 使用 Pinia store 获取模型选项（根据渠道过滤）
-const modelStore = useModelStore()
+import NodeTitle from './NodeTitle.vue'
+import {
+  buildAspectRatioOptions,
+  buildDurationOptions,
+  buildResolutionOptions,
+  findModelOption,
+  isOfficialModel,
+  modelOptionKey,
+  modelPayload,
+  pickOption,
+  useUserModelOptions
+} from '../../utils/modelOptions'
 
 const props = defineProps({
   id: String,
   data: Object
 })
 
+const limitedDropdownMenuProps = () => ({
+  style: {
+    maxHeight: '152px'
+  }
+})
+
 // Vue Flow instance | Vue Flow 实例
 const { updateNodeInternals } = useVueFlow()
 
-// API config state | API 配置状态
-const isConfigured = computed(() => !!modelStore.currentApiKey)
-
 // Video generation hook | 视频生成 hook
 const { loading, error, status, video: generatedVideo, progress, createVideoTaskOnly } = useVideoGeneration()
+const { videoModels, loadModels } = useUserModelOptions()
 
 // Local state | 本地状态
 const showHandleMenu = ref(false)
 const isGenerating = ref(false)  // 任务创建中状态
-const localModel = ref(props.data?.model || DEFAULT_VIDEO_MODEL)
-const localRatio = ref(props.data?.ratio || '16:9')
+const localModel = ref(props.data?.modelKey || props.data?.model_config_id || props.data?.model || '')
+const localRatio = ref(props.data?.ratio || props.data?.aspect_ratio || '')
+const localResolution = ref(props.data?.resolution || '')
 const localDuration = ref(props.data?.dur || 5)
 
 // Label editing state | Label 编辑状态
 const isEditingLabel = ref(false)
 const editingLabelValue = ref('')
-const labelInputRef = ref(null)
 
 // Get connected images with roles | 获取连接的图片及其角色
 const connectedImages = computed(() => {
@@ -217,58 +224,106 @@ const imagesByRole = computed(() => {
 })
 
 // Get current model config | 获取当前模型配置
-const currentModelConfig = computed(() => getModelConfig(localModel.value))
+const currentModelConfig = computed(() => findModelOption(videoModels.value, localModel.value))
 
-// Model options from Pinia store (filtered by provider) | 从 Pinia store 获取模型选项（根据渠道过滤）
-const modelOptions = computed(() => modelStore.allVideoModelOptions)
+// Model options from user providers | 从用户供应商获取模型选项
+const modelOptions = computed(() => videoModels.value.map(m => ({
+  label: modelBaseName(m),
+  key: modelOptionKey(m)
+})))
+
+const isConfigured = computed(() => modelOptions.value.length > 0 && Boolean(currentModelConfig.value))
 
 // Display model name | 显示模型名称
 const displayModelName = computed(() => {
-  const model = modelOptions.value.find(m => m.key === localModel.value)
-  // 如果当前模型不在选项中，尝试从 allVideoModels 找到
-  if (!model) {
-    const allModel = modelStore.allVideoModels.find(m => m.key === localModel.value)
-    return allModel?.label || localModel.value || '选择模型'
-  }
-  return model?.label || localModel.value || '选择模型'
+  const model = currentModelConfig.value
+  return modelBaseName(model) || '选择模型'
 })
+
+function modelBaseName(model) {
+  return model?.name || model?.display_name || model?.model_name || model?.config_name || model?.label || model?.model_id || model?.value || ''
+}
+
+function isPlatformModel(model) {
+  return isOfficialModel(model)
+}
+
+function isVipModel(model) {
+  return Boolean(model?.member_only || model?.memberOnly)
+}
+
+function renderModelOptionLabel(option) {
+  const model = videoModels.value.find(item => modelOptionKey(item) === option.key)
+  return h('span', { class: 'canvas-model-option-label' }, [
+    h('span', { class: 'canvas-model-option-name' }, option.label),
+    isPlatformModel(model) ? h('span', { class: 'canvas-model-badge official' }, '官网') : null,
+    isVipModel(model) ? h('span', { class: 'canvas-model-badge vip' }, 'VIP') : null,
+  ].filter(Boolean))
+}
 
 // Ratio options based on model | 基于模型的比例选项
 const ratioOptions = computed(() => {
-  return getModelRatioOptions(localModel.value)
+  return buildAspectRatioOptions(currentModelConfig.value)
 })
 
 // Duration options based on model | 基于模型的时长选项
 const durationOptions = computed(() => {
-  return getModelDurationOptions(localModel.value)
+  return buildDurationOptions(currentModelConfig.value)
 })
+
+const resolutionOptions = computed(() => buildResolutionOptions(currentModelConfig.value, 'video'))
+
+const displayResolution = computed(() => {
+  const option = resolutionOptions.value.find(o => (o.value || o.key) === localResolution.value)
+  return option?.label || localResolution.value || '分辨率'
+})
+
+const ensureSelectedParams = () => {
+  const defaults = currentModelConfig.value?.defaults || {}
+  if (!localRatio.value || !ratioOptions.value.some(item => (item.value || item.key) === localRatio.value)) {
+    localRatio.value = pickOption(ratioOptions.value, [defaults.aspect_ratio, defaults.aspectRatio, defaults.ratio])
+  }
+  if (!localResolution.value || !resolutionOptions.value.some(item => (item.value || item.key) === localResolution.value)) {
+    localResolution.value = pickOption(resolutionOptions.value, [defaults.resolution])
+  }
+  if (!localDuration.value) {
+    localDuration.value = Number(pickOption(durationOptions.value, [defaults.duration, defaults.dur]) || 5)
+  }
+}
+
+const ensureSelectedModel = () => {
+  const preferred = videoModels.value.find(item => item.is_default) || videoModels.value[0]
+  const matched = findModelOption(videoModels.value, localModel.value)
+  localModel.value = matched ? modelOptionKey(matched) : (preferred ? modelOptionKey(preferred) : '')
+  ensureSelectedParams()
+  if (localModel.value) {
+    updateNode(props.id, {
+      modelKey: localModel.value,
+      model: currentModelConfig.value?.model_id || localModel.value,
+      model_config_id: currentModelConfig.value?.model_config_id || currentModelConfig.value?.id,
+      user_provider_id: currentModelConfig.value?.user_provider_id,
+      provider: currentModelConfig.value?.provider,
+      ratio: localRatio.value,
+      resolution: localResolution.value,
+      dur: localDuration.value
+    })
+  }
+}
 
 // Handle model selection | 处理模型选择
 const handleModelSelect = (key) => {
   localModel.value = key
-  // Update ratio and duration to model's default | 更新为模型默认比例和时长
-  const config = getModelConfig(key)
-  const updates = { model: key }
-  if (config?.defaultParams?.ratio) {
-    localRatio.value = config.defaultParams.ratio
-    updates.ratio = config.defaultParams.ratio
-  }
-  if (config?.defaultParams?.duration) {
-    localDuration.value = config.defaultParams.duration
-    updates.dur = config.defaultParams.duration
-  }
-  updateNode(props.id, updates)
-}
-
-// Handle duplicate | 处理复制
-const handleDuplicate = () => {
-  const newNodeId = duplicateNode(props.id)
-  window.$message?.success('节点已复制')
-  if (newNodeId) {
-    setTimeout(() => {
-      updateNodeInternals(newNodeId)
-    }, 50)
-  }
+  localRatio.value = ''
+  localResolution.value = ''
+  localDuration.value = 0
+  ensureSelectedParams()
+  updateNode(props.id, {
+    modelKey: key,
+    ...modelPayload(currentModelConfig.value, key),
+    ratio: localRatio.value,
+    resolution: localResolution.value,
+    dur: localDuration.value
+  })
 }
 
 // Handle ratio selection | 处理比例选择
@@ -281,6 +336,11 @@ const handleRatioSelect = (key) => {
 const handleDurationSelect = (key) => {
   localDuration.value = key
   updateNode(props.id, { dur: key })
+}
+
+const handleResolutionSelect = (key) => {
+  localResolution.value = key
+  updateNode(props.id, { resolution: key })
 }
 
 // Get connected inputs by role | 根据角色获取连接的输入
@@ -342,7 +402,7 @@ const handleGenerate = async () => {
   }
 
   if (!isConfigured.value) {
-    window.$message?.warning('请先配置 API Key')
+    window.$message?.warning('暂无可用视频模型，请联系管理员配置平台模型')
     isGenerating.value = false
     return
   }
@@ -377,7 +437,7 @@ const handleGenerate = async () => {
     // Build request params (raw form data) | 构建请求参数（原始表单数据）
     // These will be transformed by inputTransform | 这些会被 inputTransform 转换
     const params = {
-      model: localModel.value
+      ...modelPayload(currentModelConfig.value, localModel.value)
     }
 
     // Add prompt if provided | 如果有提示词则添加
@@ -403,6 +463,11 @@ const handleGenerate = async () => {
     // Add ratio/size | 添加比例参数
     if (localRatio.value) {
       params.ratio = localRatio.value
+      params.aspect_ratio = localRatio.value
+    }
+
+    if (localResolution.value) {
+      params.resolution = localResolution.value
     }
 
     // Add duration | 添加时长
@@ -419,7 +484,7 @@ const handleGenerate = async () => {
         url: url,
         loading: false,
         label: '视频生成',
-        model: localModel.value,
+        model: currentModelConfig.value?.model_id || localModel.value,
         updatedAt: Date.now()
       })
       window.$message?.success('视频生成成功')
@@ -431,7 +496,7 @@ const handleGenerate = async () => {
         taskId: newTaskId,
         loading: true,
         label: '视频生成中...',
-        model: localModel.value,
+        model: currentModelConfig.value?.model_id || localModel.value,
         updatedAt: Date.now()
       })
       window.$message?.success('视频任务已创建')
@@ -456,10 +521,6 @@ const handleGenerate = async () => {
 const startEditLabel = () => {
   editingLabelValue.value = props.data?.label || '视频生成'
   isEditingLabel.value = true
-  nextTick(() => {
-    labelInputRef.value?.focus()
-    labelInputRef.value?.select()
-  })
 }
 
 // Finish editing label | 完成编辑 label
@@ -476,28 +537,25 @@ const cancelEditLabel = () => {
   isEditingLabel.value = false
 }
 
-// Handle delete | 处理删除
-const handleDelete = () => {
-  removeNode(props.id)
-}
-
 // Initialize on mount | 挂载时初始化
-onMounted(() => {
-  // 检查当前模型是否在可用模型列表中
-  const availableModels = modelStore.availableVideoModels
-  const isModelAvailable = availableModels.some(m => m.key === localModel.value)
-
-  if (!localModel.value || !isModelAvailable) {
-    // 使用 store 中的默认模型或第一个可用模型
-    localModel.value = modelStore.selectedVideoModel || availableModels[0]?.key || DEFAULT_VIDEO_MODEL
-    updateNode(props.id, { model: localModel.value })
+onMounted(async () => {
+  try {
+    await loadModels()
+    ensureSelectedModel()
+  } catch (err) {
+    window.$message?.error(err.message || '模型加载失败')
   }
 })
 
 // Watch for model changes from props | 监听 props 中模型变化
 watch(() => props.data?.model, (newModel) => {
-  if (newModel && newModel !== localModel.value) {
-    localModel.value = newModel
+  const nextKey = props.data?.modelKey || props.data?.model_config_id || newModel
+  if (nextKey && nextKey !== localModel.value) {
+    localModel.value = String(nextKey)
+    localRatio.value = props.data?.ratio || localRatio.value
+    localResolution.value = props.data?.resolution || localResolution.value
+    localDuration.value = props.data?.dur || localDuration.value
+    ensureSelectedParams()
   }
 })
 
@@ -529,11 +587,49 @@ watch(
 <style scoped>
 .video-config-node-wrapper {
   position: relative;
-  padding-top: 20px;
+  padding-top: 26px;
 }
 
 .video-config-node {
   cursor: default;
   position: relative;
+  overflow: visible;
+}
+
+.canvas-model-label,
+:global(.canvas-model-option-label) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+}
+
+.canvas-model-label > span:first-child,
+:global(.canvas-model-option-name) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.canvas-model-badge,
+:global(.canvas-model-badge) {
+  flex: 0 0 auto;
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.canvas-model-badge.official,
+:global(.canvas-model-badge.official) {
+  background: rgba(10, 132, 255, 0.16);
+  color: #60a5fa;
+}
+
+.canvas-model-badge.vip,
+:global(.canvas-model-badge.vip) {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
 }
 </style>

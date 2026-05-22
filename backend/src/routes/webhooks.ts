@@ -8,6 +8,7 @@ import { db, schema } from '../db/index.js'
 import { success, badRequest } from '../utils/response.js'
 import { downloadFile } from '../utils/storage.js'
 import { ViduVideoAdapter } from '../services/adapters/vidu-video'
+import { refundCredits } from '../services/credits.js'
 import { logTaskError, logTaskProgress, logTaskSuccess, logTaskWarn } from '../utils/task-logger.js'
 
 const app = new Hono()
@@ -32,7 +33,7 @@ app.post('/vidu', async (c) => {
   // 查找对应的 video_generation 记录
   const rows = db.select().from(schema.videoGenerations)
     .where(eq(schema.videoGenerations.taskId, task_id))
-    .all()
+    .execute()
 
   if (rows.length === 0) {
     // 可能任务还没写入（极少见），返回成功避免重复回调
@@ -53,14 +54,14 @@ app.post('/vidu', async (c) => {
           updatedAt: new Date().toISOString(),
         })
         .where(eq(schema.videoGenerations.id, record.id))
-        .run()
+        .execute()
 
       // 更新 storyboard
       if (record.storyboardId) {
         db.update(schema.storyboards)
           .set({ videoUrl: localPath, updatedAt: new Date().toISOString() })
           .where(eq(schema.storyboards.id, record.storyboardId))
-          .run()
+          .execute()
       }
 
       logTaskSuccess('Webhook', 'vidu-video-updated', {
@@ -75,7 +76,8 @@ app.post('/vidu', async (c) => {
       db.update(schema.videoGenerations)
         .set({ status: 'failed', errorMsg: `Webhook download failed: ${err.message}` })
         .where(eq(schema.videoGenerations.id, record.id))
-        .run()
+        .execute()
+      await refundVideoCredits(record.id, '视频生成失败，积分退回')
       return badRequest(c, err.message)
     }
   }
@@ -88,7 +90,8 @@ app.post('/vidu', async (c) => {
         errorMsg: error || 'Vidu generation failed',
       })
       .where(eq(schema.videoGenerations.id, record.id))
-      .run()
+      .execute()
+    await refundVideoCredits(record.id, '视频生成失败，积分退回')
     return success(c, { message: 'Error recorded' })
   }
 
@@ -98,3 +101,9 @@ app.post('/vidu', async (c) => {
 })
 
 export default app
+
+async function refundVideoCredits(generationId: number, reason: string) {
+  const log = (await db.select().from(schema.pointsLogs).execute())
+    .find(item => item.type === 'CONSUME' && item.taskType === 'video' && item.relatedTaskId === String(generationId))
+  if (log) await refundCredits(log.id, reason)
+}

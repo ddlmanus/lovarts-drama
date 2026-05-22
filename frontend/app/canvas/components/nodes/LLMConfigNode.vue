@@ -1,40 +1,20 @@
 <template>
   <!-- LLM Config node wrapper | LLM配置节点包裹层 -->
   <div class="llm-node-wrapper" @mouseenter="showHandleMenu = true" @mouseleave="showHandleMenu = false">
+    <NodeTitle
+      :label="nodeLabel"
+      :icon="ChatbubbleOutline"
+      :editing="isEditingLabel"
+      v-model="editingLabelValue"
+      @start-edit="startEditLabel"
+      @finish-edit="finishEditLabel"
+      @cancel-edit="cancelEditLabel"
+    />
+
     <!-- LLM Config node | LLM配置节点 -->
     <div
-      class="llm-node bg-[var(--bg-secondary)] rounded-xl border min-w-[320px] max-w-[400px] relative transition-all duration-200"
-      :class="data.selected ? 'border-1 border-purple-500 shadow-lg shadow-purple-500/20' : 'border border-[var(--border-color)]'">
-      <!-- Header | 头部 -->
-      <div
-        class="flex items-center justify-between px-3 py-2 border-b border-[var(--border-color)] bg-gradient-to-r from-purple-500/10 to-transparent">
-        <div class="flex items-center gap-2">
-          <n-icon :size="16" class="text-purple-500">
-            <ChatbubbleOutline />
-          </n-icon>
-          <span v-if="!isEditingLabel" @dblclick="startEditLabel"
-            class="text-sm font-medium text-[var(--text-secondary)] cursor-text hover:bg-[var(--bg-tertiary)] px-1 rounded transition-colors"
-            title="双击编辑名称">{{ nodeLabel }}</span>
-          <input v-else ref="labelInputRef" v-model="editingLabelValue" @blur="finishEditLabel"
-            @keydown.enter="finishEditLabel" @keydown.escape="cancelEditLabel"
-            class="text-sm font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] px-1 rounded outline-none border border-purple-500" />
-        </div>
-        <div class="flex items-center gap-1">
-          <button @click="handleDuplicate" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors"
-            title="复制节点">
-            <n-icon :size="14">
-              <CopyOutline />
-            </n-icon>
-          </button>
-          <button @click="handleDelete" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors"
-            title="删除节点">
-            <n-icon :size="14">
-              <TrashOutline />
-            </n-icon>
-          </button>
-        </div>
-      </div>
-
+      class="llm-node canvas-node-card rounded-xl min-w-[320px] max-w-[400px] relative transition-all duration-200"
+      :class="{ 'is-selected': data.selected }">
       <!-- Config content | 配置内容 -->
       <div class="p-3 space-y-3">
         <!-- System prompt | 系统提示词 -->
@@ -61,7 +41,7 @@
         <!-- Model selection | 模型选择 -->
         <div>
           <label class="text-xs text-[var(--text-secondary)] mb-1 block">模型</label>
-          <n-select v-model:value="model" :options="modelOptions" label-field="label" value-field="key" size="small"
+          <n-select v-model:value="model" :options="modelOptions" :render-label="renderModelOptionLabel" :render-tag="renderModelSelectTag" label-field="label" value-field="key" size="small"
             @update:value="updateConfig" />
         </div>
 
@@ -139,16 +119,23 @@
  * LLM Config node component | LLM配置节点组件
  * For text generation tasks like story segmentation
  */
-import { ref, watch, computed, nextTick, onMounted } from 'vue'
+import { ref, watch, computed, nextTick, onMounted, h } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { NIcon, NSpin, NSelect } from 'naive-ui'
-import { TrashOutline, CopyOutline, ChatbubbleOutline, SparklesOutline, ListOutline, ImageOutline, VideocamOutline, DocumentTextOutline } from '@vicons/ionicons5'
-import { updateNode, removeNode, duplicateNode, addNode, addEdge, addNodes, addEdges, nodes, edges, startBatchOperation, endBatchOperation } from '../../stores/canvas'
+import { CopyOutline, ChatbubbleOutline, SparklesOutline, ListOutline, ImageOutline, VideocamOutline, DocumentTextOutline } from '@vicons/ionicons5'
+import { updateNode, addNode, addEdge, addNodes, addEdges, nodes, edges, startBatchOperation, endBatchOperation } from '../../stores/canvas'
 import NodeHandleMenu from './NodeHandleMenu.vue'
+import NodeTitle from './NodeTitle.vue'
 import MentionsPicker from '../MentionsPicker.vue'
 import { useChat } from '../../hooks'
-import { useModelStore } from '../../stores/pinia'
 import { parseMentions, removeMention as removeMentionUtil } from '../../hooks/useNodeRef'
+import {
+  findModelOption,
+  isOfficialModel,
+  modelOptionKey,
+  modelPayload,
+  useUserModelOptions
+} from '../../utils/modelOptions'
 
 const props = defineProps({
   id: String,
@@ -157,9 +144,6 @@ const props = defineProps({
 
 // Vue Flow instance | Vue Flow 实例
 const { updateNodeInternals } = useVueFlow()
-
-// API config state | API 配置状态
-const isApiConfigured = computed(() => !!modelStore.currentApiKey)
 
 // Local state | 本地状态
 const showHandleMenu = ref(false)
@@ -172,7 +156,6 @@ const lastContent = ref('')  // 上一次的内容，用于检测变化
 // Label editing state | Label 编辑状态
 const isEditingLabel = ref(false)
 const editingLabelValue = ref('')
-const labelInputRef = ref(null)
 
 // Computed node label | 计算节点标签
 const nodeLabel = computed(() => props.data?.label || 'LLM 文本生成')
@@ -627,7 +610,11 @@ watch(() => props.data, (newData) => {
     // 立即将文本中的 @label 转为 chip
     nextTick(() => convertTextMentionsToChips())
   }
-  if (newData?.model !== undefined) model.value = newData.model
+  const nextModel = newData?.modelKey || newData?.model_config_id || newData?.model
+  if (nextModel !== undefined) {
+    const matched = findModelOption(textModels.value, nextModel)
+    model.value = matched ? modelOptionKey(matched) : String(nextModel)
+  }
   if (newData?.outputFormat !== undefined) outputFormat.value = newData.outputFormat
   if (newData?.outputContent !== undefined) outputContent.value = newData.outputContent
 
@@ -648,15 +635,9 @@ watch(systemPrompt, (newVal) => {
 
 // Initialize editor content | 初始化 editor 内容
 onMounted(() => {
-  // 检查当前模型是否在可用模型列表中
-  const availableModels = modelStore.availableChatModels
-  const isModelAvailable = availableModels.some(m => m.key === model.value)
-
-  if (!model.value || !isModelAvailable) {
-    // 使用 store 中的默认模型或第一个可用模型
-    model.value = modelStore.selectedChatModel || availableModels[0]?.key || 'gpt-4o-mini'
-    updateConfig()
-  }
+  loadModels()
+    .then(() => ensureSelectedModel())
+    .catch(err => window.$message?.error(err.message || '模型加载失败'))
 
   if (systemPromptRef.value) {
     if (props.data?.systemPrompt) {
@@ -675,29 +656,58 @@ const outputContent = ref(props.data?.outputContent || '')
 const isGenerating = ref(false)
 const isSplitting = ref(false)
 const splitMessage = ref('')
+const { textModels, loadModels } = useUserModelOptions()
+const model = ref(props.data?.modelKey || props.data?.model_config_id || props.data?.model || '')
+const currentModelConfig = computed(() => findModelOption(textModels.value, model.value))
+const modelOptions = computed(() => textModels.value.map(m => ({
+  label: modelBaseName(m),
+  key: modelOptionKey(m)
+})))
+const isTextModelConfigured = computed(() => modelOptions.value.length > 0 && Boolean(currentModelConfig.value))
 
-// Model Store (Pinia) | 模型配置 Store
-const modelStore = useModelStore()
+function modelBaseName(modelConfig) {
+  return modelConfig?.name || modelConfig?.display_name || modelConfig?.model_name || modelConfig?.config_name || modelConfig?.label || modelConfig?.model_id || modelConfig?.value || ''
+}
 
-// 使用全部模型（不按渠道过滤）
-const modelOptions = computed(() => modelStore.allChatModelOptions)
+function isPlatformModel(modelConfig) {
+  return isOfficialModel(modelConfig)
+}
 
-// 默认模型使用选中的模型
-const model = ref(props.data?.model || modelStore.selectedChatModel || 'gpt-4o-mini')
+function isVipModel(modelConfig) {
+  return Boolean(modelConfig?.member_only || modelConfig?.memberOnly)
+}
+
+function modelLabelVNode(label, modelConfig) {
+  return h('span', { class: 'canvas-model-option-label' }, [
+    h('span', { class: 'canvas-model-option-name' }, label),
+    isPlatformModel(modelConfig) ? h('span', { class: 'canvas-model-badge official' }, '官网') : null,
+    isVipModel(modelConfig) ? h('span', { class: 'canvas-model-badge vip' }, 'VIP') : null,
+  ].filter(Boolean))
+}
+
+function renderModelOptionLabel(option) {
+  const modelConfig = textModels.value.find(item => modelOptionKey(item) === option.key)
+  return modelLabelVNode(option.label, modelConfig)
+}
+
+function renderModelSelectTag({ option }) {
+  const modelConfig = textModels.value.find(item => modelOptionKey(item) === option.key)
+  return modelLabelVNode(option.label, modelConfig)
+}
+
+const ensureSelectedModel = () => {
+  const preferred = textModels.value.find(item => item.is_default) || textModels.value[0]
+  const matched = findModelOption(textModels.value, model.value)
+  model.value = matched ? modelOptionKey(matched) : (preferred ? modelOptionKey(preferred) : '')
+  if (model.value) updateConfig()
+}
+
 // Format options | 格式选项
 const formatOptions = [
   { label: '纯文本', value: 'text' },
   { label: 'JSON 结构', value: 'json' },
   { label: 'Markdown', value: 'markdown' }
 ]
-
-// Chat hook | Chat hook
-const chatHook = computed(() => {
-  return useChat({
-    systemPrompt: systemPrompt.value,
-    model: model.value
-  })
-})
 
 // 防抖定时器
 let updateConfigTimer = null
@@ -708,7 +718,8 @@ const updateConfig = () => {
   updateConfigTimer = setTimeout(() => {
     updateNode(props.id, {
       systemPrompt: systemPrompt.value,
-      model: model.value,
+      modelKey: model.value,
+      ...modelPayload(currentModelConfig.value, model.value),
       outputFormat: outputFormat.value,
       outputContent: outputContent.value
     })
@@ -763,8 +774,8 @@ const getInputFromConnections = () => {
 
 // Handle generate | 处理生成
 const handleGenerate = async () => {
-  if (!isApiConfigured.value) {
-    window.$message?.warning('请先配置 API Key')
+  if (!isTextModelConfigured.value) {
+    window.$message?.warning('暂无可用文本模型，请联系管理员配置平台模型')
     return
   }
 
@@ -838,7 +849,7 @@ const handleGenerate = async () => {
 
     const { send } = useChat({
       systemPrompt: resolvedSystemPrompt,
-      model: model.value
+      ...modelPayload(currentModelConfig.value, model.value)
     })
 
     // 如果 user 消息为空，使用简单提示
@@ -872,10 +883,6 @@ watch(
 const startEditLabel = () => {
   editingLabelValue.value = nodeLabel.value
   isEditingLabel.value = true
-  nextTick(() => {
-    labelInputRef.value?.focus()
-    labelInputRef.value?.select()
-  })
 }
 
 // Finish editing label | 完成编辑 label
@@ -890,22 +897,6 @@ const finishEditLabel = () => {
 // Cancel editing label | 取消编辑 label
 const cancelEditLabel = () => {
   isEditingLabel.value = false
-}
-
-// Handle delete | 处理删除
-const handleDelete = () => {
-  removeNode(props.id)
-}
-
-// Handle duplicate | 处理复制
-const handleDuplicate = () => {
-  const newNodeId = duplicateNode(props.id)
-  window.$message?.success('节点已复制')
-  if (newNodeId) {
-    setTimeout(() => {
-      updateNodeInternals(newNodeId)
-    }, 50)
-  }
 }
 
 // Handle copy output | 处理复制输出
@@ -1124,13 +1115,14 @@ const doSplitToTextNodes = (segments) => {
 <style scoped>
 .llm-node-wrapper {
   padding-right: 50px;
-  padding-top: 20px;
+  padding-top: 26px;
   position: relative;
 }
 
 .llm-node {
   cursor: default;
   position: relative;
+  overflow: visible;
 }
 
 .llm-node textarea {
@@ -1141,6 +1133,38 @@ const doSplitToTextNodes = (segments) => {
   cursor: text;
   user-select: text;
   -webkit-user-select: text;
+}
+
+:global(.canvas-model-option-label) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+}
+
+:global(.canvas-model-option-name) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:global(.canvas-model-badge) {
+  flex: 0 0 auto;
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+:global(.canvas-model-badge.official) {
+  background: rgba(10, 132, 255, 0.16);
+  color: #60a5fa;
+}
+
+:global(.canvas-model-badge.vip) {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
 }
 
 /* Textarea wrapper - 参考 TextNode */

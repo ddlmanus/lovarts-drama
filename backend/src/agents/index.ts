@@ -7,7 +7,7 @@ import { Agent } from '@mastra/core/agent'
 import { createOpenAI } from '@ai-sdk/openai'
 import { eq, isNull, and } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
-import { getConfigForModel, getTextConfig, getTextProviderBaseUrl } from '../services/ai.js'
+import { getConfigForModelAsync, getTextConfigAsync, getTextProviderBaseUrl } from '../services/ai.js'
 import { logTaskProgress } from '../utils/task-logger.js'
 import { createScriptTools } from './tools/script-tools.js'
 import { createExtractTools } from './tools/extract-tools.js'
@@ -195,19 +195,19 @@ const DEFAULT_PROMPTS: Record<string, { name: string; instructions: string }> = 
 
 export const validAgentTypes = Object.keys(DEFAULT_PROMPTS)
 
-function getAgentConfig(agentType: string) {
-  const rows = db.select().from(schema.agentConfigs)
+async function getAgentConfig(agentType: string) {
+  const rows = await db.select().from(schema.agentConfigs)
     .where(and(eq(schema.agentConfigs.agentType, agentType), isNull(schema.agentConfigs.deletedAt)))
-    .all()
+    .execute()
   // Return active one, or first one
   return rows.find(r => r.isActive) || rows[0] || null
 }
 
-function getModel(dbConfig: any, overrideModel?: string) {
+async function getModel(dbConfig: any, overrideModel?: string) {
   const selectedModel = overrideModel || dbConfig?.model || ''
   const textConfig = selectedModel
-    ? getConfigForModel('text', selectedModel) || getTextConfig()
-    : getTextConfig()
+    ? await getConfigForModelAsync('text', selectedModel) || await getTextConfigAsync()
+    : await getTextConfigAsync()
   const resolvedBaseURL = getTextProviderBaseUrl(textConfig)
   const modelName = selectedModel || textConfig.model
   logTaskProgress('AIConfig', 'text-model-endpoint', {
@@ -224,12 +224,12 @@ function getModel(dbConfig: any, overrideModel?: string) {
   return provider.chat(modelName)
 }
 
-export function createAgent(type: string, episodeId: number, dramaId: number, overrideModel?: string, taskId?: string): Agent | null {
+export async function createAgent(type: string, episodeId: number, dramaId: number, overrideModel?: string, taskId?: string): Promise<Agent | null> {
   const defaults = DEFAULT_PROMPTS[type]
   if (!defaults) return null
 
-  const dbConfig = getAgentConfig(type)
-  const model = getModel(dbConfig, overrideModel)
+  const dbConfig = await getAgentConfig(type)
+  const model = await getModel(dbConfig, overrideModel)
   const dbInstructions = dbConfig?.systemPrompt?.trim()
   const isLegacyStoryboardPrompt = type === 'storyboard_breaker' && !!dbInstructions && (
     dbInstructions.includes('每个镜头 10-15 秒')

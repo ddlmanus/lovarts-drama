@@ -1,106 +1,20 @@
 <template>
   <!-- Image node wrapper for hover area | 图片节点包裹层，扩展悬浮区域 -->
   <div class="image-node-wrapper" @mouseenter="showActions = true; showHandleMenu = true" @mouseleave="showActions = false; showHandleMenu = false">
+    <NodeTitle
+      :label="data.label || '图像生成结果'"
+      :icon="ImageOutline"
+      :editing="isEditingLabel"
+      v-model="editingLabelValue"
+      @start-edit="startEditLabel"
+      @finish-edit="finishEditLabel"
+      @cancel-edit="cancelEditLabel"
+    />
+
     <!-- Image node | 图片节点 -->
     <div
-      class="image-node bg-[var(--bg-secondary)] rounded-xl border min-w-[200px] max-w-[280px] relative transition-all duration-200"
-      :class="data.selected ? 'border-1 border-blue-500 shadow-lg shadow-blue-500/20' : 'border border-[var(--border-color)]'">
-      <!-- Header | 头部 -->
-      <div class="px-3 py-2 border-b border-[var(--border-color)]">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <span
-              v-if="!isEditingLabel"
-              @dblclick="startEditLabel"
-              class="text-sm font-medium text-[var(--text-primary)] cursor-text hover:bg-[var(--bg-tertiary)] px-1 rounded transition-colors"
-              title="双击编辑名称"
-            >{{ data.label || '图像生成结果' }}</span>
-            <input
-              v-else
-              ref="labelInputRef"
-              v-model="editingLabelValue"
-              @blur="finishEditLabel"
-              @keydown.enter="finishEditLabel"
-              @keydown.escape="cancelEditLabel"
-              class="text-sm font-medium bg-[var(--bg-tertiary)] text-[var(--text-primary)] px-1 rounded outline-none border border-blue-500"
-            />
-            <!-- Public switch | 公开开关 -->
-            <n-tooltip trigger="hover">
-              <template #trigger>
-                <button
-                  class="flex items-center"
-                  title="设置公开（可被 @ 引用）"
-                >
-                  <n-switch
-                    :value="isPublic"
-                    @update:value="handleTogglePublic"
-                    size="small"
-                  />
-                </button>
-              </template>
-              {{ isPublic ? '已公开: ' + (data.label || '图片') : '点击公开（可被 @ 引用）' }}
-            </n-tooltip>
-          </div>
-          <div class="flex items-center gap-1">
-            <!-- Replace button | 替换按钮 -->
-            <n-tooltip trigger="hover">
-              <template #trigger>
-                <button @click="showReplaceModal = true" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors">
-                  <n-icon :size="14">
-                    <SwapHorizontalOutline />
-                  </n-icon>
-                </button>
-              </template>
-              替换图片
-            </n-tooltip>
-            <n-tooltip v-if="data.url" trigger="hover">
-              <template #trigger>
-                <button @click="handlePreview" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors">
-                  <n-icon :size="14">
-                    <EyeOutline />
-                  </n-icon>
-                </button>
-              </template>
-              预览
-            </n-tooltip>
-            <n-tooltip v-if="data.url" trigger="hover">
-              <template #trigger>
-                <button @click="handleDownload" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors">
-                  <n-icon :size="14">
-                    <DownloadOutline />
-                  </n-icon>
-                </button>
-              </template>
-              下载
-            </n-tooltip>
-            <n-tooltip trigger="hover">
-              <template #trigger>
-                <button @click="handleDuplicate" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors">
-                  <n-icon :size="14">
-                    <CopyOutline />
-                  </n-icon>
-                </button>
-              </template>
-              复制节点
-            </n-tooltip>
-            <n-tooltip trigger="hover">
-              <template #trigger>
-                <button @click="handleDelete" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors">
-                  <n-icon :size="14">
-                    <TrashOutline />
-                  </n-icon>
-                </button>
-              </template>
-              删除节点
-            </n-tooltip>
-          </div>
-        </div>
-        <!-- Model name | 模型名称 -->
-        <div v-if="data.model" class="mt-1 text-xs text-[var(--text-secondary)] truncate">
-          {{ data.model }}
-        </div>
-      </div>
-
+      class="image-node canvas-node-card rounded-xl min-w-[200px] max-w-[280px] relative transition-all duration-200"
+      :class="{ 'is-selected': data.selected }">
       <!-- Image preview area | 图片预览区域 -->
       <div class="p-3">
         <!-- Loading state | 加载状态 -->
@@ -262,6 +176,44 @@
       <NodeHandleMenu :nodeId="id" nodeType="image" :visible="showHandleMenu" :operations="operations" @select="handleSelect" />
       <Handle type="target" :position="Position.Left" id="left" class="!bg-[var(--accent-color)]" />
     </div>
+
+    <div
+      v-show="showActions"
+      class="absolute right-10 top-20 -translate-y-1/2 translate-x-full flex flex-col gap-2 z-[1000]"
+    >
+      <n-tooltip trigger="hover">
+        <template #trigger>
+          <button class="action-btn" @click="showReplaceModal = true">
+            <n-icon :size="16"><SwapHorizontalOutline /></n-icon>
+          </button>
+        </template>
+        替换图片
+      </n-tooltip>
+      <n-tooltip v-if="data.url" trigger="hover">
+        <template #trigger>
+          <button class="action-btn" @click="handlePreview">
+            <n-icon :size="16"><EyeOutline /></n-icon>
+          </button>
+        </template>
+        预览
+      </n-tooltip>
+      <n-tooltip v-if="data.url" trigger="hover">
+        <template #trigger>
+          <button class="action-btn" @click="handleDownload">
+            <n-icon :size="16"><DownloadOutline /></n-icon>
+          </button>
+        </template>
+        下载
+      </n-tooltip>
+      <n-tooltip trigger="hover">
+        <template #trigger>
+          <button class="action-btn" :class="{ active: isPublic }" @click="handleTogglePublic(!isPublic)">
+            <n-icon :size="16"><LinkOutline /></n-icon>
+          </button>
+        </template>
+        {{ isPublic ? '已公开: ' + (data.label || '图片') : '点击公开（可被 @ 引用）' }}
+      </n-tooltip>
+    </div>
   </div>
 
   <!-- Image preview dialog | 图片预览弹窗 -->
@@ -324,10 +276,11 @@
  */
 import { ref, nextTick, computed } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
-import { NIcon, NTooltip, NSwitch, NImagePreview, NModal, NButton } from 'naive-ui'
-import { TrashOutline, ExpandOutline, ImageOutline, CloseCircleOutline, CopyOutline, VideocamOutline, DownloadOutline, EyeOutline, BrushOutline, RefreshOutline, ColorWandOutline, SwapHorizontalOutline } from '@vicons/ionicons5'
-import { updateNode, removeNode, duplicateNode, addNode, addEdge, nodes } from '../../stores/canvas'
+import { NIcon, NTooltip, NImagePreview, NModal, NButton } from 'naive-ui'
+import { ImageOutline, CloseCircleOutline, VideocamOutline, DownloadOutline, EyeOutline, BrushOutline, RefreshOutline, SwapHorizontalOutline, LinkOutline } from '@vicons/ionicons5'
+import { updateNode, addNode, addEdge, nodes } from '../../stores/canvas'
 import NodeHandleMenu from './NodeHandleMenu.vue'
+import NodeTitle from './NodeTitle.vue'
 
 const props = defineProps({
   id: String,
@@ -344,7 +297,6 @@ const showHandleMenu = ref(false)
 // Label editing state | Label 编辑状态
 const isEditingLabel = ref(false)
 const editingLabelValue = ref('')
-const labelInputRef = ref(null)
 
 // URL input state | URL 输入状态
 const urlInput = ref('')
@@ -788,10 +740,6 @@ const handleReplaceUrlSubmit = () => {
 const startEditLabel = () => {
   editingLabelValue.value = props.data?.label || '图像生成结果'
   isEditingLabel.value = true
-  nextTick(() => {
-    labelInputRef.value?.focus()
-    labelInputRef.value?.select()
-  })
 }
 
 // Finish editing label | 完成编辑 label
@@ -806,25 +754,6 @@ const finishEditLabel = () => {
 // Cancel editing label | 取消编辑 label
 const cancelEditLabel = () => {
   isEditingLabel.value = false
-}
-
-// Handle delete | 处理删除
-const handleDelete = () => {
-  removeNode(props.id)
-}
-
-// Handle duplicate | 处理复制
-const handleDuplicate = () => {
-  const newId = duplicateNode(props.id)
-  if (newId) {
-    // Clear selection and select the new node | 清除选中并选中新节点
-    updateNode(props.id, { selected: false })
-    updateNode(newId, { selected: true })
-    window.$message?.success('节点已复制')
-    setTimeout(() => {
-      updateNodeInternals(newId)
-    }, 50)
-  }
 }
 
 // Handle image generation | 处理图片生图（图生图）
@@ -954,12 +883,33 @@ const handleVideoGen = () => {
 .image-node-wrapper {
   position: relative;
   padding-right: 50px;
-  padding-top: 20px;
+  padding-top: 26px;
 }
 
 .image-node {
   cursor: default;
   position: relative;
+  overflow: visible;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.action-btn:hover,
+.action-btn.active {
+  border-color: var(--accent-color);
+  background: var(--bg-tertiary);
+  color: var(--accent-color);
 }
 
 /* Slider styling | 滑块样式 */

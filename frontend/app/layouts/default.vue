@@ -6,20 +6,18 @@
 
     <div v-if="sidebarOpen" class="mobile-backdrop" @click="sidebarOpen = false"></div>
 
-    <aside class="floating-sidebar" :class="{ 'is-open': sidebarOpen }">
+    <aside class="floating-sidebar" :class="{ 'is-open': sidebarOpen, 'is-collapsed': sidebarCollapsed }">
       <div class="sidebar-container">
-        <button class="logo-section" type="button" @click="goHome">
-          <div class="logo-left">
-            <div class="logo-mark">
-              <img v-if="showBrandImage" :src="brandLogo" alt="AI 火宝" @error="showBrandImage = false" />
-              <span v-else>火</span>
-            </div>
+        <div class="logo-section">
+          <button class="logo-home" type="button" @click="goHome" aria-label="回到首页">
             <div class="logo-copy">
-              <strong>AI 火宝</strong>
+              <strong>{{ siteName }}</strong>
             </div>
-          </div>
-          <PanelLeftClose class="collapse-icon" :size="24" />
-        </button>
+          </button>
+          <button class="sidebar-collapse-btn" type="button" :aria-label="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'" @click="toggleSidebarCollapsed">
+            <PanelLeftClose class="collapse-icon" :size="24" />
+          </button>
+        </div>
 
         <nav class="menu-list" aria-label="主导航">
           <p class="menu-category">Codex</p>
@@ -37,14 +35,14 @@
             <Lightbulb :size="20" />
             <span>创作</span>
           </NuxtLink>
-          <a href="/canvas" target="_blank" rel="noopener noreferrer" class="menu-item" @click="sidebarOpen = false">
+          <NuxtLink to="/canvas" class="menu-item" :class="{ active: route.path.startsWith('/canvas') }" @click="sidebarOpen = false">
             <Presentation :size="20" />
             <span>画布</span>
-          </a>
-          <button class="menu-item" type="button" @click="comingSoon('资产')">
-            <Folder :size="20" />
-            <span>资产</span>
-          </button>
+          </NuxtLink>
+          <NuxtLink to="/" class="menu-item" :class="{ active: route.path === '/' }" @click="sidebarOpen = false">
+            <SquarePlay :size="20" />
+            <span>AI短剧</span>
+          </NuxtLink>
           <NuxtLink to="/library/characters" class="menu-item" :class="{ active: route.path === '/library/characters' }" @click="sidebarOpen = false">
             <UserRound :size="20" />
             <span>角色库</span>
@@ -55,38 +53,17 @@
           </NuxtLink>
 
           <p class="menu-category">账户管理</p>
-          <a href="/admin" target="_blank" rel="noopener noreferrer" class="menu-item" @click="sidebarOpen = false">
-            <FileCode2 :size="20" />
-            <span>后台管理</span>
-          </a>
-          <button class="menu-item" type="button" @click="comingSoon('套餐')">
+          <NuxtLink to="/account" class="menu-item" :class="{ active: route.path === '/account' }" @click="sidebarOpen = false">
             <CircleUserRound :size="20" />
-            <span>套餐</span>
-          </button>
-          <button class="menu-item" type="button" @click="comingSoon('交易记录')">
+            <span>会员套餐</span>
+          </NuxtLink>
+          <NuxtLink to="/transactions" class="menu-item" :class="{ active: route.path === '/transactions' }" @click="sidebarOpen = false">
             <ScrollText :size="20" />
             <span>交易记录</span>
-          </button>
-          <button class="menu-item" type="button" @click="comingSoon('邀请好友')">
-            <Gift :size="20" />
-            <span>邀请好友</span>
-          </button>
-
-          <NuxtLink to="/" class="menu-item" :class="{ active: route.path === '/' }" @click="sidebarOpen = false">
-            <SquarePlay :size="20" />
-            <span>火宝短剧</span>
           </NuxtLink>
-          <button class="menu-item" type="button" @click="openModelConfig">
-            <FileCode2 :size="20" />
-            <span>开放平台</span>
-          </button>
         </nav>
 
         <div class="sidebar-bottom">
-          <button class="bottom-item" type="button" @click="comingSoon('联系我们')">
-            <CircleHelp :size="20" />
-            <span>联系我们</span>
-          </button>
           <button class="bottom-item" type="button" @click="openAuthDialog">
             <CircleUserRound :size="20" />
             <span>{{ currentUser?.name || '登录 / 注册' }}</span>
@@ -95,7 +72,7 @@
       </div>
     </aside>
 
-    <main class="content-wrapper">
+    <main class="content-wrapper" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <div class="content-area">
         <div class="content-container">
           <slot />
@@ -123,6 +100,53 @@
           </div>
         </form>
 
+        <section v-else-if="authMode === 'profile'" class="login-form profile-card">
+          <div class="profile-head">
+            <div class="profile-avatar">{{ userInitial }}</div>
+            <div>
+              <h2 class="form-title">{{ currentUser?.name || '未命名用户' }}</h2>
+              <p class="form-subtitle">{{ currentUser?.account || currentUser?.email || currentUser?.id || '-' }}</p>
+            </div>
+          </div>
+          <div class="profile-list">
+            <div class="profile-row"><span>用户 ID</span><strong>{{ currentUser?.id || '-' }}</strong></div>
+            <div class="profile-row"><span>名称</span><strong>{{ currentUser?.name || '-' }}</strong></div>
+            <div class="profile-row"><span>账号</span><strong>{{ currentUser?.account || '-' }}</strong></div>
+            <div class="profile-row"><span>邮箱</span><strong>{{ currentUser?.email || '-' }}</strong></div>
+            <div class="profile-row"><span>积分</span><strong>{{ billingStatus?.credits ?? currentUser?.credits ?? 0 }}</strong></div>
+            <div class="profile-row"><span>会员状态</span><strong>{{ membershipStatusLabel }}</strong></div>
+            <div class="profile-row"><span>角色</span><strong>{{ roleLabel }}</strong></div>
+          </div>
+          <div class="profile-actions">
+            <button v-if="isAdminUser" class="secondary-action" type="button" @click="enterAdmin">
+              <FileCode2 :size="17" />
+              <span>进入后台</span>
+            </button>
+            <button class="secondary-action" type="button" @click="openProviderSettings">供应商设置</button>
+            <button class="logout-btn" type="button" @click="logout">
+              <LogOut :size="17" />
+              <span>退出登录</span>
+            </button>
+          </div>
+        </section>
+
+        <section v-else-if="authMode === 'resourceMode'" class="login-form resource-mode-card">
+          <div class="form-header">
+            <h2 class="form-title">选择使用方式</h2>
+            <p class="form-subtitle">你可以接入自己的供应商 API，也可以使用平台模型并通过会员/积分消费。</p>
+          </div>
+          <div class="resource-options">
+            <button type="button" class="resource-option" @click="chooseUserApiMode">
+              <strong>我有自己的 API</strong>
+              <span>使用你自己的供应商密钥调用模型，默认不扣平台积分。</span>
+            </button>
+            <button type="button" class="resource-option accent" @click="choosePlatformMode">
+              <strong>我没有 API，使用平台资源</strong>
+              <span>使用平台配置的图片、视频、文本和音频模型，购买会员或积分后消费。</span>
+            </button>
+          </div>
+        </section>
+
         <form v-else-if="authMode === 'provider'" class="login-form provider-form" @submit.prevent="saveProvider">
           <div class="form-header">
             <h2 class="form-title">选择供应商</h2>
@@ -138,7 +162,7 @@
             <div class="form-group"><div class="input-prefix"><LinkIcon :size="18" /><input v-model="providerForm.baseUrl" type="text" placeholder="Base URL，例如 https://zenmux.ai/api/v1" /></div></div>
             <div class="form-group"><div class="input-prefix"><KeyRound :size="18" /><input v-model="providerForm.apiKey" type="password" placeholder="API Key" /></div></div>
             <button class="login-btn" type="submit" :disabled="authLoading">{{ authLoading ? '保存中...' : '保存并开始使用' }}</button>
-            <div class="actions"><button type="button" @click="closeAuthDialog">稍后设置</button></div>
+            <div class="actions"><button type="button" @click="authMode = 'resourceMode'">返回选择</button></div>
           </div>
         </form>
 
@@ -166,16 +190,14 @@
 
 <script setup>
 import {
-  CircleHelp,
   CircleUserRound,
   FileCode2,
-  Folder,
-  Gift,
   Hash,
   House,
   KeyRound,
   Lightbulb,
   LinkIcon,
+  LogOut,
   LockKeyhole,
   Menu,
   MessageSquareText,
@@ -189,35 +211,118 @@ import {
   UserRound,
 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
-import brandLogo from '~/assets/huobao-logo.png'
-import { aiModelAPI, authAPI, getAuthUser, setAuthSession } from '~/composables/useApi'
+import { aiModelAPI, authAPI, billingAPI, clearAuthSession, getAuthUser, setAuthSession, siteAPI, subscribeCreditEvents, updateAuthUser } from '~/composables/useApi'
 
 const route = useRoute()
 const sidebarOpen = ref(false)
-const showBrandImage = ref(true)
+const sidebarCollapsed = ref(false)
+const siteName = ref('Lovarts.短剧')
 const authDialogOpen = ref(false)
 const authMode = ref('login')
 const authLoading = ref(false)
 const currentUser = ref(null)
+const billingStatus = ref(null)
 const captchaText = ref('')
 const providers = ref([])
+let creditEventSource = null
 const loginForm = reactive({ account: '', password: '', captcha: '' })
 const registerForm = reactive({ account: '', password: '', confirmPassword: '', captcha: '', inviteCode: '' })
 const providerForm = reactive({ providerId: 0, baseUrl: 'https://zenmux.ai/api/v1', apiKey: '' })
-const activeProviders = computed(() => providers.value.filter(p => p.is_active !== false))
+const activeProviders = computed(() => (Array.isArray(providers.value) ? providers.value : []).filter(p => p.is_active !== false))
+const userInitial = computed(() => String(currentUser.value?.name || currentUser.value?.account || currentUser.value?.id || 'U').trim().slice(0, 1).toUpperCase())
+const membershipStatusLabel = computed(() => {
+  const status = String(billingStatus.value?.membership_status || currentUser.value?.membership_status || 'none').toLowerCase()
+  const labels = {
+    active: '付费会员',
+    none: '未开通',
+    expired: '已过期',
+    cancelled: '已取消',
+    canceled: '已取消',
+    pending: '待生效',
+  }
+  return labels[status] || status || '-'
+})
+const roleLabel = computed(() => {
+  const role = String(currentUser.value?.role || 'user').toLowerCase()
+  const labels = {
+    admin: '管理员',
+    user: '普通用户',
+  }
+  return labels[role] || role || '-'
+})
+const isAdminUser = computed(() => String(currentUser.value?.role || '').toLowerCase() === 'admin')
 
 onMounted(() => {
   currentUser.value = getAuthUser()
+  loadSiteSettings()
   refreshCaptcha()
   window.addEventListener('huobao-auth-change', syncAuthUser)
+  connectCreditEvents()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('huobao-auth-change', syncAuthUser)
+  disconnectCreditEvents()
 })
 
 function syncAuthUser() {
   currentUser.value = getAuthUser()
+  loadBillingStatus()
+  connectCreditEvents()
+}
+
+async function loadSiteSettings() {
+  try {
+    const settings = await siteAPI.settings()
+    const name = String(settings?.site_name || settings?.site_title || '').trim()
+    if (name) siteName.value = name
+  } catch {}
+}
+
+function updateCurrentUser(user) {
+  currentUser.value = {
+    ...(currentUser.value || {}),
+    ...(user || {}),
+  }
+  if (currentUser.value?.id) updateAuthUser(currentUser.value)
+}
+
+async function loadCurrentUser() {
+  if (!getAuthUser()?.id) {
+    currentUser.value = null
+    billingStatus.value = null
+    return null
+  }
+  try {
+    const user = await authAPI.me()
+    if (user) updateCurrentUser(user)
+    return user
+  } catch {
+    return null
+  }
+}
+
+function disconnectCreditEvents() {
+  if (creditEventSource) {
+    creditEventSource.close()
+    creditEventSource = null
+  }
+}
+
+function connectCreditEvents() {
+  disconnectCreditEvents()
+  if (!getAuthUser()?.id) return
+  creditEventSource = subscribeCreditEvents((event) => {
+    if (event?.type !== 'credits.changed') return
+    billingStatus.value = {
+      ...(billingStatus.value || {}),
+      credits: event.credits,
+    }
+    currentUser.value = {
+      ...(currentUser.value || {}),
+      credits: event.credits,
+    }
+  })
 }
 
 function goHome() {
@@ -225,9 +330,8 @@ function goHome() {
   navigateTo('/home')
 }
 
-function openModelConfig() {
-  sidebarOpen.value = false
-  navigateTo('/settings')
+function toggleSidebarCollapsed() {
+  sidebarCollapsed.value = !sidebarCollapsed.value
 }
 
 function comingSoon(name) {
@@ -241,21 +345,60 @@ function refreshCaptcha() {
 
 async function loadProviders() {
   if (providers.value.length) return
-  providers.value = await aiModelAPI.adminProviders()
+  const result = await aiModelAPI.providers()
+  providers.value = Array.isArray(result) ? result : (result?.items || [])
   const zenmux = providers.value.find(p => p.key === 'zenmux' || p.provider === 'zenmux')
   if (zenmux) providerForm.providerId = zenmux.id
 }
 
+async function openProviderSettings() {
+  authMode.value = 'provider'
+  try {
+    await loadProviders()
+  } catch (err) {
+    toast.error(err.message || '供应商加载失败')
+  }
+}
+
+function enterAdmin() {
+  closeAuthDialog()
+  navigateTo('/admin')
+}
+
 async function openAuthDialog() {
   sidebarOpen.value = false
-  authMode.value = currentUser.value ? 'provider' : 'login'
+  authMode.value = currentUser.value ? 'profile' : 'login'
+  if (currentUser.value) {
+    await loadCurrentUser()
+    await loadBillingStatus()
+  }
   refreshCaptcha()
-  if (currentUser.value) await loadProviders()
   authDialogOpen.value = true
+}
+
+async function loadBillingStatus() {
+  if (!currentUser.value) {
+    billingStatus.value = null
+    return
+  }
+  try {
+    const status = await billingAPI.membershipStatus()
+    billingStatus.value = status
+    updateCurrentUser(status)
+  } catch {
+    billingStatus.value = null
+  }
 }
 
 function closeAuthDialog() {
   authDialogOpen.value = false
+}
+
+function logout() {
+  clearAuthSession()
+  currentUser.value = null
+  closeAuthDialog()
+  toast.success('已退出登录')
 }
 
 function assertCaptcha(value) {
@@ -295,11 +438,34 @@ async function submitRegister() {
     })
     setAuthSession(result.token, result.user)
     currentUser.value = result.user
-    await loadProviders()
-    toast.success('注册成功，请配置供应商')
-    authMode.value = 'provider'
+    toast.success('注册成功')
+    authMode.value = 'resourceMode'
   } catch (err) {
     toast.error(err.message || '注册失败')
+  } finally {
+    authLoading.value = false
+  }
+}
+
+async function chooseUserApiMode() {
+  try {
+    await loadProviders()
+    authMode.value = 'provider'
+  } catch (err) {
+    toast.error(err.message || '供应商加载失败')
+  }
+}
+
+async function choosePlatformMode() {
+  try {
+    authLoading.value = true
+    const user = await authAPI.setResourceMode({ resource_mode: 'platform' })
+    updateCurrentUser(user)
+    toast.success('已切换为平台资源模式，可购买会员或积分后使用')
+    closeAuthDialog()
+    navigateTo('/account')
+  } catch (err) {
+    toast.error(err.message || '设置失败')
   } finally {
     authLoading.value = false
   }
@@ -314,6 +480,9 @@ async function saveProvider() {
       api_key: providerForm.apiKey,
     })
     toast.success('供应商已保存')
+    const user = await loadCurrentUser()
+    if (user) updateCurrentUser(user)
+    window.dispatchEvent(new CustomEvent('huobao-model-config-change'))
     closeAuthDialog()
   } catch (err) {
     toast.error(err.message || '保存失败')
@@ -343,7 +512,11 @@ async function saveProvider() {
   overflow: hidden;
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  transition: transform 0.3s cubic-bezier(.25,.46,.45,.94);
+  transition: width 0.3s cubic-bezier(.25,.46,.45,.94), transform 0.3s cubic-bezier(.25,.46,.45,.94);
+}
+
+.floating-sidebar.is-collapsed {
+  width: 64px;
 }
 
 .sidebar-container {
@@ -371,38 +544,41 @@ async function saveProvider() {
   text-align: left;
 }
 
-.logo-left {
+.logo-home,
+.sidebar-collapse-btn {
   display: flex;
   align-items: center;
-  flex-shrink: 0;
   min-width: 0;
-}
-
-.logo-mark {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 32px;
-  overflow: hidden;
-  border-radius: 12px;
+  border: 0;
   background: transparent;
-  color: #fff;
-  font-weight: 800;
+  color: inherit;
 }
 
-.logo-mark img {
-  width: 40px;
+.logo-home {
+  flex: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.sidebar-collapse-btn {
+  justify-content: center;
+  width: 32px;
   height: 32px;
-  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.sidebar-collapse-btn:hover {
+  background: rgba(255,255,255,0.08);
 }
 
 .logo-copy {
   display: flex;
   flex-direction: column;
   line-height: 1.1;
-  max-width: 80px;
+  max-width: 132px;
   min-width: 0;
-  margin-left: 8px;
   overflow: hidden;
 }
 
@@ -417,6 +593,43 @@ async function saveProvider() {
 .collapse-icon {
   flex-shrink: 0;
   color: #f2f6fb;
+  transition: transform 0.2s ease;
+}
+
+.floating-sidebar.is-collapsed .collapse-icon {
+  transform: rotate(180deg);
+}
+
+.floating-sidebar.is-collapsed .logo-section {
+  justify-content: center;
+  padding: 12px 8px;
+}
+
+.floating-sidebar.is-collapsed .logo-home {
+  display: none;
+}
+
+.floating-sidebar.is-collapsed .sidebar-collapse-btn {
+  width: 40px;
+}
+
+.floating-sidebar.is-collapsed .menu-category,
+.floating-sidebar.is-collapsed .menu-item span,
+.floating-sidebar.is-collapsed .bottom-item span {
+  display: none;
+}
+
+.floating-sidebar.is-collapsed .menu-list {
+  padding-top: 8px;
+}
+
+.floating-sidebar.is-collapsed .menu-item,
+.floating-sidebar.is-collapsed .bottom-item {
+  justify-content: center;
+  width: 48px;
+  margin: 4px 8px;
+  padding: 0;
+  gap: 0;
 }
 
 .menu-list {
@@ -467,17 +680,6 @@ async function saveProvider() {
   box-shadow: 0 2px 8px rgba(0, 120, 255, 0.3);
 }
 
-.menu-item.active::before {
-  position: absolute;
-  top: 8px;
-  left: 0;
-  width: 3px;
-  height: 24px;
-  border-radius: 0 4px 4px 0;
-  background: #fff;
-  content: "";
-}
-
 .sidebar-bottom {
   margin-top: auto;
   padding: 8px 0;
@@ -513,6 +715,10 @@ async function saveProvider() {
   width: 100vw;
   padding-left: 190px;
   transition: padding-left 0.3s cubic-bezier(.25,.46,.45,.94);
+}
+
+.content-wrapper.sidebar-collapsed {
+  padding-left: 74px;
 }
 
 .content-area {
@@ -577,8 +783,100 @@ async function saveProvider() {
 }
 
 .login-form.register,
-.provider-form {
+.provider-form,
+.resource-mode-card {
   padding-top: 34px;
+}
+
+.profile-card {
+  padding-top: 28px;
+}
+
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.profile-avatar {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #111;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.profile-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid #ededed;
+  border-bottom: 1px solid #ededed;
+}
+
+.profile-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 44px;
+  border-top: 1px solid #ededed;
+  color: #737373;
+  font-size: 13px;
+}
+
+.profile-row:first-child {
+  border-top: 0;
+}
+
+.profile-row strong {
+  min-width: 0;
+  color: #171717;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.secondary-action,
+.logout-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 42px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondary-action {
+  flex: 1;
+  border: 1px solid #e5e5e5;
+  background: #fafafa;
+  color: #171717;
+}
+
+.logout-btn {
+  flex: 1;
+  border: 0;
+  background: #ef4444;
+  color: #fff;
 }
 
 .form-header {
@@ -598,6 +896,45 @@ async function saveProvider() {
   color: #737373;
   font-size: 13px;
   line-height: 1.6;
+}
+
+.resource-options {
+  display: grid;
+  gap: 12px;
+}
+
+.resource-option {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fafafa;
+  color: #171717;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease;
+}
+
+.resource-option:hover {
+  border-color: #9ca3af;
+  background: #fff;
+}
+
+.resource-option.accent {
+  border-color: rgba(10, 132, 255, .32);
+  background: rgba(10, 132, 255, .08);
+}
+
+.resource-option strong {
+  font-size: 15px;
+}
+
+.resource-option span {
+  color: #71717a;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .tabs {
@@ -776,11 +1113,42 @@ async function saveProvider() {
     transform: translateX(-100%);
   }
 
+  .floating-sidebar.is-collapsed {
+    width: 280px;
+  }
+
+  .floating-sidebar.is-collapsed .logo-home {
+    display: flex;
+  }
+
+  .floating-sidebar.is-collapsed .logo-section {
+    justify-content: space-between;
+    padding: 12px;
+  }
+
+  .floating-sidebar.is-collapsed .menu-category {
+    display: block;
+  }
+
+  .floating-sidebar.is-collapsed .menu-item span,
+  .floating-sidebar.is-collapsed .bottom-item span {
+    display: inline;
+  }
+
+  .floating-sidebar.is-collapsed .menu-item,
+  .floating-sidebar.is-collapsed .bottom-item {
+    justify-content: flex-start;
+    width: calc(100% - 16px);
+    padding: 0 16px;
+    gap: 12px;
+  }
+
   .floating-sidebar.is-open {
     transform: translateX(0);
   }
 
-  .content-wrapper {
+  .content-wrapper,
+  .content-wrapper.sidebar-collapsed {
     padding-left: 0;
   }
 

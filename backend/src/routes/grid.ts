@@ -35,9 +35,9 @@ function safeParseJsonArray(value: any): string[] {
   }
 }
 
-function getStoryboardCharacterIds(storyboardIds: number[]) {
+async function getStoryboardCharacterIds(storyboardIds: number[]) {
   if (!storyboardIds.length) return new Map<number, number[]>()
-  const links = db.select().from(schema.storyboardCharacters).all()
+  const links = await db.select().from(schema.storyboardCharacters).execute()
     .filter((link) => storyboardIds.includes(link.storyboardId))
   const map = new Map<number, number[]>()
   for (const link of links) {
@@ -48,17 +48,17 @@ function getStoryboardCharacterIds(storyboardIds: number[]) {
   return map
 }
 
-function collectGridReferenceAssets(storyboards: any[]) {
+async function collectGridReferenceAssets(storyboards: any[]) {
   const storyboardIds = storyboards.map((sb) => sb.id)
-  const storyboardCharacterIds = getStoryboardCharacterIds(storyboardIds)
+  const storyboardCharacterIds = await getStoryboardCharacterIds(storyboardIds)
   const sceneIds = [...new Set(storyboards.map((sb) => sb.sceneId).filter(Boolean))]
   const characterIds = [...new Set([...storyboardCharacterIds.values()].flat().filter(Boolean))]
 
   const scenes = sceneIds.length
-    ? db.select().from(schema.scenes).all().filter((scene) => sceneIds.includes(scene.id))
+    ? (await db.select().from(schema.scenes).execute()).filter((scene) => sceneIds.includes(scene.id))
     : []
   const characters = characterIds.length
-    ? db.select().from(schema.characters).all().filter((char) => characterIds.includes(char.id))
+    ? (await db.select().from(schema.characters).execute()).filter((char) => characterIds.includes(char.id))
     : []
 
   const assets: Array<{
@@ -141,9 +141,9 @@ function buildGridPrompt(
   cols: number,
   dramaStyle: string,
   referenceAssets: Array<{ path: string; label: string; kind: string; imageLabel: string }>,
+  storyboardCharacterIds: Map<number, number[]>,
 ): string {
   const style = dramaStyle || 'cinematic'
-  const storyboardCharacterIds = getStoryboardCharacterIds(storyboards.map((sb) => sb.id))
   const legend = buildReferenceLegend(referenceAssets)
 
   if (mode === 'first_frame') {
@@ -221,10 +221,9 @@ function buildGridCellPrompts(
   rows: number,
   cols: number,
   referenceAssets: Array<{ path: string; label: string; kind: string; imageLabel: string }>,
+  storyboardCharacterIds: Map<number, number[]>,
 ) {
   if (!storyboards.length) return []
-  const storyboardCharacterIds = getStoryboardCharacterIds(storyboards.map((sb) => sb.id))
-
   if (mode === 'multi_ref') {
     const sb = storyboards[0]
     const desc = sb.imagePrompt || sb.description || sb.title || 'scene'
@@ -354,7 +353,7 @@ async function tryAgentGridPrompt(
   mode: string,
   referenceLegend: string,
 ) {
-  const agent = createAgent('grid_prompt_generator', episodeId, dramaId)
+  const agent = await createAgent('grid_prompt_generator', episodeId, dramaId)
   if (!agent) return null
 
   const result = await agent.generate(
@@ -399,23 +398,24 @@ app.post('/prompt', async (c) => {
   if (!storyboard_ids?.length) return badRequest(c, 'storyboard_ids required')
   if (!rows || !cols) return badRequest(c, 'rows and cols required')
 
-  const storyboards = storyboard_ids.map((id: number) => {
-    const [sb] = db.select().from(schema.storyboards).where(eq(schema.storyboards.id, id)).all()
+  const storyboards = (await Promise.all(storyboard_ids.map(async (id: number) => {
+    const [sb] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, id)).execute()
     return sb
-  }).filter(Boolean)
+  }))).filter(Boolean)
 
   if (!storyboards.length) return badRequest(c, 'No storyboards found')
 
   let dramaStyle = ''
   if (drama_id) {
-    const [drama] = db.select().from(schema.dramas).where(eq(schema.dramas.id, drama_id)).all()
+    const [drama] = await db.select().from(schema.dramas).where(eq(schema.dramas.id, drama_id)).execute()
     dramaStyle = drama?.style || ''
   }
 
   const actualCols = cols
   const actualRows = rows
   const resolvedEpisodeId = Number(episode_id || storyboards[0]?.episodeId || 0)
-  const referenceAssets = collectGridReferenceAssets(storyboards)
+  const referenceAssets = await collectGridReferenceAssets(storyboards)
+  const storyboardCharacterIds = await getStoryboardCharacterIds(storyboards.map((sb) => sb.id))
   const referenceLegend = buildReferenceLegend(referenceAssets)
 
   if (!resolvedEpisodeId) {
@@ -459,8 +459,8 @@ app.post('/prompt', async (c) => {
     })
   }
 
-  const gridPrompt = buildGridPrompt(mode, storyboards, actualRows, actualCols, dramaStyle, referenceAssets)
-  const cellPrompts = buildGridCellPrompts(mode, storyboards, actualRows, actualCols, referenceAssets)
+  const gridPrompt = buildGridPrompt(mode, storyboards, actualRows, actualCols, dramaStyle, referenceAssets, storyboardCharacterIds)
+  const cellPrompts = buildGridCellPrompts(mode, storyboards, actualRows, actualCols, referenceAssets, storyboardCharacterIds)
   logTaskProgress('GridPrompt', 'fallback-used', {
     episodeId: resolvedEpisodeId,
     dramaId: drama_id,
@@ -495,22 +495,23 @@ app.post('/generate', async (c) => {
   if (!storyboard_ids?.length) return badRequest(c, 'storyboard_ids required')
   if (!rows || !cols) return badRequest(c, 'rows and cols required')
 
-  const storyboards = storyboard_ids.map((id: number) => {
-    const [sb] = db.select().from(schema.storyboards).where(eq(schema.storyboards.id, id)).all()
+  const storyboards = (await Promise.all(storyboard_ids.map(async (id: number) => {
+    const [sb] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, id)).execute()
     return sb
-  }).filter(Boolean)
+  }))).filter(Boolean)
 
   if (!storyboards.length) return badRequest(c, 'No storyboards found')
 
   // Get drama style
   let dramaStyle = ''
   if (drama_id) {
-    const [drama] = db.select().from(schema.dramas).where(eq(schema.dramas.id, drama_id)).all()
+    const [drama] = await db.select().from(schema.dramas).where(eq(schema.dramas.id, drama_id)).execute()
     dramaStyle = drama?.style || ''
   }
 
-  const referenceAssets = collectGridReferenceAssets(storyboards)
-  const prompt = custom_prompt || buildGridPrompt(mode, storyboards, rows, cols, dramaStyle, referenceAssets)
+  const referenceAssets = await collectGridReferenceAssets(storyboards)
+  const storyboardCharacterIds = await getStoryboardCharacterIds(storyboards.map((sb) => sb.id))
+  const prompt = custom_prompt || buildGridPrompt(mode, storyboards, rows, cols, dramaStyle, referenceAssets, storyboardCharacterIds)
   const referenceImages = referenceAssets.map((asset) => asset.path)
 
   // Size: first_last mode uses Nx2 layout
@@ -565,7 +566,7 @@ app.post('/split', async (c) => {
   if (!assignments?.length) return badRequest(c, 'assignments required')
 
   const [imgRecord] = db.select().from(schema.imageGenerations)
-    .where(eq(schema.imageGenerations.id, image_generation_id)).all()
+    .where(eq(schema.imageGenerations.id, image_generation_id)).execute()
 
   if (!imgRecord) return badRequest(c, 'Image generation not found')
   if (imgRecord.status !== 'completed') return badRequest(c, `Image status: ${imgRecord.status}`)
@@ -584,13 +585,13 @@ app.post('/split', async (c) => {
       if (frame_type === 'first_frame') update.firstFrameImage = cell.localPath
       else if (frame_type === 'last_frame') update.lastFrameImage = cell.localPath
       else if (frame_type === 'reference') {
-        const [sb] = db.select().from(schema.storyboards).where(eq(schema.storyboards.id, storyboard_id)).all()
+        const [sb] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, storyboard_id)).execute()
         const existing = sb?.referenceImages ? JSON.parse(sb.referenceImages) : []
         existing.push(cell.localPath)
         update.referenceImages = JSON.stringify(existing)
       }
 
-      db.update(schema.storyboards).set(update).where(eq(schema.storyboards.id, storyboard_id)).run()
+      await db.update(schema.storyboards).set(update).where(eq(schema.storyboards.id, storyboard_id)).execute()
       results.push({ storyboard_id, frame_type, local_path: cell.localPath })
     }
 
@@ -604,7 +605,7 @@ app.post('/split', async (c) => {
 app.get('/status/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const [row] = db.select().from(schema.imageGenerations)
-    .where(eq(schema.imageGenerations.id, id)).all()
+    .where(eq(schema.imageGenerations.id, id)).execute()
   if (!row) return badRequest(c, 'Not found')
   return success(c, {
     id: row.id,

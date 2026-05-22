@@ -1,38 +1,49 @@
 <template>
   <!-- Canvas page | 画布页面 -->
-  <div class="canvas-scope h-screen w-screen flex flex-col bg-[var(--bg-primary)]">
+  <div class="canvas-scope canvas-page h-full w-full flex flex-col">
     <!-- Header | 顶部导航 -->
-    <AppHeader class="bg-[var(--bg-secondary)]">
+    <AppHeader
+      class="canvas-header canvas-compact-header"
+      compact
+      :show-github="false"
+      :show-theme-toggle="false"
+    >
       <template #left>
         <button 
           @click="goBack"
-          class="p-2 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
+          class="p-1 canvas-icon-btn rounded-md transition-colors"
         >
-          <n-icon :size="20"><ChevronBackOutline /></n-icon>
+          <n-icon :size="16"><ChevronBackOutline /></n-icon>
         </button>
         <n-dropdown :options="projectOptions" @select="handleProjectAction">
-          <button class="flex items-center gap-1 hover:bg-[var(--bg-tertiary)] px-2 py-1 rounded-lg transition-colors">
-            <span class="font-medium">{{ projectName }}</span>
-            <n-icon :size="16"><ChevronDownOutline /></n-icon>
+          <button class="flex items-center gap-1 canvas-icon-btn px-1.5 py-1 rounded-md transition-colors text-sm">
+            <span class="font-medium canvas-text-primary">{{ projectName }}</span>
+            <n-icon class="canvas-text-secondary" :size="13"><ChevronDownOutline /></n-icon>
           </button>
         </n-dropdown>
       </template>
       <template #right>
+        <button
+          @click="handleManualSave"
+          class="canvas-save-button"
+          :class="{ 'is-saving': saveStatus === 'saving', 'is-error': saveStatus === 'error' }"
+          :disabled="saveStatus === 'saving'"
+          :title="saveButtonTitle"
+        >
+          <n-spin v-if="saveStatus === 'saving'" :size="12" />
+          <n-icon v-else :size="14">
+            <CheckmarkCircleOutline v-if="saveStatus === 'saved'" />
+            <CloudUploadOutline v-else />
+          </n-icon>
+          <span>{{ saveStatusText }}</span>
+        </button>
         <button 
           @click="showDownloadModal = true"
-          class="p-2 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
+          class="p-1 canvas-icon-btn rounded-md transition-colors"
           :class="{ 'text-[var(--accent-color)]': hasDownloadableAssets }"
           title="批量下载素材"
         >
-          <n-icon :size="20"><DownloadOutline /></n-icon>
-        </button>
-        <button 
-          @click="showApiSettings = true"
-          class="p-2 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
-          :class="{ 'text-[var(--accent-color)]': isApiConfigured }"
-          title="API 设置"
-        >
-          <n-icon :size="20"><SettingsOutline /></n-icon>
+          <n-icon :size="16"><DownloadOutline /></n-icon>
         </button>
       </template>
     </AppHeader>
@@ -40,7 +51,18 @@
     <!-- Main canvas area | 主画布区域 -->
     <div class="flex-1 relative overflow-hidden">
       <!-- Vue Flow canvas | Vue Flow 画布 -->
+      <div
+        v-if="isProjectLoading"
+        class="absolute inset-0 z-40 flex items-center justify-center bg-[var(--bg-primary)]"
+      >
+        <div class="canvas-card rounded-xl px-5 py-4 flex items-center gap-3">
+          <n-spin :size="18" />
+          <span class="text-sm canvas-text-secondary">项目加载中</span>
+        </div>
+      </div>
+
       <VueFlow
+        v-else
         :key="flowKey"
         v-model:nodes="nodes"
         v-model:edges="edges"
@@ -52,8 +74,15 @@
         :max-zoom="2"
         :snap-to-grid="true"
         :snap-grid="[20, 20]"
+        :zoom-on-scroll="false"
+        :pan-on-scroll="true"
+        :pan-on-scroll-speed="0.9"
+        pan-on-scroll-mode="free"
+        :zoom-on-pinch="true"
+        :pan-on-drag="true"
         @connect="onConnect"
         @node-click="onNodeClick"
+        @node-context-menu="onNodeContextMenu"
         @pane-click="onPaneClick"
         @viewport-change="handleViewportChange"
         @edges-change="onEdgesChange"
@@ -65,32 +94,46 @@
           position="bottom-right"
           :pannable="true"
           :zoomable="true"
+          @click="handleMiniMapClick"
+          @node-click="handleMiniMapNodeClick"
         />
       </VueFlow>
 
+      <!-- Node context menu | 节点右键菜单 -->
+      <div
+        v-if="nodeContextMenu.visible"
+        class="node-context-menu"
+        :style="{ left: `${nodeContextMenu.x}px`, top: `${nodeContextMenu.y}px` }"
+        @click.stop
+        @pointerdown.stop
+        @contextmenu.prevent
+      >
+        <button class="node-context-menu-item" @click="handleNodeContextAction('duplicate')">
+          <n-icon :size="16"><CopyOutline /></n-icon>
+          <span>复制</span>
+        </button>
+        <button class="node-context-menu-item danger" @click="handleNodeContextAction('delete')">
+          <n-icon :size="16"><TrashOutline /></n-icon>
+          <span>删除</span>
+        </button>
+      </div>
+
       <!-- Left toolbar | 左侧工具栏 -->
-      <aside class="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col gap-1 p-2 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)] shadow-lg z-10">
+      <aside class="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col gap-1 p-2 canvas-panel rounded-xl z-10">
         <button 
           @click="showNodeMenu = !showNodeMenu"
-          class="w-10 h-10 flex items-center justify-center rounded-xl bg-[var(--accent-color)] text-white hover:bg-[var(--accent-hover)] transition-colors"
+          class="w-10 h-10 flex items-center justify-center rounded-xl canvas-btn-accent text-white transition-colors"
           title="添加节点"
         >
           <n-icon :size="20"><AddOutline /></n-icon>
         </button>
-        <button 
-          @click="showWorkflowPanel = true"
-          class="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[var(--bg-tertiary)] transition-colors"
-          title="工作流模板"
-        >
-          <n-icon :size="20"><AppsOutline /></n-icon>
-        </button>
-        <div class="w-full h-px bg-[var(--border-color)] my-1"></div>
+        <div class="w-full h-px canvas-divider my-1"></div>
         <button 
           v-for="tool in tools" 
           :key="tool.id"
           @click="tool.action"
           :disabled="tool.disabled && tool.disabled()"
-          class="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          class="w-10 h-10 flex items-center justify-center rounded-lg canvas-icon-btn transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           :title="tool.name"
         >
           <n-icon :size="20"><component :is="tool.icon" /></n-icon>
@@ -100,13 +143,13 @@
       <!-- Node menu popup | 节点菜单弹窗 -->
       <div 
         v-if="showNodeMenu"
-        class="absolute left-20 top-1/2 -translate-y-1/2 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)] shadow-lg p-2 z-20"
+        class="absolute left-20 top-1/2 -translate-y-1/2 canvas-panel rounded-xl p-2 z-20"
       >
         <button 
           v-for="nodeType in nodeTypeOptions" 
           :key="nodeType.type"
           @click="addNewNode(nodeType.type)"
-          class="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors text-left"
+          class="w-full flex items-center gap-3 px-3 py-2 rounded-lg canvas-icon-btn transition-colors text-left"
         >
           <n-icon :size="20" :color="nodeType.color"><component :is="nodeType.icon" /></n-icon>
           <span class="text-sm">{{ nodeType.name }}</span>
@@ -114,7 +157,7 @@
       </div>
 
       <!-- Bottom controls | 底部控制 -->
-      <div class="absolute bottom-4 left-4 flex items-center gap-2 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-color)] p-1">
+      <div class="absolute bottom-4 left-4 flex items-center gap-2 canvas-panel rounded-lg p-1">
         <!-- <button 
           @click="showGrid = !showGrid" 
           :class="showGrid ? 'bg-[var(--accent-color)] text-white' : 'hover:bg-[var(--bg-tertiary)]'"
@@ -125,17 +168,17 @@
         </button> -->
         <button 
           @click="fitView({ padding: 0.2 })" 
-          class="p-2 hover:bg-[var(--bg-tertiary)] rounded transition-colors"
+          class="p-2 canvas-icon-btn rounded transition-colors"
           title="适应视图"
         >
           <n-icon :size="16"><LocateOutline /></n-icon>
         </button>
         <div class="flex items-center gap-1 px-2">
-          <button @click="zoomOut" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors">
+          <button @click="zoomOut" class="p-1 canvas-icon-btn rounded transition-colors">
             <n-icon :size="14"><RemoveOutline /></n-icon>
           </button>
-          <span class="text-xs min-w-[40px] text-center">{{ Math.round(viewport.zoom * 100) }}%</span>
-          <button @click="zoomIn" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors">
+          <span class="text-xs min-w-[40px] text-center canvas-text-secondary">{{ Math.round(viewport.zoom * 100) }}%</span>
+          <button @click="zoomIn" class="p-1 canvas-icon-btn rounded transition-colors">
             <n-icon :size="14"><AddOutline /></n-icon>
           </button>
         </div>
@@ -146,7 +189,7 @@
         <!-- Processing indicator | 处理中指示器 -->
         <div 
           v-if="isProcessing" 
-          class="mb-3 p-3 bg-[var(--bg-primary)] rounded-xl border border-[var(--accent-color)] animate-pulse"
+          class="mb-3 p-3 canvas-card rounded-xl border border-[var(--accent-color)] animate-pulse"
         >
           <div class="flex items-center gap-2 text-sm text-[var(--accent-color)] mb-2">
             <n-spin :size="14" />
@@ -157,12 +200,12 @@
           </div>
         </div>
 
-        <div class="bg-[var(--bg-primary)] rounded-xl border border-[var(--border-color)] p-3">
+        <div class="canvas-card rounded-xl p-3">
           <textarea
             v-model="chatInput"
             :placeholder="inputPlaceholder"
             :disabled="isProcessing"
-            class="w-full bg-transparent resize-none outline-none text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] min-h-[40px] max-h-[120px] disabled:opacity-50"
+            class="w-full bg-transparent resize-none outline-none canvas-text-primary placeholder:canvas-text-tertiary min-h-[40px] max-h-[120px] disabled:opacity-50"
             rows="1"
             @keydown.enter.exact="handleEnterKey"
             @keydown.enter.ctrl="sendMessage"
@@ -172,21 +215,21 @@
               <button 
                 @click="handlePolish"
                 :disabled="isProcessing || !chatInput.trim()"
-                class="px-3 py-1.5 text-xs rounded-lg bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-color)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                class="px-3 py-1.5 text-xs rounded-lg canvas-btn-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="AI 润色提示词"
               >
                 ✨ AI 润色
               </button>
             </div>
             <div class="flex items-center gap-3">
-              <label class="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+              <label class="flex items-center gap-2 text-sm canvas-text-secondary">
                 <n-switch v-model:value="autoExecute" size="small" />
                 自动执行
               </label>
               <button 
                 @click="sendMessage"
                 :disabled="isProcessing"
-                class="w-8 h-8 rounded-xl bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                class="w-8 h-8 rounded-xl canvas-btn-accent flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <n-spin v-if="isProcessing" :size="16" />
                 <n-icon v-else :size="20" color="white"><SendOutline /></n-icon>
@@ -197,24 +240,21 @@
         
         <!-- Quick suggestions | 快捷建议 -->
         <div class="flex flex-wrap items-center justify-center gap-2 mt-2">
-          <span class="text-xs text-[var(--text-secondary)]">推荐：</span>
+          <span class="text-xs canvas-text-tertiary">推荐：</span>
           <button 
             v-for="tag in suggestions" 
             :key="tag"
             @click="chatInput = tag"
-            class="px-2 py-0.5 text-xs rounded-full bg-[var(--bg-secondary)]/80 border border-[var(--border-color)] hover:border-[var(--accent-color)] transition-colors"
+            class="px-2 py-0.5 text-xs rounded-full canvas-tag transition-colors"
           >
             {{ tag }}
           </button>
-          <button class="p-1 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors">
+          <button class="p-1 canvas-icon-btn rounded-lg transition-colors">
             <n-icon :size="14"><RefreshOutline /></n-icon>
           </button>
         </div>
       </div>
     </div>
-
-    <!-- API Settings Modal | API 设置弹窗 -->
-    <ApiSettings v-model:show="showApiSettings" />
 
     <!-- Rename Modal | 重命名弹窗 -->
     <n-modal v-model:show="showRenameModal" preset="dialog" title="重命名项目">
@@ -256,7 +296,6 @@ import { NIcon, NSwitch, NDropdown, NSpin, NModal, NInput, NButton } from 'naive
 import { 
   ChevronBackOutline,
   ChevronDownOutline,
-  SettingsOutline,
   AddOutline,
   ImageOutline,
   SendOutline,
@@ -264,53 +303,64 @@ import {
   TextOutline,
   VideocamOutline,
   ColorPaletteOutline,
-  BookmarkOutline,
-  ArrowUndoOutline,
-  ArrowRedoOutline,
   GridOutline,
   LocateOutline,
   RemoveOutline,
   DownloadOutline,
   AppsOutline,
-  ChatbubbleOutline
+  ChatbubbleOutline,
+  CopyOutline,
+  TrashOutline,
+  CheckmarkCircleOutline,
+  CloudUploadOutline
 } from '@vicons/ionicons5'
-import { nodes, edges, addNode, addNodes, addEdge, addEdges, updateNode, initSampleData, loadProject, saveProject, clearCanvas, canvasViewport, updateViewport, undo, redo, canUndo, canRedo, manualSaveHistory, startBatchOperation, endBatchOperation } from '../stores/canvas'
-import { loadAllModels } from '../stores/models'
+import { nodes, edges, addNode, addNodes, addEdge, addEdges, updateNode, removeNode, duplicateNode, applyProjectCanvas, flushProjectSave, canvasViewport, updateViewport, manualSaveHistory, startBatchOperation, endBatchOperation, saveStatus, lastSavedAt } from '../stores/canvas'
 import { useChat, useWorkflowOrchestrator } from '../hooks'
-import { useModelStore } from '../stores/pinia'
-import { projects, initProjectsStore, updateProject, renameProject, currentProject } from '../stores/projects'
+import { projects, initProjectsStore, renameProject, deleteProject, loadProjectById as fetchProjectById } from '../stores/projects'
+import {
+  findModelOption,
+  modelOptionKey,
+  modelPayload,
+  useUserModelOptions
+} from '../utils/modelOptions'
 
-// API Settings component | API 设置组件
-import ApiSettings from '../components/ApiSettings.vue'
 import DownloadModal from '../components/DownloadModal.vue'
 import WorkflowPanel from '../components/WorkflowPanel.vue'
 import AppHeader from '../components/AppHeader.vue'
-
-// API Config state | API 配置状态
-const modelStore = useModelStore()
-const isApiConfigured = computed(() => !!modelStore.currentApiKey)
-
-// Initialize models on page load | 页面加载时初始化模型
-onMounted(() => {
-  loadAllModels()
-})
 
 // Chat templates | 问答模板
 const CHAT_TEMPLATES = {
   imagePrompt: {
     name: '生图提示词',
-    systemPrompt: '你是一个专业的AI绘画提示词专家。将用户输入的内容美化成高质量的生图提示词，包含风格、光线、構图、细节等要素。直接返回提示词，不要其他解释。',
-    model: 'gpt-4o-mini'
+    systemPrompt: '你是一个专业的AI绘画提示词专家。将用户输入的内容美化成高质量的生图提示词，包含风格、光线、構图、细节等要素。直接返回提示词，不要其他解释。'
   },
   videoPrompt: {
     name: '视频提示词',
-    systemPrompt: '你是一个专业的AI视频提示词专家。将用户输入的内容美化成高质量的视频生成提示词，包含运动、场景、镜头等要素。直接返回提示词，不要其他解释。',
-    model: 'gpt-4o-mini'
+    systemPrompt: '你是一个专业的AI视频提示词专家。将用户输入的内容美化成高质量的视频生成提示词，包含运动、场景、镜头等要素。直接返回提示词，不要其他解释。'
   }
 }
 
 // Current template | 当前模板
 const currentTemplate = ref('imagePrompt')
+const { textModels, loadModels } = useUserModelOptions()
+const selectedTextModel = ref('')
+const selectedTextModelConfig = computed(() => findModelOption(textModels.value, selectedTextModel.value))
+const isTextModelConfigured = computed(() => textModels.value.length > 0 && Boolean(selectedTextModelConfig.value))
+
+const ensureSelectedTextModel = () => {
+  const preferred = textModels.value.find(item => item.is_default) || textModels.value[0]
+  const matched = findModelOption(textModels.value, selectedTextModel.value)
+  selectedTextModel.value = matched ? modelOptionKey(matched) : (preferred ? modelOptionKey(preferred) : '')
+}
+
+onMounted(async () => {
+  try {
+    await loadModels()
+    ensureSelectedTextModel()
+  } catch (err) {
+    window.$message?.error(err.message || '模型加载失败')
+  }
+})
 
 // Chat hook with image prompt template | 问答 hook
 const { 
@@ -320,7 +370,10 @@ const {
   send: sendChat 
 } = useChat({
   systemPrompt: CHAT_TEMPLATES.imagePrompt.systemPrompt,
-  model: CHAT_TEMPLATES.imagePrompt.model
+  get model() { return modelPayload(selectedTextModelConfig.value, selectedTextModel.value).model },
+  get model_config_id() { return modelPayload(selectedTextModelConfig.value, selectedTextModel.value).model_config_id },
+  get user_provider_id() { return modelPayload(selectedTextModelConfig.value, selectedTextModel.value).user_provider_id },
+  get provider() { return modelPayload(selectedTextModelConfig.value, selectedTextModel.value).provider }
 })
 
 // Workflow orchestrator hook | 工作流编排 hook
@@ -351,8 +404,11 @@ import ImageOrderEdge from '../components/edges/ImageOrderEdge.vue'
 const router = useRouter()
 const route = useRoute()
 
+const routeProjectId = computed(() => String(route.params.id || route.query.projectId || '').trim())
+const canvasProjectUrl = (id) => `/canvas/${encodeURIComponent(id)}`
+
 // Vue Flow instance | Vue Flow 实例
-const { viewport, zoomIn, zoomOut, fitView, updateNodeInternals } = useVueFlow()
+const { viewport, zoomIn, zoomOut, fitView, updateNodeInternals, setNodes, setEdges, setViewport, setCenter } = useVueFlow()
 
 // Register custom node types | 注册自定义节点类型
 const nodeTypes = {
@@ -377,11 +433,12 @@ const chatInput = ref('')
 const autoExecute = ref(false)
 const isMobile = ref(false)
 const showGrid = ref(true)
-const showApiSettings = ref(false)
 const isProcessing = ref(false)
+const isProjectLoading = ref(true)
 
 // Flow key for forcing re-render on project switch | 项目切换时强制重新渲染的 key
 const flowKey = ref(Date.now())
+let projectLoadSeq = 0
 
 // Modal state | 弹窗状态
 const showRenameModal = ref(false)
@@ -389,6 +446,12 @@ const showDeleteModal = ref(false)
 const showDownloadModal = ref(false)
 const showWorkflowPanel = ref(false)
 const renameValue = ref('')
+const nodeContextMenu = ref({
+  visible: false,
+  x: 0,
+  y: 0,
+  nodeId: null
+})
 
 // Check if has downloadable assets | 检查是否有可下载素材
 const hasDownloadableAssets = computed(() => {
@@ -397,10 +460,30 @@ const hasDownloadableAssets = computed(() => {
   )
 })
 
+const saveStatusText = computed(() => {
+  switch (saveStatus.value) {
+    case 'saving':
+      return '保存中'
+    case 'pending':
+      return '待保存'
+    case 'error':
+      return '保存失败'
+    case 'saved':
+    default:
+      return '已保存'
+  }
+})
+
+const saveButtonTitle = computed(() => {
+  if (saveStatus.value === 'saved' && lastSavedAt.value) {
+    return `已保存 ${lastSavedAt.value.toLocaleTimeString()}`
+  }
+  return saveStatusText.value
+})
 
 // Project info | 项目信息
 const projectName = computed(() => {
-  const project = projects.value.find(p => p.id === route.params.id)
+  const project = projects.value.find(p => p.id === routeProjectId.value)
   return project?.name || '未命名项目'
 })
 
@@ -416,9 +499,7 @@ const tools = [
   { id: 'text', name: '文本', icon: TextOutline, action: () => addNewNode('text') },
   { id: 'image', name: '图片', icon: ImageOutline, action: () => addNewNode('image') },
   { id: 'imageConfig', name: '文生图', icon: ColorPaletteOutline, action: () => addNewNode('imageConfig') },
-  { id: 'videoConfig', name: '视频生成', icon: VideocamOutline, action: () => addNewNode('videoConfig') },
-  { id: 'undo', name: '撤销', icon: ArrowUndoOutline, action: () => undo(), disabled: () => !canUndo() },
-  { id: 'redo', name: '重做', icon: ArrowRedoOutline, action: () => redo(), disabled: () => !canRedo() }
+  { id: 'workflow', name: '工作流模板', icon: AppsOutline, action: () => { showWorkflowPanel.value = true } }
 ]
 
 // Node type options for menu | 节点类型菜单选项
@@ -601,6 +682,7 @@ const onConnect = (params) => {
   }
 }
 const onNodeClick = (event) => {
+  hideNodeContextMenu()
   // nodes.value.forEach(node => {
   //   updateNode(node.id, { selected: false })
   // })
@@ -612,9 +694,74 @@ const onNodeClick = (event) => {
   // }
 }
 
+// Handle node right-click menu | 处理节点右键菜单
+const onNodeContextMenu = ({ event, node }) => {
+  event.preventDefault()
+  event.stopPropagation()
+  showNodeMenu.value = false
+
+  const menuWidth = 132
+  const menuHeight = 88
+  const padding = 12
+  const x = Math.min(event.clientX, window.innerWidth - menuWidth - padding)
+  const y = Math.min(event.clientY, window.innerHeight - menuHeight - padding)
+
+  nodeContextMenu.value = {
+    visible: true,
+    x: Math.max(padding, x),
+    y: Math.max(padding, y),
+    nodeId: node.id
+  }
+}
+
+const hideNodeContextMenu = () => {
+  nodeContextMenu.value.visible = false
+}
+
+const handleNodeContextAction = (key) => {
+  const nodeId = nodeContextMenu.value.nodeId
+  if (!nodeId) return
+
+  switch (key) {
+    case 'duplicate': {
+      const newNodeId = duplicateNode(nodeId)
+      if (newNodeId) {
+        setTimeout(() => updateNodeInternals(newNodeId), 50)
+        window.$message?.success('节点已复制')
+      }
+      break
+    }
+    case 'delete':
+      removeNode(nodeId)
+      window.$message?.success('节点已删除')
+      break
+  }
+
+  hideNodeContextMenu()
+}
+
 // Handle viewport change | 处理视口变化
 const handleViewportChange = (newViewport) => {
+  hideNodeContextMenu()
   updateViewport(newViewport)
+}
+
+const focusCanvasPoint = (x, y) => {
+  hideNodeContextMenu()
+  setCenter(x, y, {
+    zoom: viewport.value.zoom,
+    duration: 180
+  })
+}
+
+const handleMiniMapClick = ({ position }) => {
+  focusCanvasPoint(position.x, position.y)
+}
+
+const handleMiniMapNodeClick = ({ node }) => {
+  const width = node.dimensions?.width || node.width || 0
+  const height = node.dimensions?.height || node.height || 0
+  focusCanvasPoint(node.position.x + width / 2, node.position.y + height / 2)
 }
 
 // Handle edges change | 处理边变化
@@ -633,6 +780,7 @@ const onEdgesChange = (changes) => {
 // Handle pane click | 处理画布点击
 const onPaneClick = () => {
   showNodeMenu.value = false
+  hideNodeContextMenu()
   // Clear all selections | 清除所有选中
   // nodes.value = nodes.value.map(node => ({
   //   ...node,
@@ -658,22 +806,31 @@ const handleProjectAction = (key) => {
 }
 
 // Confirm rename | 确认重命名
-const confirmRename = () => {
-  const projectId = route.params.id
+const confirmRename = async () => {
+  const projectId = routeProjectId.value
   if (renameValue.value.trim()) {
-    renameProject(projectId, renameValue.value.trim())
+    await renameProject(projectId, renameValue.value.trim())
     window.$message?.success('已重命名')
   }
   showRenameModal.value = false
 }
 
 // Confirm delete | 确认删除
-const confirmDelete = () => {
-  const projectId = route.params.id
-  // deleteProject(projectId) // TODO: import deleteProject
+const confirmDelete = async () => {
+  const projectId = routeProjectId.value
+  await deleteProject(projectId)
   showDeleteModal.value = false
   window.$message?.success('项目已删除')
   router.push('/canvas')
+}
+
+const handleManualSave = async () => {
+  try {
+    await flushProjectSave()
+    window.$message?.success('画布已保存')
+  } catch (err) {
+    window.$message?.error(err.message || '保存失败')
+  }
 }
 
 // Handle Enter key | 处理回车键
@@ -687,10 +844,8 @@ const handlePolish = async () => {
   const input = chatInput.value.trim()
   if (!input) return
   
-  // Check API configuration | 检查 API 配置
-  if (!isApiConfigured.value) {
-    window.$message?.warning('请先配置 API Key')
-    showApiSettings.value = true
+  if (!isTextModelConfigured.value) {
+    window.$message?.warning('暂无可用文本模型，请联系管理员配置平台模型')
     return
   }
 
@@ -718,10 +873,8 @@ const sendMessage = async () => {
   const input = chatInput.value.trim()
   if (!input) return
 
-  // Check API configuration | 检查 API 配置
-  if (!isApiConfigured.value) {
-    window.$message?.warning('请先配置 API Key')
-    showApiSettings.value = true
+  if (!isTextModelConfigured.value) {
+    window.$message?.warning('暂无可用文本模型，请联系管理员配置平台模型')
     return
   }
 
@@ -802,44 +955,104 @@ const checkMobile = () => {
   isMobile.value = window.innerWidth < 768
 }
 
+const handleWindowPointerDown = () => {
+  hideNodeContextMenu()
+}
+
+const handlePageBeforeUnload = () => {
+  flushProjectSave().catch(err => console.error('Failed to flush canvas before unload:', err))
+}
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'hidden') {
+    flushProjectSave().catch(err => console.error('Failed to flush canvas on hide:', err))
+  }
+}
+
+const syncVueFlowState = async () => {
+  await nextTick()
+  setNodes(nodes.value.map(node => ({ ...node })))
+  setEdges(edges.value.map(edge => ({ ...edge })))
+  await nextTick()
+  setViewport({ ...canvasViewport.value })
+  nodes.value.forEach(node => {
+    updateNodeInternals(node.id)
+  })
+}
+
 // Load project by ID | 根据ID加载项目
-const loadProjectById = (projectId) => {
-  // Update flow key to force VueFlow re-render | 更新 key 强制 VueFlow 重新渲染
-  flowKey.value = Date.now()
+const loadProjectById = async (projectId) => {
+  const loadSeq = projectLoadSeq + 1
+  projectLoadSeq = loadSeq
+  isProjectLoading.value = true
   
   if (projectId && projectId !== 'new') {
-    loadProject(projectId)
+    if (route.query.projectId && route.path === '/canvas') {
+      router.replace(canvasProjectUrl(projectId))
+      return
+    }
+    const localProject = projects.value.find(project => project.id === projectId) || null
+    let project = localProject
+    try {
+      project = await fetchProjectById(projectId)
+    } catch (err) {
+      if (!localProject) {
+        window.$message?.error(err.message || '打开项目失败')
+        router.replace('/canvas')
+        isProjectLoading.value = false
+        return
+      }
+      console.warn('Failed to refresh canvas project, using local project data:', err)
+    }
+    if (projectLoadSeq !== loadSeq) return
+    if (!project?.id) {
+      window.$message?.error('项目不存在')
+      router.replace('/canvas')
+      isProjectLoading.value = false
+      return
+    }
+    applyProjectCanvas(project.id, project.canvasData)
   } else {
-    // New project - clear canvas | 新项目 - 清空画布
-    clearCanvas()
+    router.replace('/canvas')
+    isProjectLoading.value = false
+    return
+  }
+
+  flowKey.value = Date.now()
+  await syncVueFlowState()
+  if (projectLoadSeq === loadSeq) {
+    isProjectLoading.value = false
   }
 }
 
 // Watch for route changes | 监听路由变化
 watch(
-  () => route.params.id,
-  (newId, oldId) => {
+  () => routeProjectId.value,
+  async (newId, oldId) => {
     if (newId && newId !== oldId) {
       // Save current project before switching | 切换前保存当前项目
       if (oldId) {
-        saveProject()
+        await flushProjectSave()
       }
       // Load new project | 加载新项目
-      loadProjectById(newId)
+      await loadProjectById(newId)
     }
   }
 )
 
 // Initialize | 初始化
-onMounted(() => {
+onMounted(async () => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
+  window.addEventListener('pointerdown', handleWindowPointerDown)
+  window.addEventListener('beforeunload', handlePageBeforeUnload)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   
   // Initialize projects store | 初始化项目存储
-  initProjectsStore()
+  await initProjectsStore()
   
   // Load project data | 加载项目数据
-  loadProjectById(route.params.id || 'new')
+  await loadProjectById(routeProjectId.value)
   
   // Check for initial prompt from home page | 检查来自首页的初始提示词
   const initialPrompt = sessionStorage.getItem('ai-canvas-initial-prompt')
@@ -856,8 +1069,11 @@ onMounted(() => {
 // Cleanup on unmount | 卸载时清理
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile)
+  window.removeEventListener('pointerdown', handleWindowPointerDown)
+  window.removeEventListener('beforeunload', handlePageBeforeUnload)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   // Save project before leaving | 离开前保存项目
-  saveProject()
+  flushProjectSave().catch(err => console.error('Failed to flush canvas on unmount:', err))
 })
 </script>
 
@@ -865,5 +1081,68 @@ onUnmounted(() => {
 .canvas-flow {
   width: 100%;
   height: 100%;
+}
+
+.canvas-save-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.canvas-save-button:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.canvas-save-button.is-saving {
+  color: var(--accent-color);
+}
+
+.canvas-save-button.is-error {
+  color: #ef4444;
+}
+
+.node-context-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 128px;
+  padding: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  box-shadow: 0 18px 42px rgb(0 0 0 / 28%);
+}
+
+.node-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: left;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.node-context-menu-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.node-context-menu-item.danger {
+  color: #ef4444;
+}
+
+.node-context-menu-item.danger:hover {
+  background: rgb(239 68 68 / 12%);
 }
 </style>

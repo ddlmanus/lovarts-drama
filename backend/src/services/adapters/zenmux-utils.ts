@@ -135,6 +135,19 @@ export function normalizeZenmuxOpenAIImageSize(value?: string | null): string | 
   const raw = String(value || '').trim().toLowerCase()
   if (!raw) return undefined
   if (raw === 'auto') return 'auto'
+  const ratioMatch = raw.match(/^(\d{1,2})\s*:\s*(\d{1,2})$/)
+  if (ratioMatch) {
+    const widthRatio = Number(ratioMatch[1])
+    const heightRatio = Number(ratioMatch[2])
+    if (widthRatio > 0 && heightRatio > 0) {
+      const ratio = widthRatio / heightRatio
+      if (ratio >= 1 / 3 && ratio <= 3) {
+        const roundTo16 = (size: number) => Math.max(16, Math.round(size / 16) * 16)
+        if (ratio >= 1) return `${roundTo16(1024 * ratio)}x1024`
+        return `1024x${roundTo16(1024 / ratio)}`
+      }
+    }
+  }
   const match = raw.match(/^(\d+)x(\d+)$/)
   if (!match) return raw
   const width = Number(match[1])

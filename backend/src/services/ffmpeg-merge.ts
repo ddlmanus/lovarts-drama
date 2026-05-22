@@ -28,7 +28,7 @@ export async function mergeEpisodeVideos(episodeId: number, dramaId: number): Pr
   const storyboards = db.select().from(schema.storyboards)
     .where(eq(schema.storyboards.episodeId, episodeId))
     .orderBy(schema.storyboards.storyboardNumber)
-    .all()
+    .execute()
 
   const composedStoryboards = storyboards.filter(sb => !!sb.composedVideoUrl)
   if (composedStoryboards.length !== storyboards.length) {
@@ -53,8 +53,8 @@ export async function mergeEpisodeVideos(episodeId: number, dramaId: number): Pr
     status: 'processing',
     scenes: JSON.stringify(videos),
     createdAt: ts,
-  }).run()
-  const mergeId = Number(res.lastInsertRowid)
+  }).execute()
+  const mergeId = Number(res.insertId)
 
   // 异步执行
   doMerge(mergeId, episodeId, videos).catch(err => {
@@ -62,7 +62,7 @@ export async function mergeEpisodeVideos(episodeId: number, dramaId: number): Pr
     console.error(`[Merge] Failed:`, err)
     db.update(schema.videoMerges)
       .set({ status: 'failed', errorMsg: err.message })
-      .where(eq(schema.videoMerges.id, mergeId)).run()
+      .where(eq(schema.videoMerges.id, mergeId)).execute()
   })
 
   return mergeId
@@ -116,12 +116,12 @@ async function doMerge(mergeId: number, episodeId: number, videos: string[]) {
   // 更新 merge 记录
   db.update(schema.videoMerges)
     .set({ status: 'completed', mergedUrl: mergedRelative, duration, completedAt: now() })
-    .where(eq(schema.videoMerges.id, mergeId)).run()
+    .where(eq(schema.videoMerges.id, mergeId)).execute()
 
   // 更新 episode
   db.update(schema.episodes)
     .set({ videoUrl: mergedRelative, updatedAt: now() })
-    .where(eq(schema.episodes.id, episodeId)).run()
+    .where(eq(schema.episodes.id, episodeId)).execute()
 
   logTaskSuccess('MergeTask', 'episode-merge', { mergeId, episodeId, output: mergedRelative, duration, clips: videos.length })
 }

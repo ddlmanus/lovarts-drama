@@ -1,5 +1,5 @@
 export function joinProviderUrl(baseUrl: string, requiredPrefix: string, path: string) {
-  const normalizedBase = (baseUrl || '').replace(/\/+$/, '')
+  const normalizedBase = normalizeProviderBaseUrl(baseUrl).replace(/\/+$/, '')
   const normalizedPrefix = normalizeSegment(requiredPrefix)
   const normalizedPath = normalizeSegment(path)
 
@@ -22,6 +22,12 @@ export function joinProviderUrl(baseUrl: string, requiredPrefix: string, path: s
       : `${normalizedBase}${normalizedPrefix}`
     return `${basePath}${normalizedPath}`
   }
+}
+
+function normalizeProviderBaseUrl(baseUrl: string) {
+  const value = String(baseUrl || '').trim()
+  if (/^https?:\/\/(www\.)?apimart\.ai\/?$/i.test(value)) return 'https://api.apimart.ai'
+  return value
 }
 
 function normalizeSegment(segment: string) {

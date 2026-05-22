@@ -11,7 +11,7 @@ function upsertProvider() {
   const ts = nowIso()
   const existing = db.select().from(schema.aiServiceProviders)
     .where(eq(schema.aiServiceProviders.provider, 'zenmux'))
-    .all()[0]
+    .execute()[0]
 
   const values = {
     name: 'ZenMux',
@@ -45,15 +45,15 @@ function upsertProvider() {
   }
 
   if (existing) {
-    db.update(schema.aiServiceProviders).set(values).where(eq(schema.aiServiceProviders.id, existing.id)).run()
+    db.update(schema.aiServiceProviders).set(values).where(eq(schema.aiServiceProviders.id, existing.id)).execute()
     return existing.id
   }
 
   const result = db.insert(schema.aiServiceProviders).values({
     ...values,
     createdAt: ts,
-  }).run()
-  return Number(result.lastInsertRowid)
+  }).execute()
+  return Number(result.insertId)
 }
 
 function upsertProfile() {
@@ -61,7 +61,7 @@ function upsertProfile() {
   const key = 'zenmux-image-vertex'
   const existing = db.select().from(schema.aiModelParameterProfiles)
     .where(eq(schema.aiModelParameterProfiles.key, key))
-    .all()[0]
+    .execute()[0]
   const values = {
     key,
     name: 'ZenMux Vertex 图片参数',
@@ -73,10 +73,10 @@ function upsertProfile() {
     updatedAt: ts,
   }
   const id = existing
-    ? (db.update(schema.aiModelParameterProfiles).set(values).where(eq(schema.aiModelParameterProfiles.id, existing.id)).run(), existing.id)
-    : Number(db.insert(schema.aiModelParameterProfiles).values({ ...values, createdAt: ts }).run().lastInsertRowid)
+    ? (db.update(schema.aiModelParameterProfiles).set(values).where(eq(schema.aiModelParameterProfiles.id, existing.id)).execute(), existing.id)
+    : Number(db.insert(schema.aiModelParameterProfiles).values({ ...values, createdAt: ts }).execute().insertId)
 
-  db.delete(schema.aiModelParameterProfileItems).where(eq(schema.aiModelParameterProfileItems.profileId, id)).run()
+  db.delete(schema.aiModelParameterProfileItems).where(eq(schema.aiModelParameterProfileItems.profileId, id)).execute()
   const items = [
     { type: 'RESOLUTION', label: '1024x1024', value: '1024x1024', rank: 10 },
     { type: 'RESOLUTION', label: '1536x1024', value: '1536x1024', rank: 20 },
@@ -109,7 +109,7 @@ function upsertProfile() {
       rank: item.rank,
       createdAt: ts,
       updatedAt: ts,
-    }).run()
+    }).execute()
   }
 
   return id
@@ -120,7 +120,7 @@ function upsertOpenAIImageProfile() {
   const key = 'zenmux-openai-image'
   const existing = db.select().from(schema.aiModelParameterProfiles)
     .where(eq(schema.aiModelParameterProfiles.key, key))
-    .all()[0]
+    .execute()[0]
   const values = {
     key,
     name: 'ZenMux OpenAI Image 参数',
@@ -132,10 +132,10 @@ function upsertOpenAIImageProfile() {
     updatedAt: ts,
   }
   const id = existing
-    ? (db.update(schema.aiModelParameterProfiles).set(values).where(eq(schema.aiModelParameterProfiles.id, existing.id)).run(), existing.id)
-    : Number(db.insert(schema.aiModelParameterProfiles).values({ ...values, createdAt: ts }).run().lastInsertRowid)
+    ? (db.update(schema.aiModelParameterProfiles).set(values).where(eq(schema.aiModelParameterProfiles.id, existing.id)).execute(), existing.id)
+    : Number(db.insert(schema.aiModelParameterProfiles).values({ ...values, createdAt: ts }).execute().insertId)
 
-  db.delete(schema.aiModelParameterProfileItems).where(eq(schema.aiModelParameterProfileItems.profileId, id)).run()
+  db.delete(schema.aiModelParameterProfileItems).where(eq(schema.aiModelParameterProfileItems.profileId, id)).execute()
   const items = [
     { type: 'RESOLUTION', label: 'auto', value: 'auto', rank: 5 },
     { type: 'RESOLUTION', label: '1024x1024', value: '1024x1024', rank: 10 },
@@ -164,7 +164,7 @@ function upsertOpenAIImageProfile() {
       rank: item.rank,
       createdAt: ts,
       updatedAt: ts,
-    }).run()
+    }).execute()
   }
 
   return id
@@ -175,7 +175,7 @@ function upsertVideoProfile() {
   const key = 'zenmux-video-vertex'
   const existing = db.select().from(schema.aiModelParameterProfiles)
     .where(eq(schema.aiModelParameterProfiles.key, key))
-    .all()[0]
+    .execute()[0]
   const values = {
     key,
     name: 'ZenMux Vertex 视频参数',
@@ -187,10 +187,10 @@ function upsertVideoProfile() {
     updatedAt: ts,
   }
   const id = existing
-    ? (db.update(schema.aiModelParameterProfiles).set(values).where(eq(schema.aiModelParameterProfiles.id, existing.id)).run(), existing.id)
-    : Number(db.insert(schema.aiModelParameterProfiles).values({ ...values, createdAt: ts }).run().lastInsertRowid)
+    ? (db.update(schema.aiModelParameterProfiles).set(values).where(eq(schema.aiModelParameterProfiles.id, existing.id)).execute(), existing.id)
+    : Number(db.insert(schema.aiModelParameterProfiles).values({ ...values, createdAt: ts }).execute().insertId)
 
-  db.delete(schema.aiModelParameterProfileItems).where(eq(schema.aiModelParameterProfileItems.profileId, id)).run()
+  db.delete(schema.aiModelParameterProfileItems).where(eq(schema.aiModelParameterProfileItems.profileId, id)).execute()
   const items = [
     { type: 'ASPECT_RATIO', label: '16:9', value: '16:9', rank: 10 },
     { type: 'ASPECT_RATIO', label: '9:16', value: '9:16', rank: 20 },
@@ -212,7 +212,7 @@ function upsertVideoProfile() {
       rank: item.rank,
       createdAt: ts,
       updatedAt: ts,
-    }).run()
+    }).execute()
   }
 
   return id
@@ -228,7 +228,7 @@ function upsertModel(providerId: number, profileId: number, model: {
   priority: number
 }) {
   const ts = nowIso()
-  const existing = db.select().from(schema.aiModelConfigs).all()
+  const existing = db.select().from(schema.aiModelConfigs).execute()
     .find(row => !row.userId && row.provider === 'zenmux' && row.serviceType === (model.serviceType || 'image') && row.modelId === model.modelId)
   const values = {
     userId: null,
@@ -254,14 +254,14 @@ function upsertModel(providerId: number, profileId: number, model: {
   }
 
   if (existing) {
-    db.update(schema.aiModelConfigs).set(values).where(eq(schema.aiModelConfigs.id, existing.id)).run()
+    db.update(schema.aiModelConfigs).set(values).where(eq(schema.aiModelConfigs.id, existing.id)).execute()
     return
   }
 
   db.insert(schema.aiModelConfigs).values({
     ...values,
     createdAt: ts,
-  }).run()
+  }).execute()
 }
 
 const providerId = upsertProvider()

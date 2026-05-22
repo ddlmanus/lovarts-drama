@@ -16,23 +16,23 @@ import { logTaskProgress, logTaskSuccess } from '../../utils/task-logger.js'
 import { updateAgentTask } from '../task-progress.js'
 
 // ─── 关联辅助 ────────────────────────────────────────────────
-function linkCharToEpisode(episodeId: number, characterId: number) {
+async function linkCharToEpisode(episodeId: number, characterId: number) {
   const ts = now()
-  const existing = db.select().from(schema.episodeCharacters)
+  const existing = await db.select().from(schema.episodeCharacters)
     .where(and(eq(schema.episodeCharacters.episodeId, episodeId), eq(schema.episodeCharacters.characterId, characterId)))
-    .all()
+    .execute()
   if (!existing.length) {
-    db.insert(schema.episodeCharacters).values({ episodeId, characterId, createdAt: ts }).run()
+    await db.insert(schema.episodeCharacters).values({ episodeId, characterId, createdAt: ts }).execute()
   }
 }
 
-function linkSceneToEpisode(episodeId: number, sceneId: number) {
+async function linkSceneToEpisode(episodeId: number, sceneId: number) {
   const ts = now()
-  const existing = db.select().from(schema.episodeScenes)
+  const existing = await db.select().from(schema.episodeScenes)
     .where(and(eq(schema.episodeScenes.episodeId, episodeId), eq(schema.episodeScenes.sceneId, sceneId)))
-    .all()
+    .execute()
   if (!existing.length) {
-    db.insert(schema.episodeScenes).values({ episodeId, sceneId, createdAt: ts }).run()
+    await db.insert(schema.episodeScenes).values({ episodeId, sceneId, createdAt: ts }).execute()
   }
 }
 
@@ -50,7 +50,7 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
         progress: 12,
       })
       const [ep] = db.select().from(schema.episodes)
-        .where(eq(schema.episodes.id, episodeId)).all()
+        .where(eq(schema.episodes.id, episodeId)).execute()
       if (!ep) return { error: 'Episode not found' }
       const content = ep.scriptContent || ep.content
       if (!content) return { error: 'Episode has no script content' }
@@ -78,11 +78,11 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
       })
       const linkedIds = new Set(
         db.select().from(schema.episodeCharacters)
-          .where(eq(schema.episodeCharacters.episodeId, episodeId)).all()
+          .where(eq(schema.episodeCharacters.episodeId, episodeId)).execute()
           .map(link => link.characterId),
       )
       const chars = db.select().from(schema.characters)
-        .where(eq(schema.characters.dramaId, dramaId)).all()
+        .where(eq(schema.characters.dramaId, dramaId)).execute()
         .filter(c => !c.deletedAt)
       const payload = {
         count: chars.length,
@@ -118,11 +118,11 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
       })
       const linkedIds = new Set(
         db.select().from(schema.episodeScenes)
-          .where(eq(schema.episodeScenes.episodeId, episodeId)).all()
+          .where(eq(schema.episodeScenes.episodeId, episodeId)).execute()
           .map(link => link.sceneId),
       )
       const scenes = db.select().from(schema.scenes)
-        .where(eq(schema.scenes.dramaId, dramaId)).all()
+        .where(eq(schema.scenes.dramaId, dramaId)).execute()
         .filter(s => !s.deletedAt)
       const payload = {
         count: scenes.length,
@@ -178,7 +178,7 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
 
       for (const char of characters) {
         const existing = db.select().from(schema.characters)
-          .where(eq(schema.characters.dramaId, dramaId)).all()
+          .where(eq(schema.characters.dramaId, dramaId)).execute()
           .filter(c => !c.deletedAt)
           .find(c => c.name === char.name)
 
@@ -192,8 +192,8 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
             appearance: char.appearance || existing.appearance,
             personality: char.personality || existing.personality,
             updatedAt: ts,
-          }).where(eq(schema.characters.id, existing.id)).run()
-          linkCharToEpisode(episodeId, existing.id)
+          }).where(eq(schema.characters.id, existing.id)).execute()
+          await linkCharToEpisode(episodeId, existing.id)
           savedIds.push(existing.id)
           results.merged++
         } else {
@@ -209,19 +209,19 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
             dramaId,
             createdAt: ts,
             updatedAt: ts,
-          }).run()
-          const charId = Number(res.lastInsertRowid)
-          linkCharToEpisode(episodeId, charId)
+          }).execute()
+          const charId = Number(res.insertId)
+          await linkCharToEpisode(episodeId, charId)
           savedIds.push(charId)
           results.created++
         }
       }
 
       const currentLinks = db.select().from(schema.episodeCharacters)
-        .where(eq(schema.episodeCharacters.episodeId, episodeId)).all()
+        .where(eq(schema.episodeCharacters.episodeId, episodeId)).execute()
       for (const link of currentLinks) {
         if (!savedIds.includes(link.characterId)) {
-          db.delete(schema.episodeCharacters).where(eq(schema.episodeCharacters.id, link.id)).run()
+          await db.delete(schema.episodeCharacters).where(eq(schema.episodeCharacters.id, link.id)).execute()
         }
       }
 
@@ -269,18 +269,18 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
       for (const scene of scenes) {
         // 按地点+时间段精确匹配
         const existing = db.select().from(schema.scenes)
-          .where(eq(schema.scenes.dramaId, dramaId)).all()
+          .where(eq(schema.scenes.dramaId, dramaId)).execute()
           .filter(s => !s.deletedAt)
           .find(s => s.location === scene.location && s.time === (scene.time || ''))
 
         if (existing) {
           // 已存在完全匹配的场景：直接关联
-          linkSceneToEpisode(episodeId, existing.id)
+          await linkSceneToEpisode(episodeId, existing.id)
           results.reused++
         } else {
           // 检查是否有同地点不同时段（保留现有，新增独立场景）
           const sameLocation = db.select().from(schema.scenes)
-            .where(eq(schema.scenes.dramaId, dramaId)).all()
+            .where(eq(schema.scenes.dramaId, dramaId)).execute()
             .filter(s => !s.deletedAt)
             .find(s => s.location === scene.location)
 
@@ -291,9 +291,9 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
             prompt: scene.prompt || scene.location,
             createdAt: ts,
             updatedAt: ts,
-          }).run()
-          const sceneId = Number(res.lastInsertRowid)
-          linkSceneToEpisode(episodeId, sceneId)
+          }).execute()
+          const sceneId = Number(res.insertId)
+          await linkSceneToEpisode(episodeId, sceneId)
           results.created++
         }
       }

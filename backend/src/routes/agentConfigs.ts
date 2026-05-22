@@ -9,7 +9,7 @@ const app = new Hono()
 // GET /agent-configs
 app.get('/', async (c) => {
   const rows = db.select().from(schema.agentConfigs)
-    .where(isNull(schema.agentConfigs.deletedAt)).all()
+    .where(isNull(schema.agentConfigs.deletedAt)).execute()
   return success(c, toSnakeCaseArray(rows))
 })
 
@@ -17,7 +17,7 @@ app.get('/', async (c) => {
 app.get('/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const [row] = db.select().from(schema.agentConfigs)
-    .where(eq(schema.agentConfigs.id, id)).all()
+    .where(eq(schema.agentConfigs.id, id)).execute()
   if (!row) return badRequest(c, 'Not found')
   return success(c, toSnakeCase(row))
 })
@@ -30,7 +30,7 @@ app.post('/', async (c) => {
 
   // Check if exists (including soft-deleted)
   const [existing] = db.select().from(schema.agentConfigs)
-    .where(eq(schema.agentConfigs.agentType, body.agent_type)).all()
+    .where(eq(schema.agentConfigs.agentType, body.agent_type)).execute()
 
   if (existing) {
     // Update existing
@@ -44,8 +44,8 @@ app.post('/', async (c) => {
       isActive: body.is_active ?? true,
       deletedAt: null,
       updatedAt: ts,
-    }).where(eq(schema.agentConfigs.id, existing.id)).run()
-    const [row] = db.select().from(schema.agentConfigs).where(eq(schema.agentConfigs.id, existing.id)).all()
+    }).where(eq(schema.agentConfigs.id, existing.id)).execute()
+    const [row] = await db.select().from(schema.agentConfigs).where(eq(schema.agentConfigs.id, existing.id)).execute()
     return success(c, toSnakeCase(row))
   }
 
@@ -61,9 +61,9 @@ app.post('/', async (c) => {
     isActive: body.is_active ?? true,
     createdAt: ts,
     updatedAt: ts,
-  }).run()
+  }).execute()
   const [result] = db.select().from(schema.agentConfigs)
-    .where(eq(schema.agentConfigs.id, Number(res.lastInsertRowid))).all()
+    .where(eq(schema.agentConfigs.id, Number(res.insertId))).execute()
   return success(c, toSnakeCase(result))
 })
 
@@ -82,15 +82,15 @@ app.put('/:id', async (c) => {
   if ('name' in body) updates.name = body.name
   if ('description' in body) updates.description = body.description
 
-  db.update(schema.agentConfigs).set(updates).where(eq(schema.agentConfigs.id, id)).run()
-  const [row] = db.select().from(schema.agentConfigs).where(eq(schema.agentConfigs.id, id)).all()
+  await db.update(schema.agentConfigs).set(updates).where(eq(schema.agentConfigs.id, id)).execute()
+  const [row] = await db.select().from(schema.agentConfigs).where(eq(schema.agentConfigs.id, id)).execute()
   return success(c, toSnakeCase(row))
 })
 
 // DELETE /agent-configs/:id
 app.delete('/:id', async (c) => {
   const id = Number(c.req.param('id'))
-  db.update(schema.agentConfigs).set({ deletedAt: now() }).where(eq(schema.agentConfigs.id, id)).run()
+  await db.update(schema.agentConfigs).set({ deletedAt: now() }).where(eq(schema.agentConfigs.id, id)).execute()
   return success(c)
 })
 

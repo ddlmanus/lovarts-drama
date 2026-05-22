@@ -1,49 +1,32 @@
 <template>
   <!-- Image config node wrapper | 文生图配置节点包裹层 -->
   <div class="image-config-node-wrapper" @mouseenter="showHandleMenu = true" @mouseleave="showHandleMenu = false">
+    <NodeTitle
+      :label="data.label"
+      :icon="ColorPaletteOutline"
+      :editing="isEditingLabel"
+      v-model="editingLabelValue"
+      @start-edit="startEditLabel"
+      @finish-edit="finishEditLabel"
+      @cancel-edit="cancelEditLabel"
+    />
+
     <!-- Image config node | 文生图配置节点 -->
     <div
-      class="image-config-node bg-[var(--bg-secondary)] rounded-xl border min-w-[300px] transition-all duration-200"
-      :class="data.selected ? 'border-1 border-blue-500 shadow-lg shadow-blue-500/20' : 'border border-[var(--border-color)]'">
-      <!-- Header | 头部 -->
-      <div class="flex items-center justify-between px-3 py-2 border-b border-[var(--border-color)]">
-        <span
-          v-if="!isEditingLabel"
-          @dblclick="startEditLabel"
-          class="text-sm font-medium text-[var(--text-secondary)] cursor-text hover:bg-[var(--bg-tertiary)] px-1 rounded transition-colors"
-          title="双击编辑名称"
-        >{{ data.label }}</span>
-        <input
-          v-else
-          ref="labelInputRef"
-          v-model="editingLabelValue"
-          @blur="finishEditLabel"
-          @keydown.enter="finishEditLabel"
-          @keydown.escape="cancelEditLabel"
-          class="text-sm font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] px-1 rounded outline-none border border-blue-500"
-        />
-        <div class="flex items-center gap-1">
-          <button @click="handleDuplicate" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors" title="复制节点">
-            <n-icon :size="14">
-              <CopyOutline />
-            </n-icon>
-          </button>
-          <button @click="handleDelete" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors" title="删除节点">
-            <n-icon :size="14">
-              <TrashOutline />
-            </n-icon>
-          </button>
-        </div>
-      </div>
-
+      class="image-config-node canvas-node-card rounded-xl min-w-[300px] transition-all duration-200"
+      :class="{ 'is-selected': data.selected }">
       <!-- Config options | 配置选项 -->
       <div class="p-3 space-y-3">
         <!-- Model selector | 模型选择 -->
         <div class="flex items-center justify-between">
           <span class="text-xs text-[var(--text-secondary)]">模型</span>
-          <n-dropdown :options="modelOptions" @select="handleModelSelect">
+          <n-dropdown :options="modelOptions" :render-label="renderModelOptionLabel" @select="handleModelSelect">
             <button class="flex items-center gap-1 text-sm text-[var(--text-primary)] hover:text-[var(--accent-color)]">
-              {{ displayModelName }}
+              <span class="canvas-model-label">
+                <span>{{ displayModelName }}</span>
+                <span v-if="isPlatformModel(currentModelConfig)" class="canvas-model-badge official">官网</span>
+                <span v-if="isVipModel(currentModelConfig)" class="canvas-model-badge vip">VIP</span>
+              </span>
               <n-icon :size="12"><ChevronDownOutline /></n-icon>
             </button>
           </n-dropdown>
@@ -52,7 +35,7 @@
         <!-- Quality selector | 画质选择 -->
         <div v-if="hasQualityOptions" class="flex items-center justify-between">
           <span class="text-xs text-[var(--text-secondary)]">画质</span>
-          <n-dropdown :options="qualityOptions" @select="handleQualitySelect">
+          <n-dropdown :options="qualityOptions" scrollable :menu-props="limitedDropdownMenuProps" @select="handleQualitySelect">
             <button class="flex items-center gap-1 text-sm text-[var(--text-primary)] hover:text-[var(--accent-color)]">
               {{ displayQuality }}
               <n-icon :size="12"><ChevronForwardOutline /></n-icon>
@@ -64,7 +47,7 @@
         <div v-if="hasSizeOptions" class="flex items-center justify-between">
           <span class="text-xs text-[var(--text-secondary)]">尺寸</span>
           <div class="flex items-center gap-2">
-            <n-dropdown :options="sizeOptions" @select="handleSizeSelect">
+            <n-dropdown :options="sizeOptions" scrollable :menu-props="limitedDropdownMenuProps" @select="handleSizeSelect">
               <button
                 class="flex items-center gap-1 text-sm text-[var(--text-primary)] hover:text-[var(--accent-color)]">
                 {{ displaySize }}
@@ -74,6 +57,19 @@
               </button>
             </n-dropdown>
           </div>
+        </div>
+
+        <!-- Resolution selector | 分辨率选择 -->
+        <div v-if="resolutionOptions.length" class="flex items-center justify-between">
+          <span class="text-xs text-[var(--text-secondary)]">分辨率</span>
+          <n-dropdown :options="resolutionOptions" scrollable :menu-props="limitedDropdownMenuProps" @select="handleResolutionSelect">
+            <button class="flex items-center gap-1 text-sm text-[var(--text-primary)] hover:text-[var(--accent-color)]">
+              {{ displayResolution }}
+              <n-icon :size="12">
+                <ChevronForwardOutline />
+              </n-icon>
+            </button>
+          </n-dropdown>
         </div>
 
         <!-- Model tips | 模型提示 -->
@@ -158,44 +154,55 @@
  * Image config node component | 文生图配置节点组件
  * Configuration panel for text-to-image generation with API integration
  */
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, nextTick, h } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { NIcon, NDropdown, NSpin } from 'naive-ui'
-import { ChevronDownOutline, ChevronForwardOutline, CopyOutline, TrashOutline, RefreshOutline, AddOutline, ImageOutline, CreateOutline } from '@vicons/ionicons5'
+import { ChevronDownOutline, ChevronForwardOutline, RefreshOutline, AddOutline, ImageOutline, ColorPaletteOutline } from '@vicons/ionicons5'
 import { useImageGeneration } from '../../hooks'
-import { updateNode, addNode, addEdge, nodes, edges, duplicateNode, removeNode } from '../../stores/canvas'
+import { updateNode, addNode, addEdge, nodes, edges } from '../../stores/canvas'
 import NodeHandleMenu from './NodeHandleMenu.vue'
-import { useModelStore } from '../../stores/pinia'
-import { getModelSizeOptions, getModelQualityOptions, getModelConfig, DEFAULT_IMAGE_MODEL } from '../../stores/models'
+import NodeTitle from './NodeTitle.vue'
 import { parseMentions } from '../../hooks/useNodeRef'
-
-// 使用 Pinia store 获取模型选项（根据渠道过滤）
-const modelStore = useModelStore()
+import {
+  buildImageSizeOptions,
+  buildQualityOptions,
+  buildResolutionOptions,
+  findModelOption,
+  isOfficialModel,
+  modelOptionKey,
+  modelPayload,
+  pickOption,
+  useUserModelOptions
+} from '../../utils/modelOptions'
 
 const props = defineProps({
   id: String,
   data: Object
 })
 
+const limitedDropdownMenuProps = () => ({
+  style: {
+    maxHeight: '152px'
+  }
+})
+
 // Vue Flow instance | Vue Flow 实例
 const { updateNodeInternals } = useVueFlow()
 
-// API config state | API 配置状态
-const isConfigured = computed(() => !!modelStore.currentApiKey)
-
 // Image generation hook | 图片生成 hook
 const { loading, error, images: generatedImages, generate } = useImageGeneration()
+const { imageModels, loadModels } = useUserModelOptions()
 
 // Local state | 本地状态
 const showHandleMenu = ref(false)
-const localModel = ref(props.data?.model || DEFAULT_IMAGE_MODEL)
-const localSize = ref(props.data?.size || '2048x2048')
-const localQuality = ref(props.data?.quality || 'standard')
+const localModel = ref(props.data?.modelKey || props.data?.model_config_id || props.data?.model || '')
+const localSize = ref(props.data?.size || '')
+const localResolution = ref(props.data?.resolution || props.data?.image_size || props.data?.sample_image_size || '')
+const localQuality = ref(props.data?.quality || '')
 
 // Label editing state | Label 编辑状态
 const isEditingLabel = ref(false)
 const editingLabelValue = ref('')
-const labelInputRef = ref(null)
 
 // ImageConfig node menu operations | 图片配置节点菜单操作
 const operations = [
@@ -231,25 +238,46 @@ const handleSelect = (item) => {
 }
 
 // Get current model config | 获取当前模型配置
-const currentModelConfig = computed(() => getModelConfig(localModel.value))
+const currentModelConfig = computed(() => findModelOption(imageModels.value, localModel.value))
 
-// Model options from Pinia store (filtered by provider) | 从 Pinia store 获取模型选项（根据渠道过滤）
-const modelOptions = computed(() => modelStore.allImageModelOptions)
+// Model options from user providers | 从用户供应商获取模型选项
+const modelOptions = computed(() => imageModels.value.map(m => ({
+  label: modelBaseName(m),
+  key: modelOptionKey(m)
+})))
+
+const isConfigured = computed(() => modelOptions.value.length > 0 && Boolean(currentModelConfig.value))
 
 // Display model name | 显示模型名称
 const displayModelName = computed(() => {
-  const model = modelOptions.value.find(m => m.key === localModel.value)
-  // 如果当前模型不在选项中，尝试从 allImageModels 找到
-  if (!model) {
-    const allModel = modelStore.allImageModels.find(m => m.key === localModel.value)
-    return allModel?.label || localModel.value || '选择模型'
-  }
-  return model?.label || localModel.value || '选择模型'
+  const model = currentModelConfig.value
+  return modelBaseName(model) || '选择模型'
 })
+
+function modelBaseName(model) {
+  return model?.name || model?.display_name || model?.model_name || model?.config_name || model?.label || model?.model_id || model?.value || ''
+}
+
+function isPlatformModel(model) {
+  return isOfficialModel(model)
+}
+
+function isVipModel(model) {
+  return Boolean(model?.member_only || model?.memberOnly)
+}
+
+function renderModelOptionLabel(option) {
+  const model = imageModels.value.find(item => modelOptionKey(item) === option.key)
+  return h('span', { class: 'canvas-model-option-label' }, [
+    h('span', { class: 'canvas-model-option-name' }, option.label),
+    isPlatformModel(model) ? h('span', { class: 'canvas-model-badge official' }, '官网') : null,
+    isVipModel(model) ? h('span', { class: 'canvas-model-badge vip' }, 'VIP') : null,
+  ].filter(Boolean))
+}
 
 // Quality options based on model | 基于模型的画质选项
 const qualityOptions = computed(() => {
-  return getModelQualityOptions(localModel.value)
+  return buildQualityOptions(currentModelConfig.value)
 })
 
 // Check if model has quality options | 检查模型是否有画质选项
@@ -259,37 +287,111 @@ const hasQualityOptions = computed(() => {
 
 // Display quality | 显示画质
 const displayQuality = computed(() => {
-  const option = qualityOptions.value.find(o => o.key === localQuality.value)
-  return option?.label || '标准画质'
+  const option = qualityOptions.value.find(o => (o.value || o.key) === localQuality.value)
+  return option?.label || localQuality.value || '画质'
 })
 
 // Size options based on model and quality | 基于模型和画质的尺寸选项
 const sizeOptions = computed(() => {
-  return getModelSizeOptions(localModel.value, localQuality.value)
+  return buildImageSizeOptions(currentModelConfig.value)
 })
+
+const resolutionOptions = computed(() => buildResolutionOptions(currentModelConfig.value, 'image'))
 
 // Check if model has size options | 检查模型是否有尺寸选项
 const hasSizeOptions = computed(() => {
-  const config = getModelConfig(localModel.value)
-  return config?.sizes && config.sizes.length > 0
+  return sizeOptions.value.length > 0
 })
 
 // Display size with label | 显示尺寸（带标签）
 const displaySize = computed(() => {
-  const option = sizeOptions.value.find(o => o.key === localSize.value)
-  return option?.label || localSize.value
+  const option = sizeOptions.value.find(o => (o.value || o.key) === localSize.value)
+  return option?.label || localSize.value || '比例'
 })
 
-// Initialize on mount | 挂载时初始化
-onMounted(() => {
-  // 检查当前模型是否在可用模型列表中
-  const availableModels = modelStore.availableImageModels
-  const isModelAvailable = availableModels.some(m => m.key === localModel.value)
+const displayResolution = computed(() => {
+  const option = resolutionOptions.value.find(o => (o.value || o.key) === localResolution.value)
+  return option?.label || localResolution.value || '分辨率'
+})
 
-  if (!localModel.value || !isModelAvailable) {
-    // 使用 store 中的默认模型或第一个可用模型
-    localModel.value = modelStore.selectedImageModel || availableModels[0]?.key || DEFAULT_IMAGE_MODEL
-    updateNode(props.id, { model: localModel.value })
+const ensureSelectedParams = () => {
+  const defaults = currentModelConfig.value?.defaults || {}
+  if (!localSize.value || !sizeOptions.value.some(item => (item.value || item.key) === localSize.value)) {
+    localSize.value = pickOption(sizeOptions.value, [defaults.aspect_ratio, defaults.aspectRatio, defaults.ratio, defaults.size])
+  }
+  if (!localResolution.value || !resolutionOptions.value.some(item => (item.value || item.key) === localResolution.value)) {
+    localResolution.value = pickOption(resolutionOptions.value, [
+      defaults.sampleImageSize,
+      defaults.sample_image_size,
+      defaults.imageSizeLevel,
+      defaults.image_size_level,
+      defaults.resolution
+    ])
+  }
+  if (!localQuality.value || !qualityOptions.value.some(item => (item.value || item.key) === localQuality.value)) {
+    localQuality.value = pickOption(qualityOptions.value, [defaults.quality])
+  }
+}
+
+const ensureSelectedModel = () => {
+  const preferred = imageModels.value.find(item => item.is_default) || imageModels.value[0]
+  const matched = findModelOption(imageModels.value, localModel.value)
+  localModel.value = matched ? modelOptionKey(matched) : (preferred ? modelOptionKey(preferred) : '')
+  ensureSelectedParams()
+  if (localModel.value) {
+    updateNode(props.id, {
+      modelKey: localModel.value,
+      model: currentModelConfig.value?.model_id || localModel.value,
+      model_config_id: currentModelConfig.value?.model_config_id || currentModelConfig.value?.id,
+      user_provider_id: currentModelConfig.value?.user_provider_id,
+      provider: currentModelConfig.value?.provider,
+      size: localSize.value,
+      resolution: localResolution.value,
+      quality: localQuality.value
+    })
+  }
+}
+
+const normalizeOpenAIImageSize = (value) => {
+  const raw = String(value || '').trim().toLowerCase()
+  if (!raw || raw === 'auto') return raw
+  const ratioMatch = raw.match(/^(\d{1,2})\s*:\s*(\d{1,2})$/)
+  if (!ratioMatch) return raw
+  const widthRatio = Number(ratioMatch[1])
+  const heightRatio = Number(ratioMatch[2])
+  if (!widthRatio || !heightRatio) return raw
+  const ratio = widthRatio / heightRatio
+  if (ratio < 1 / 3 || ratio > 3) return raw
+  const roundTo16 = (size) => Math.max(16, Math.round(size / 16) * 16)
+  return ratio >= 1 ? `${roundTo16(1024 * ratio)}x1024` : `1024x${roundTo16(1024 / ratio)}`
+}
+
+const shouldUseOpenAIImageSize = (modelConfig) => {
+  const provider = String(modelConfig?.provider || '').toLowerCase()
+  const protocol = String(
+    modelConfig?.defaults?.protocol ||
+    modelConfig?.defaults?.apiProtocol ||
+    modelConfig?.defaults?.api_protocol ||
+    modelConfig?.capabilities?.protocol ||
+    modelConfig?.capabilities?.apiProtocol ||
+    modelConfig?.capabilities?.api_protocol ||
+    ''
+  ).toLowerCase().replace(/_/g, '-')
+  const modelId = String(modelConfig?.model_id || modelConfig?.value || localModel.value || '').toLowerCase()
+  return protocol === 'openai-image' || provider === 'openai' || (provider === 'zenmux' && (protocol === 'openai-image' || modelId.startsWith('openai/') || modelId.includes('gpt-image-')))
+}
+
+const requestSizeForModel = (modelConfig) => {
+  return shouldUseOpenAIImageSize(modelConfig) ? normalizeOpenAIImageSize(localSize.value) : localSize.value
+}
+
+// Initialize on mount | 挂载时初始化
+onMounted(async () => {
+  try {
+    await loadModels()
+    ensureSelectedModel()
+  } catch (err) {
+    window.$message?.error(err.message || '模型加载失败')
   }
 })
 
@@ -474,52 +576,37 @@ const getConnectedInputs = () => {
 // Handle model selection | 处理模型选择
 const handleModelSelect = (key) => {
   localModel.value = key
-  const config = getModelConfig(key)
-
-  // 同步 Quality 到模型默认值
-  if (config?.defaultParams?.quality) {
-    localQuality.value = config.defaultParams.quality
-  }
-
-  // 同步 Size 到模型默认值
-  const newSizeOptions = getModelSizeOptions(key, localQuality.value)
-  let defaultSize = config?.defaultParams?.size
-
-  if (!defaultSize && newSizeOptions.length > 0) {
-    // 备用逻辑：查找 2048 或最接近的尺寸
-    defaultSize = newSizeOptions.find(o => o.key === '2048x2048')?.key
-      || newSizeOptions.find(o => o.key.includes('1024'))?.key
-      || newSizeOptions[0].key
-  }
-
-  localSize.value = defaultSize
+  localSize.value = ''
+  localResolution.value = ''
+  localQuality.value = ''
+  ensureSelectedParams()
+  const payload = modelPayload(currentModelConfig.value, key)
 
   // 更新节点数据
   updateNode(props.id, {
-    model: key,
+    modelKey: key,
+    ...payload,
     quality: localQuality.value,
-    size: defaultSize
+    size: localSize.value,
+    resolution: localResolution.value
   })
 }
 
 // Handle quality selection | 处理画质选择
 const handleQualitySelect = (quality) => {
   localQuality.value = quality
-  // Update size to first option of new quality | 更新尺寸为新画质的第一个选项
-  const newSizeOptions = getModelSizeOptions(localModel.value, quality)
-  if (newSizeOptions.length > 0) {
-    const defaultSize = quality === '4k' ? newSizeOptions.find(o => o.key.includes('4096'))?.key || newSizeOptions[4]?.key : newSizeOptions[4]?.key
-    localSize.value = defaultSize || newSizeOptions[0].key
-    updateNode(props.id, { quality, size: localSize.value })
-  } else {
-    updateNode(props.id, { quality })
-  }
+  updateNode(props.id, { quality })
 }
 
 // Handle size selection | 处理尺寸选择
 const handleSizeSelect = (size) => {
   localSize.value = size
   updateNode(props.id, { size })
+}
+
+const handleResolutionSelect = (resolution) => {
+  localResolution.value = resolution
+  updateNode(props.id, { resolution })
 }
 
 // Update size from manual input | 更新手动输入的尺寸
@@ -586,7 +673,7 @@ const handleGenerate = async (mode = 'auto') => {
   }
 
   if (!isConfigured.value) {
-    window.$message?.warning('请先配置 API Key')
+    window.$message?.warning('暂无可用图片模型，请联系管理员配置平台模型')
     return
   }
 
@@ -647,12 +734,24 @@ const handleGenerate = async (mode = 'auto') => {
 
   try {
     // Build request params | 构建请求参数
+    const selectedConfig = currentModelConfig.value
+    const requestSize = requestSizeForModel(selectedConfig)
     const params = {
-      model: localModel.value,
+      ...modelPayload(selectedConfig, localModel.value),
       prompt: prompt,
-      size: localSize.value,
+      size: requestSize,
+      image_size: localResolution.value || undefined,
+      sample_image_size: localResolution.value || undefined,
+      resolution: localResolution.value || undefined,
       quality: localQuality.value,
-      n: 1
+      n: 1,
+      output_format: selectedConfig?.defaults?.output_format || selectedConfig?.defaults?.outputFormat || undefined,
+      output_compression: selectedConfig?.defaults?.output_compression ?? selectedConfig?.defaults?.outputCompression ?? undefined,
+      background: selectedConfig?.defaults?.background || undefined,
+      moderation: selectedConfig?.defaults?.moderation || undefined,
+      official_fallback: selectedConfig?.defaults?.official_fallback ?? selectedConfig?.defaults?.officialFallback ?? undefined,
+      google_search: selectedConfig?.defaults?.google_search ?? selectedConfig?.defaults?.googleSearch ?? undefined,
+      google_image_search: selectedConfig?.defaults?.google_image_search ?? selectedConfig?.defaults?.googleImageSearch ?? undefined
     }
 
     // Add reference image if provided | 如果有参考图则添加
@@ -668,7 +767,7 @@ const handleGenerate = async (mode = 'auto') => {
         url: result[0].url,
         loading: false,
         label: '文生图',
-        model: localModel.value,
+        model: selectedConfig?.model_id || localModel.value,
         updatedAt: Date.now()
       })
       
@@ -687,25 +786,10 @@ const handleGenerate = async (mode = 'auto') => {
   }
 }
 
-// Handle duplicate | 处理复制
-const handleDuplicate = () => {
-  const newNodeId = duplicateNode(props.id)
-  window.$message?.success('节点已复制')
-  if (newNodeId) {
-    setTimeout(() => {
-      updateNodeInternals(newNodeId)
-    }, 50)
-  }
-}
-
 // Start editing label | 开始编辑 label
 const startEditLabel = () => {
   editingLabelValue.value = props.data?.label || ''
   isEditingLabel.value = true
-  nextTick(() => {
-    labelInputRef.value?.focus()
-    labelInputRef.value?.select()
-  })
 }
 
 // Finish editing label | 完成编辑 label
@@ -722,27 +806,15 @@ const cancelEditLabel = () => {
   isEditingLabel.value = false
 }
 
-// Handle delete | 处理删除
-const handleDelete = () => {
-  removeNode(props.id)
-  window.$message?.success('节点已删除')
-}
-
 // 监听模型变化，同步 Quality 和 Size
 watch(() => props.data?.model, (newModel) => {
-  if (newModel && newModel !== localModel.value) {
-    localModel.value = newModel
-    const config = getModelConfig(newModel)
-
-    // 同步 Quality
-    if (config?.defaultParams?.quality) {
-      localQuality.value = config.defaultParams.quality
-    }
-
-    // 同步 Size
-    if (config?.defaultParams?.size) {
-      localSize.value = config.defaultParams.size
-    }
+  const nextKey = props.data?.modelKey || props.data?.model_config_id || newModel
+  if (nextKey && nextKey !== localModel.value) {
+    localModel.value = String(nextKey)
+    localSize.value = props.data?.size || localSize.value
+    localResolution.value = props.data?.resolution || localResolution.value
+    localQuality.value = props.data?.quality || localQuality.value
+    ensureSelectedParams()
   }
 })
 
@@ -773,11 +845,49 @@ watch(
 <style scoped>
 .image-config-node-wrapper {
   position: relative;
-  padding-top: 20px;
+  padding-top: 26px;
 }
 
 .image-config-node {
   cursor: default;
   position: relative;
+  overflow: visible;
+}
+
+.canvas-model-label,
+:global(.canvas-model-option-label) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+}
+
+.canvas-model-label > span:first-child,
+:global(.canvas-model-option-name) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.canvas-model-badge,
+:global(.canvas-model-badge) {
+  flex: 0 0 auto;
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.canvas-model-badge.official,
+:global(.canvas-model-badge.official) {
+  background: rgba(10, 132, 255, 0.16);
+  color: #60a5fa;
+}
+
+.canvas-model-badge.vip,
+:global(.canvas-model-badge.vip) {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
 }
 </style>

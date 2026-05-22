@@ -51,13 +51,13 @@ function parseDialogueForTTS(dialogue?: string | null) {
  * 合成单个镜头：视频 + TTS对白音频 + 烧录字幕
  */
 export async function composeStoryboard(storyboardId: number): Promise<string> {
-  const [sb] = db.select().from(schema.storyboards).where(eq(schema.storyboards.id, storyboardId)).all()
+  const [sb] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, storyboardId)).execute()
   if (!sb) throw new Error(`Storyboard ${storyboardId} not found`)
   if (!sb.videoUrl) throw new Error(`Storyboard ${storyboardId} has no video`)
   db.update(schema.storyboards)
     .set({ status: 'compose_processing', composedVideoUrl: null, updatedAt: now() })
     .where(eq(schema.storyboards.id, storyboardId))
-    .run()
+    .execute()
 
   logTaskStart('ComposeTask', 'storyboard-compose', {
     storyboardId,
@@ -82,12 +82,12 @@ export async function composeStoryboard(storyboardId: number): Promise<string> {
 
       if (!audioPath) {
         let voiceId = 'alloy'
-        const [ep] = db.select().from(schema.episodes).where(eq(schema.episodes.id, sb.episodeId)).all()
+        const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, sb.episodeId)).execute()
         if (parsedDialogue.speaker) {
           const charName = parsedDialogue.speaker
           if (ep) {
             const chars = db.select().from(schema.characters)
-              .where(eq(schema.characters.dramaId, ep.dramaId)).all()
+              .where(eq(schema.characters.dramaId, ep.dramaId)).execute()
             const found = chars.find(c => c.name === charName)
             if (found?.voiceStyle) voiceId = found.voiceStyle
           }
@@ -96,10 +96,16 @@ export async function composeStoryboard(storyboardId: number): Promise<string> {
         const pureDialogue = parsedDialogue.pureText
         if (pureDialogue) {
           logTaskProgress('ComposeTask', 'generate-inline-tts', { storyboardId, voiceId, textPreview: pureDialogue.slice(0, 40) })
-          const ttsPath = await generateTTS({ text: pureDialogue, voice: voiceId, configId: ep?.audioConfigId ?? undefined })
+          const ttsPath = await generateTTS({
+            text: pureDialogue,
+            voice: voiceId,
+            configId: ep?.audioConfigId ?? undefined,
+            relatedTaskId: storyboardId,
+            taskType: 'storyboard_compose_tts',
+          })
           audioPath = toAbsPath(ttsPath)
           db.update(schema.storyboards).set({ ttsAudioUrl: ttsPath, updatedAt: now() })
-            .where(eq(schema.storyboards.id, storyboardId)).run()
+            .where(eq(schema.storyboards.id, storyboardId)).execute()
         }
       }
     }
@@ -118,7 +124,7 @@ export async function composeStoryboard(storyboardId: number): Promise<string> {
 
       const srtRelative = `static/subtitles/${srtFilename}`
       db.update(schema.storyboards).set({ subtitleUrl: srtRelative, updatedAt: now() })
-        .where(eq(schema.storyboards.id, storyboardId)).run()
+        .where(eq(schema.storyboards.id, storyboardId)).execute()
     }
 
     // 3. FFmpeg 合成
@@ -171,7 +177,7 @@ export async function composeStoryboard(storyboardId: number): Promise<string> {
 
     const composedRelative = `static/composed/${outputFilename}`
     db.update(schema.storyboards).set({ composedVideoUrl: composedRelative, status: 'compose_completed', updatedAt: now() })
-      .where(eq(schema.storyboards.id, storyboardId)).run()
+      .where(eq(schema.storyboards.id, storyboardId)).execute()
 
     logTaskSuccess('ComposeTask', 'storyboard-compose', {
       storyboardId,
@@ -183,7 +189,7 @@ export async function composeStoryboard(storyboardId: number): Promise<string> {
     db.update(schema.storyboards)
       .set({ status: 'compose_failed', composedVideoUrl: null, updatedAt: now() })
       .where(eq(schema.storyboards.id, storyboardId))
-      .run()
+      .execute()
     throw err
   }
 }

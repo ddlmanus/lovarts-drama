@@ -1,73 +1,39 @@
 <template>
   <!-- Text node wrapper | 文本节点包裹层 -->
   <div class="text-node-wrapper" @mouseenter="showHandleMenu = true" @mouseleave="showHandleMenu = false">
+    <NodeTitle
+      :label="data.label"
+      :icon="DocumentTextOutline"
+      :editing="isEditingLabel"
+      v-model="editingLabelValue"
+      @start-edit="startEditLabel"
+      @finish-edit="finishEditLabel"
+      @cancel-edit="cancelEditLabel"
+    />
+
     <!-- Text node | 文本节点 -->
     <div
-      class="text-node bg-[var(--bg-secondary)] rounded-xl border min-w-[280px] max-w-[350px] relative transition-all duration-200"
-      :class="data.selected ? 'border-1 border-blue-500 shadow-lg shadow-blue-500/20' : 'border border-[var(--border-color)]'">
-      <!-- Header | 头部 -->
-      <div class="flex items-center justify-between px-3 py-2 border-b border-[var(--border-color)]">
-        <span
-          v-if="!isEditingLabel"
-          @dblclick="startEditLabel"
-          class="text-sm font-medium text-[var(--text-secondary)] cursor-text hover:bg-[var(--bg-tertiary)] px-1 rounded transition-colors"
-          title="双击编辑名称"
-        >{{ data.label }}</span>
-        <input
-          v-else
-          ref="labelInputRef"
-          v-model="editingLabelValue"
-          @blur="finishEditLabel"
-          @keydown.enter="finishEditLabel"
-          @keydown.escape="cancelEditLabel"
-          class="text-sm font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] px-1 rounded outline-none border border-blue-500"
-        />
-        <div class="flex items-center gap-1">
-          <button @click="handleDuplicate" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors" title="复制节点">
-            <n-icon :size="14">
-              <CopyOutline />
-            </n-icon>
-          </button>
-          <button @click="handleDelete" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors" title="删除节点">
-            <n-icon :size="14">
-              <TrashOutline />
-            </n-icon>
-          </button>
-          <!-- <button class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors" title="展开">
-            <n-icon :size="14">
-              <ExpandOutline />
-            </n-icon>
-          </button> -->
-        </div>
-      </div>
-
+      class="text-node canvas-node-card relative transition-all duration-200"
+      :class="{ 'is-selected': data.selected }">
       <!-- Content | 内容 -->
-      <div class="p-3">
+      <div class="text-node-body">
         <div class="textarea-wrapper" ref="textareaWrapper">
           <!-- 可编辑的文本区域（支持 @ 引用图片显示）参考 MaterialInput -->
           <div
             ref="editorRef"
             class="editor-content"
-            contenteditable="true"
+            :class="{ 'is-editing': isEditingContent }"
+            :contenteditable="isEditingContent ? 'true' : 'false'"
+            @dblclick.stop="startEditContent"
             @input="handleInput"
             @keydown="handleKeydown"
             @paste="handlePaste"
-            @blur="updateContent"
-            @wheel.stop
-            @mousedown.stop
+            @blur="finishEditContent"
+            @wheel="handleEditorWheel"
+            @mousedown="handleEditorMouseDown"
             :data-placeholder="placeholder"
           ></div>
         </div>
-        <!-- Polish button | 润色按钮 -->
-        <button
-          @click="handlePolish"
-          :disabled="isPolishing || !plainText.trim()"
-          class="mt-2 px-3 py-1.5 text-xs rounded-lg bg-[var(--bg-tertiary)] hover:bg-[var(--accent-color)] hover:text-white border border-[var(--border-color)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-        >
-          <n-spin v-if="isPolishing" :size="12" />
-          <span v-else>✨</span>
-          AI 润色
-        </button>
       </div>
 
       <!-- Handles | 连接点 -->
@@ -93,13 +59,11 @@
  */
 import { ref, watch, nextTick, computed, onMounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
-import { NIcon, NSpin } from 'naive-ui'
-import { TrashOutline, ExpandOutline, CopyOutline, ImageOutline, VideocamOutline, ChatbubbleOutline, CreateOutline } from '@vicons/ionicons5'
-import { updateNode, removeNode, duplicateNode, addNode, addEdge, nodes } from '../../stores/canvas'
+import { ImageOutline, VideocamOutline, ChatbubbleOutline, DocumentTextOutline } from '@vicons/ionicons5'
+import { updateNode, addNode, addEdge, nodes } from '../../stores/canvas'
 import NodeHandleMenu from './NodeHandleMenu.vue'
+import NodeTitle from './NodeTitle.vue'
 import MentionsPicker from '../MentionsPicker.vue'
-import { useChat } from '../../hooks'
-import { useModelStore } from '../../stores/pinia'
 import { parseMentions } from '../../hooks/useNodeRef'
 
 const props = defineProps({
@@ -110,28 +74,15 @@ const props = defineProps({
 // Vue Flow instance | Vue Flow 实例
 const { updateNodeInternals } = useVueFlow()
 
-// API config state | API 配置状态
-const modelStore = useModelStore()
-const isApiConfigured = computed(() => !!modelStore.currentApiKey)
-
-// Chat hook for polish | 润色用的 Chat hook
-const { send: sendChat } = useChat({
-  systemPrompt: '你是一个专业的AI绘画提示词专家。将用户输入的内容美化成高质量的生图提示词，包含风格、光线、構图、细节等要素。直接返回提示词，不要其他解释。',
-  model: 'gpt-4o-mini'
-})
-
 // Local content state | 本地内容状态
 const showHandleMenu = ref(false)
 const content = ref(props.data?.content || '')
-const placeholder = '请输入文本内容，输入 @ 可引用图片节点...'
+const placeholder = '请双击进行文本输入编辑'
+const isEditingContent = ref(false)
 
 // Label editing state | Label 编辑状态
 const isEditingLabel = ref(false)
 const editingLabelValue = ref('')
-const labelInputRef = ref(null)
-
-// Polish loading state | 润色加载状态
-const isPolishing = ref(false)
 
 // Mentions picker state | @ 选择器状态
 const showMentionsPicker = ref(false)
@@ -386,8 +337,33 @@ const focusEditableEnd = () => {
   sel.addRange(range)
 }
 
+const startEditContent = async () => {
+  isEditingContent.value = true
+  await nextTick()
+  focusEditableEnd()
+}
+
+const finishEditContent = () => {
+  updateContent()
+  isEditingContent.value = false
+  showMentionsPicker.value = false
+}
+
+const handleEditorMouseDown = (e) => {
+  if (isEditingContent.value) {
+    e.stopPropagation()
+  }
+}
+
+const handleEditorWheel = (e) => {
+  if (isEditingContent.value) {
+    e.stopPropagation()
+  }
+}
+
 // Handle paste - 参考 MaterialInput，纯文本粘贴
 const handlePaste = (e) => {
+  if (!isEditingContent.value) return
   // 纯文本粘贴（防止粘入富文本）
   e.preventDefault()
   const text = e.clipboardData?.getData('text/plain') || ''
@@ -398,11 +374,6 @@ const handlePaste = (e) => {
 let isInternalUpdate = false
 
 // @ 提及预览列表（已移除，改为在 editor 中直接显示）
-
-// 获取纯文本（用于 AI 润色）
-const plainText = computed(() => {
-  return content.value
-})
 
 // 将 @[nodeId] 转换为带图片的 HTML
 const editorHtml = computed(() => {
@@ -460,6 +431,7 @@ const handleSelect = (item) => {
 
 // Handle input for @ trigger | 处理 @ 触发输入（参考 MaterialInput）
 const handleInput = (e) => {
+  if (!isEditingContent.value) return
   const editor = e.target
   isInternalUpdate = true
   content.value = getEditableText()
@@ -512,6 +484,7 @@ const handleInput = (e) => {
 
 // Handle keydown for mentions and Shift+Enter | 处理 @ 选择器和 Shift+Enter 换行
 const handleKeydown = (e) => {
+  if (!isEditingContent.value) return
   // 处理 @ 选择器
   if (showMentionsPicker.value) {
     // 回车键选中当前高亮的项
@@ -616,45 +589,10 @@ const updateContent = () => {
   updateNode(props.id, { content: content.value })
 }
 
-// Handle AI polish | 处理 AI 润色
-const handlePolish = async () => {
-  const input = content.value.trim()
-  if (!input) return
-  
-  // Check API configuration | 检查 API 配置
-  if (!isApiConfigured.value) {
-    window.$message?.warning('请先配置 API Key')
-    return
-  }
-
-  isPolishing.value = true
-  const originalContent = content.value
-
-  try {
-    // Call chat API to polish the prompt | 调用 AI 润色提示词
-    const result = await sendChat(input, true)
-    
-    if (result) {
-      content.value = result
-      updateNode(props.id, { content: result })
-      window.$message?.success('提示词已润色')
-    }
-  } catch (err) {
-    content.value = originalContent
-    window.$message?.error(err.message || '润色失败')
-  } finally {
-    isPolishing.value = false
-  }
-}
-
 // Start editing label | 开始编辑 label
 const startEditLabel = () => {
   editingLabelValue.value = props.data?.label || ''
   isEditingLabel.value = true
-  nextTick(() => {
-    labelInputRef.value?.focus()
-    labelInputRef.value?.select()
-  })
 }
 
 // Finish editing label | 完成编辑 label
@@ -669,22 +607,6 @@ const finishEditLabel = () => {
 // Cancel editing label | 取消编辑 label
 const cancelEditLabel = () => {
   isEditingLabel.value = false
-}
-
-// Handle delete | 处理删除
-const handleDelete = () => {
-  removeNode(props.id)
-}
-
-// Handle duplicate | 处理复制
-const handleDuplicate = () => {
-  const newNodeId = duplicateNode(props.id)
-  window.$message?.success('节点已复制')
-  if (newNodeId) {
-    setTimeout(() => {
-      updateNodeInternals(newNodeId)
-    }, 50)
-  }
 }
 
 // Handle image generation | 处理图片生成
@@ -743,13 +665,21 @@ const handleVideoGen = () => {
 <style scoped>
 .text-node-wrapper {
   padding-right: 50px;
-  padding-top: 20px;
+  padding-top: 26px;
   position: relative;
 }
 
 .text-node {
   cursor: default;
   position: relative;
+  overflow: visible;
+  width: 370px;
+  min-height: 270px;
+  border-radius: 10px;
+}
+
+.text-node-body {
+  padding: 22px;
 }
 
 /* Textarea wrapper - 参考 MaterialInput input-with-mention */
@@ -759,29 +689,42 @@ const handleVideoGen = () => {
 
 /* Editor styles | 编辑器样式 - 参考 MaterialInput */
 .editor-content {
-  min-height: 60px;
-  max-height: 120px;
-  padding: 8px 10px;
+  min-height: 226px;
+  max-height: 300px;
+  padding: 0;
   border: none;
-  border-radius: 8px;
-  background: var(--bg-tertiary);
+  border-radius: 0;
+  background: transparent;
   color: var(--text-primary);
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.7;
   outline: none;
   overflow-y: auto;
   word-break: break-word;
   white-space: pre-wrap;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.editor-content:focus {
-  background: var(--bg-tertiary);
+.editor-content:not(.is-editing) {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.editor-content.is-editing {
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.editor-content.is-editing:focus {
+  background: transparent;
 }
 
 .editor-content:empty::before {
   content: attr(data-placeholder);
   color: var(--text-secondary);
-  opacity: 0.5;
+  opacity: 0.62;
   pointer-events: none;
 }
 

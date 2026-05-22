@@ -50,7 +50,14 @@ export const requestLogger: MiddlewareHandler = async (c, next) => {
   const ms = (performance.now() - start).toFixed(0)
   const status = c.res.status
   const sc = statusColor(status)
-  console.log(`${colors.dim}${time}${colors.reset} ${colors.cyan}${method}${colors.reset} ${path} ${sc}${status}${colors.reset} ${colors.dim}${ms}ms${colors.reset}`)
+  let responseInfo = ''
+  if (status >= 400) {
+    try {
+      const text = await c.res.clone().text()
+      if (text) responseInfo = ` ${colors.dim}${text.length > 500 ? text.slice(0, 500) + '...' : text}${colors.reset}`
+    } catch {}
+  }
+  console.log(`${colors.dim}${time}${colors.reset} ${colors.cyan}${method}${colors.reset} ${path} ${sc}${status}${colors.reset} ${colors.dim}${ms}ms${colors.reset}${responseInfo}`)
 }
 
 /**

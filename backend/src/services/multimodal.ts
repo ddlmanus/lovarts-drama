@@ -1,4 +1,4 @@
-import { getConfigForModel, getTextConfig, getTextProviderBaseUrl, type AIConfig } from './ai.js'
+import { getConfigForModelAsync, getTextConfigAsync, getTextProviderBaseUrl, type AIConfig } from './ai.js'
 import { joinProviderUrl } from './adapters/url.js'
 import { logTaskPayload, logTaskProgress } from '../utils/task-logger.js'
 
@@ -37,6 +37,7 @@ export interface MultimodalAnalyzeParams {
   headers?: Record<string, string>
   betas?: string[]
   configId?: number | null
+  userProviderId?: number | null
   userId?: string
   maxTokens?: number
   temperature?: number
@@ -227,9 +228,9 @@ function buildWebSearchOptions(params: MultimodalAnalyzeParams) {
   }
 }
 
-function resolveTextConfig(params: MultimodalAnalyzeParams): AIConfig {
-  if (params.model) return getConfigForModel('text', params.model, params.configId, params.userId) || getTextConfig()
-  return params.configId ? (getConfigForModel('text', null, params.configId, params.userId) || getTextConfig()) : getTextConfig()
+async function resolveTextConfig(params: MultimodalAnalyzeParams): Promise<AIConfig> {
+  if (params.model) return await getConfigForModelAsync('text', params.model, params.configId, params.userId, params.userProviderId) || await getTextConfigAsync()
+  return params.configId ? (await getConfigForModelAsync('text', null, params.configId, params.userId, params.userProviderId) || await getTextConfigAsync()) : await getTextConfigAsync()
 }
 
 function buildRequestHeaders(config: AIConfig, params: MultimodalAnalyzeParams) {
@@ -253,8 +254,8 @@ function buildRequestHeaders(config: AIConfig, params: MultimodalAnalyzeParams) 
   return headers
 }
 
-function buildChatCompletionRequest(params: MultimodalAnalyzeParams, stream: boolean) {
-  const config = resolveTextConfig(params)
+async function buildChatCompletionRequest(params: MultimodalAnalyzeParams, stream: boolean) {
+  const config = await resolveTextConfig(params)
   const model = params.model || config.model
   const baseUrl = getTextProviderBaseUrl(config)
   const url = joinProviderUrl(baseUrl, '/v1', '/chat/completions')
@@ -297,7 +298,7 @@ function buildChatCompletionRequest(params: MultimodalAnalyzeParams, stream: boo
 }
 
 export async function analyzeMultimodal(params: MultimodalAnalyzeParams) {
-  const { config, model, url, body, headers } = buildChatCompletionRequest(params, false)
+  const { config, model, url, body, headers } = await buildChatCompletionRequest(params, false)
   const response = await fetch(url, {
     method: 'POST',
     headers,
@@ -324,7 +325,7 @@ export async function analyzeMultimodal(params: MultimodalAnalyzeParams) {
 }
 
 export async function streamMultimodal(params: MultimodalAnalyzeParams) {
-  const { url, body, headers } = buildChatCompletionRequest(params, true)
+  const { url, body, headers } = await buildChatCompletionRequest(params, true)
   const response = await fetch(url, {
     method: 'POST',
     headers,

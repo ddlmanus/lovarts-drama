@@ -9,10 +9,10 @@ import { now } from '../../utils/response.js'
 import { logTaskProgress, logTaskSuccess } from '../../utils/task-logger.js'
 
 export function createVoiceTools(episodeId: number, dramaId: number) {
-  function getEpisodeAudioProvider() {
-    const [episode] = db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId)).all()
+  async function getEpisodeAudioProvider() {
+    const [episode] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId)).execute()
     if (!episode?.audioConfigId) return null
-    const [config] = db.select().from(schema.aiServiceConfigs).where(eq(schema.aiServiceConfigs.id, episode.audioConfigId)).all()
+    const [config] = await db.select().from(schema.aiServiceConfigs).where(eq(schema.aiServiceConfigs.id, episode.audioConfigId)).execute()
     return config?.provider || null
   }
 
@@ -22,7 +22,7 @@ export function createVoiceTools(episodeId: number, dramaId: number) {
     inputSchema: z.object({}),
     execute: async () => {
       const chars = db.select().from(schema.characters)
-        .where(eq(schema.characters.dramaId, dramaId)).all()
+        .where(eq(schema.characters.dramaId, dramaId)).execute()
       const payload = {
         characters: chars.map(c => ({
           id: c.id,
@@ -43,8 +43,8 @@ export function createVoiceTools(episodeId: number, dramaId: number) {
     description: 'List all available voice options for TTS.',
     inputSchema: z.object({}),
     execute: async () => {
-      const provider = getEpisodeAudioProvider() || 'minimax'
-      const rows = db.select().from(schema.aiVoices).where(eq(schema.aiVoices.provider, provider)).all()
+      const provider = await getEpisodeAudioProvider() || 'minimax'
+      const rows = await db.select().from(schema.aiVoices).where(eq(schema.aiVoices.provider, provider)).execute()
       const voices = rows.length ? rows.map(v => {
         const desc = v.description ? JSON.parse(v.description) : []
         return {
@@ -84,12 +84,12 @@ export function createVoiceTools(episodeId: number, dramaId: number) {
       reason: z.string().optional().describe('Why this voice fits'),
     }),
     execute: async ({ character_id, voice_id, reason }) => {
-      const provider = getEpisodeAudioProvider() || 'minimax'
+      const provider = await getEpisodeAudioProvider() || 'minimax'
       logTaskProgress('VoiceTool', 'assign-begin', { episodeId, dramaId, characterId: character_id, voiceId: voice_id, provider, reason })
       db.update(schema.characters)
         .set({ voiceStyle: voice_id, voiceProvider: provider, voiceSampleUrl: null, updatedAt: now() })
         .where(eq(schema.characters.id, character_id))
-        .run()
+        .execute()
       logTaskSuccess('VoiceTool', 'assign-complete', { episodeId, characterId: character_id, voiceId: voice_id, provider })
       return { message: `Assigned voice "${voice_id}" to character ${character_id}`, reason }
     },

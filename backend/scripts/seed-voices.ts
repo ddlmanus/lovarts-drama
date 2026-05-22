@@ -313,7 +313,7 @@ const voices = [
 const ts = new Date().toISOString()
 
 // 清空旧数据
-db.delete(schema.aiVoices).run()
+db.delete(schema.aiVoices).execute()
 
 // 批量插入
 const insertRows = voices.map(v => ({
@@ -325,6 +325,6 @@ const insertRows = voices.map(v => ({
   createdAt: ts,
 }))
 
-db.insert(schema.aiVoices).values(insertRows).run()
+db.insert(schema.aiVoices).values(insertRows).execute()
 
 console.log(`✅ Inserted ${voices.length} voices`)

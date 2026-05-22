@@ -79,17 +79,17 @@ app.get('/', async (c) => {
   const episodeId = c.req.query('episode_id') ? Number(c.req.query('episode_id')) : null
   const limit = Math.max(1, Math.min(200, Number(c.req.query('limit') || 100)))
 
-  const dramas = db.select().from(schema.dramas).all()
-  const episodes = db.select().from(schema.episodes).all()
-  const storyboards = db.select().from(schema.storyboards).all()
-  const scenes = db.select().from(schema.scenes).all()
-  const characters = db.select().from(schema.characters).all()
+  const dramas = await db.select().from(schema.dramas).execute() as any[]
+  const episodes = await db.select().from(schema.episodes).execute() as any[]
+  const storyboards = await db.select().from(schema.storyboards).execute() as any[]
+  const scenes = await db.select().from(schema.scenes).execute() as any[]
+  const characters = await db.select().from(schema.characters).execute() as any[]
 
-  const dramaById = new Map(dramas.map(item => [item.id, item]))
-  const episodeById = new Map(episodes.map(item => [item.id, item]))
-  const storyboardById = new Map(storyboards.map(item => [item.id, item]))
-  const sceneById = new Map(scenes.map(item => [item.id, item]))
-  const characterById = new Map(characters.map(item => [item.id, item]))
+  const dramaById = new Map<number, any>(dramas.map(item => [item.id, item]))
+  const episodeById = new Map<number, any>(episodes.map(item => [item.id, item]))
+  const storyboardById = new Map<number, any>(storyboards.map(item => [item.id, item]))
+  const sceneById = new Map<number, any>(scenes.map(item => [item.id, item]))
+  const characterById = new Map<number, any>(characters.map(item => [item.id, item]))
 
   const tasks: any[] = []
 
@@ -181,7 +181,7 @@ app.get('/', async (c) => {
     }
   }
 
-  for (const row of db.select().from(schema.imageGenerations).all()) {
+  for (const row of await db.select().from(schema.imageGenerations).execute()) {
     const sb = row.storyboardId ? storyboardById.get(row.storyboardId) : null
     const scene = row.sceneId ? sceneById.get(row.sceneId) : (sb?.sceneId ? sceneById.get(sb.sceneId) : null)
     const char = row.characterId ? characterById.get(row.characterId) : null
@@ -207,7 +207,7 @@ app.get('/', async (c) => {
     }))
   }
 
-  for (const row of db.select().from(schema.videoGenerations).all()) {
+  for (const row of await db.select().from(schema.videoGenerations).execute()) {
     const sb = row.storyboardId ? storyboardById.get(row.storyboardId) : null
     const ep = sb ? episodeById.get(sb.episodeId) : null
     const drama = (ep ? dramaById.get(ep.dramaId) : null) || (row.dramaId ? dramaById.get(row.dramaId) : null)
@@ -277,7 +277,7 @@ app.get('/', async (c) => {
     }))
   }
 
-  for (const row of db.select().from(schema.videoMerges).all()) {
+  for (const row of await db.select().from(schema.videoMerges).execute()) {
     const ep = row.episodeId ? episodeById.get(row.episodeId) : null
     const drama = (ep ? dramaById.get(ep.dramaId) : null) || (row.dramaId ? dramaById.get(row.dramaId) : null)
     tasks.push(withLabels({

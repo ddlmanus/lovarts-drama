@@ -10,6 +10,11 @@ import { badRequest, now, serverError, success } from '../utils/response.js'
 import { currentAuthUserId } from '../utils/auth.js'
 
 const app = new Hono()
+const MAX_CODEX_ATTACHMENT_BYTES = Number(process.env.MAX_CODEX_ATTACHMENT_BYTES || 20 * 1024 * 1024)
+const CODEX_TERMINALS_ENABLED = String(process.env.CODEX_ENABLE_TERMINALS || '').toLowerCase()
+const ALLOW_CODEX_TERMINALS = ['1', 'true', 'yes', 'on'].includes(CODEX_TERMINALS_ENABLED)
+const ALLOWED_ATTACHMENT_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'])
+const ALLOWED_ATTACHMENT_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif'])
 
 const DATA_ROOT = path.resolve(process.cwd(), '../data/codex')
 const WORKSPACE_ROOT = path.join(DATA_ROOT, 'workspaces')
@@ -17,6 +22,7 @@ const LOG_ROOT = path.join(DATA_ROOT, 'logs')
 const PROJECTS_PATH = path.join(DATA_ROOT, 'projects.json')
 const TASKS_PATH = path.join(DATA_ROOT, 'tasks.json')
 const CONFIGS_PATH = path.join(DATA_ROOT, 'configs.json')
+const PHOTOSHOP_CONFIGS_PATH = path.join(DATA_ROOT, 'photoshop-configs.json')
 const CODEX_BIN = path.resolve(process.cwd(), 'node_modules/.bin/codex')
 const APP_SERVER_TOKENS_ROOT = path.join(DATA_ROOT, 'app-server-tokens')
 const APP_SERVER_HOMES_ROOT = path.join(DATA_ROOT, 'homes')
@@ -45,7 +51,7 @@ type CodexTaskEvent = {
 type CodexSelectedContext = {
   id?: string
   name: string
-  type: 'skill' | 'mention'
+  type: 'skill' | 'mention' | 'plugin'
   path: string
 }
 
@@ -66,7 +72,7 @@ type CodexTask = {
   pid?: number
   exitCode?: number | null
   signal?: NodeJS.Signals | null
-  runtime?: 'app-server' | 'exec'
+  runtime?: 'app-server' | 'exec' | 'photoshop'
   outputTail: CodexTaskEvent[]
   createdAt: string
   updatedAt: string
@@ -74,9 +80,20 @@ type CodexTask = {
 
 type CodexUserConfig = {
   userId: string
+  provider?: string
   baseUrl?: string
   apiKey?: string
   model?: string
+  updatedAt: string
+}
+
+type PhotoshopUserConfig = {
+  userId: string
+  clientId?: string
+  clientSecret?: string
+  publicBaseUrl?: string
+  defaultOperation?: 'remove-background' | 'mask'
+  outputFormat?: 'png' | 'jpg'
   updatedAt: string
 }
 
@@ -118,6 +135,22 @@ const activeAppTurns = new Map<string, { ws: any; threadId?: string; turnId?: st
 const appServers = new Map<string, AppServerState>()
 const pendingApprovals = new Map<string, CodexApproval>()
 const terminalSessions = new Map<string, TerminalSession>()
+
+const BUILT_IN_PLUGINS = [
+  { id: 'spreadsheets', name: 'Spreadsheets', description: 'Create and edit spreadsheet files.', icon: 'spreadsheets', category: 'Built by OpenAI', installedByDefault: true },
+  { id: 'presentations', name: 'Presentations', description: 'Create and edit presentations.', icon: 'presentations', category: 'Built by OpenAI', installedByDefault: true },
+  { id: 'github', name: 'GitHub', description: 'Triage PRs, issues, CI, and publish flows.', icon: 'github', category: 'Built by OpenAI', installedByDefault: false },
+  { id: 'slack', name: 'Slack', description: 'Read and manage Slack.', icon: 'slack', category: 'Built by OpenAI', installedByDefault: false },
+  { id: 'notion', name: 'Notion', description: 'Notion workflows for specs, research, and docs.', icon: 'notion', category: 'Built by OpenAI', installedByDefault: false },
+  { id: 'linear', name: 'Linear', description: 'Find and reference issues and projects.', icon: 'linear', category: 'Built by OpenAI', installedByDefault: false },
+  { id: 'statsig', name: 'Statsig', description: 'Bring your Statsig workspace into Codex.', icon: 'statsig', category: 'Built by OpenAI', installedByDefault: false },
+  { id: 'gmail', name: 'Gmail', description: 'Read and manage Gmail.', icon: 'gmail', category: 'Built by OpenAI', installedByDefault: false },
+  { id: 'google-calendar', name: 'Google Calendar', description: 'Manage Google Calendar events and scheduling.', icon: 'calendar', category: 'Built by OpenAI', installedByDefault: false },
+  { id: 'google-drive', name: 'Google Drive', description: 'Work across Drive, Docs, Sheets, and files.', icon: 'drive', category: 'Built by OpenAI', installedByDefault: false },
+  { id: 'teams', name: 'Teams', description: 'Summarize Teams and draft follow-ups.', icon: 'teams', category: 'Built by OpenAI', installedByDefault: false },
+  { id: 'sharepoint', name: 'SharePoint', description: 'Summarize SharePoint sites and files.', icon: 'sharepoint', category: 'Built by OpenAI', installedByDefault: false },
+  { id: 'photoshop', name: 'Photoshop', description: '调用 Adobe Photoshop 云端 API 去背景、生成蒙版和批量修图。', icon: 'ps', category: 'Huobao', installedByDefault: false },
+]
 
 function ensureDirs() {
   fs.mkdirSync(DATA_ROOT, { recursive: true })
@@ -166,6 +199,14 @@ function writeConfigsStore(store: { configs: CodexUserConfig[] }) {
   writeJsonFile(CONFIGS_PATH, store)
 }
 
+function photoshopConfigsStore() {
+  return readJsonFile<{ configs: PhotoshopUserConfig[] }>(PHOTOSHOP_CONFIGS_PATH, { configs: [] })
+}
+
+function writePhotoshopConfigsStore(store: { configs: PhotoshopUserConfig[] }) {
+  writeJsonFile(PHOTOSHOP_CONFIGS_PATH, store)
+}
+
 function safeSegment(value: string, fallback: string) {
   const normalized = value
     .trim()
@@ -179,6 +220,7 @@ function safeSegment(value: string, fallback: string) {
 function publicConfig(config: CodexUserConfig | null) {
   const apiKey = config?.apiKey || ''
   return {
+    provider: normalizeProvider(config?.provider || inferProviderFromBaseUrl(config?.baseUrl || '')),
     base_url: config?.baseUrl || '',
     model: config?.model || '',
     api_key_set: Boolean(apiKey),
@@ -187,12 +229,88 @@ function publicConfig(config: CodexUserConfig | null) {
   }
 }
 
+function publicPhotoshopConfig(config: PhotoshopUserConfig | null) {
+  const secret = config?.clientSecret || ''
+  return {
+    client_id: config?.clientId || '',
+    client_secret_set: Boolean(secret),
+    client_secret_preview: secret ? `...${secret.slice(-4)}` : '',
+    public_base_url: config?.publicBaseUrl || '',
+    default_operation: config?.defaultOperation || 'remove-background',
+    output_format: config?.outputFormat || 'png',
+    updated_at: config?.updatedAt || '',
+  }
+}
+
 function userConfig(userId: string) {
   return configsStore().configs.find(config => config.userId === userId) || null
 }
 
+function userPhotoshopConfig(userId: string) {
+  return photoshopConfigsStore().configs.find(config => config.userId === userId) || null
+}
+
+function photoshopClientSecret(config: PhotoshopUserConfig | null, override: unknown) {
+  const next = String(override || '').trim()
+  return next || config?.clientSecret || ''
+}
+
+function normalizePhotoshopOperation(value: unknown): PhotoshopUserConfig['defaultOperation'] {
+  const raw = String(value || '').trim().toLowerCase()
+  if (raw === 'mask' || raw.includes('mask') || raw.includes('蒙版')) return 'mask'
+  return 'remove-background'
+}
+
+function normalizePhotoshopOutputFormat(value: unknown): PhotoshopUserConfig['outputFormat'] {
+  const raw = String(value || '').trim().toLowerCase().replace(/^\./, '')
+  return raw === 'jpg' || raw === 'jpeg' ? 'jpg' : 'png'
+}
+
+function normalizePublicBaseUrl(value: unknown) {
+  const raw = String(value || '').trim().replace(/\/+$/, '')
+  if (!raw) return ''
+  try {
+    const parsed = new URL(raw)
+    if (!['http:', 'https:'].includes(parsed.protocol)) return ''
+    return parsed.toString().replace(/\/+$/, '')
+  } catch {
+    return ''
+  }
+}
+
+function validatePhotoshopConfigInput(input: { clientId: string; clientSecret: string; publicBaseUrl: string }) {
+  if (!input.clientId) return 'Adobe Client ID 不能为空'
+  if (!input.clientSecret) return 'Adobe Client Secret 不能为空'
+  if (input.publicBaseUrl) {
+    try {
+      const parsed = new URL(input.publicBaseUrl)
+      if (!['http:', 'https:'].includes(parsed.protocol)) return '公网 Base URL 必须是 http 或 https 地址'
+    } catch {
+      return '公网 Base URL 格式不正确'
+    }
+  }
+  return ''
+}
+
 function normalizeConfigModel(value: unknown) {
   return String(value || '').trim().slice(0, 120)
+}
+
+function normalizeProvider(value: unknown) {
+  const raw = String(value || '').trim().toLowerCase()
+  return raw
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48) || 'custom'
+}
+
+function inferProviderFromBaseUrl(value: unknown) {
+  const raw = String(value || '').toLowerCase()
+  if (raw.includes('zenmux.ai')) return 'zenmux'
+  if (raw.includes('api.openai.com')) return 'openai'
+  if (raw.includes('openrouter.ai')) return 'openrouter'
+  if (raw.includes('aihubmix.com')) return 'aihubmix'
+  return 'custom'
 }
 
 function normalizeBaseUrl(value: unknown) {
@@ -304,6 +422,220 @@ async function testCodexConnection(input: { baseUrl: string; apiKey: string; mod
   } finally {
     clearTimeout(timer)
   }
+}
+
+async function fetchAdobeAccessToken(input: { clientId: string; clientSecret: string }) {
+  const resp = await fetch('https://ims-na1.adobelogin.com/ims/token/v3', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      accept: 'application/json',
+    },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: input.clientId,
+      client_secret: input.clientSecret,
+      scope: 'openid,AdobeID,firefly_api,ff_apis',
+    }).toString(),
+  })
+  const text = await resp.text()
+  let json: any = null
+  try {
+    json = text ? JSON.parse(text) : null
+  } catch {}
+  if (!resp.ok || !json?.access_token) {
+    throw new Error(responseErrorMessage('Adobe 认证失败', text, json, resp.status))
+  }
+  return String(json.access_token)
+}
+
+async function testPhotoshopConnection(input: { clientId: string; clientSecret: string; publicBaseUrl: string }) {
+  const error = validatePhotoshopConfigInput(input)
+  if (error) throw new Error(error)
+  await fetchAdobeAccessToken(input)
+  return {
+    ok: true,
+    public_url_ready: Boolean(input.publicBaseUrl),
+    message: input.publicBaseUrl
+      ? 'Adobe 连接成功，已配置公网附件地址，可以执行 Photoshop 云端任务。'
+      : 'Adobe 连接成功。执行图片任务前还需要配置公网 Base URL 或对象存储回源地址。',
+  }
+}
+
+function taskArtifactDir(project: CodexProject, taskId: string) {
+  return path.join(project.path, '.codex-artifacts', taskId)
+}
+
+function relativeProjectPath(project: CodexProject, filePath: string) {
+  return path.relative(project.path, filePath).split(path.sep).join('/')
+}
+
+function attachmentPublicUrl(c: any, project: CodexProject, imagePath: string, config: PhotoshopUserConfig) {
+  const target = resolveProjectFilePath(project, imagePath)
+  if (!target || !projectContainsFile(path.join(project.path, '.codex-attachments'), target)) {
+    throw new Error('Photoshop 只能处理本次上传的图片附件')
+  }
+  const publicBaseUrl = normalizePublicBaseUrl(config.publicBaseUrl)
+  if (!publicBaseUrl) {
+    throw new Error('需要先在 Photoshop 插件设置里配置公网 Base URL。Adobe 云端不能读取本地 localhost 图片。')
+  }
+  const relativePath = relativeProjectPath(project, target)
+  const params = new URLSearchParams({
+    path: relativePath,
+    user_id: project.userId,
+  })
+  return `${publicBaseUrl}/api/v1/codex/projects/${encodeURIComponent(project.id)}/attachments/view?${params.toString()}`
+}
+
+function photoshopOperationFromPrompt(prompt: string, fallback: PhotoshopUserConfig['defaultOperation']) {
+  const lower = String(prompt || '').toLowerCase()
+  if (lower.includes('mask') || lower.includes('蒙版')) return 'mask'
+  if (lower.includes('背景') || lower.includes('remove background') || lower.includes('抠图')) return 'remove-background'
+  return fallback || 'remove-background'
+}
+
+async function requestPhotoshopJob(input: {
+  accessToken: string
+  clientId: string
+  operation: PhotoshopUserConfig['defaultOperation']
+  inputUrl: string
+  outputUrl?: string
+  outputFormat: PhotoshopUserConfig['outputFormat']
+}) {
+  const endpoint = input.operation === 'mask'
+    ? 'https://image.adobe.io/pie/psdService/mask'
+    : 'https://image.adobe.io/pie/psdService/removeBackground'
+  const outputs: any[] = [{
+    href: input.outputUrl || undefined,
+    storage: input.outputUrl ? 'external' : 'adobe',
+    type: input.outputFormat === 'jpg' ? 'image/jpeg' : 'image/png',
+  }]
+  const resp = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${input.accessToken}`,
+      'x-api-key': input.clientId,
+      'content-type': 'application/json',
+      accept: 'application/json',
+    },
+    body: JSON.stringify({
+      inputs: [{ href: input.inputUrl, storage: 'external' }],
+      outputs,
+    }),
+  })
+  const text = await resp.text()
+  let json: any = null
+  try {
+    json = text ? JSON.parse(text) : null
+  } catch {}
+  if (!resp.ok) {
+    throw new Error(responseErrorMessage('Photoshop 任务提交失败', text, json, resp.status))
+  }
+  return json || {}
+}
+
+async function pollPhotoshopJob(input: { accessToken: string; clientId: string; statusUrl: string }) {
+  const started = Date.now()
+  let last: any = null
+  while (Date.now() - started < 180_000) {
+    const resp = await fetch(input.statusUrl, {
+      method: 'GET',
+      headers: {
+        authorization: `Bearer ${input.accessToken}`,
+        'x-api-key': input.clientId,
+        accept: 'application/json',
+      },
+    })
+    const text = await resp.text()
+    let json: any = null
+    try {
+      json = text ? JSON.parse(text) : null
+    } catch {}
+    if (!resp.ok) {
+      throw new Error(responseErrorMessage('Photoshop 任务查询失败', text, json, resp.status))
+    }
+    last = json
+    const status = String(json?.status || json?.outputs?.[0]?.status || '').toLowerCase()
+    if (['succeeded', 'done', 'completed'].includes(status)) return json
+    if (['failed', 'error', 'cancelled'].includes(status)) {
+      throw new Error(json?.error?.message || json?.message || 'Photoshop 云端任务失败')
+    }
+    await new Promise(resolve => setTimeout(resolve, 1500))
+  }
+  throw new Error(`Photoshop 云端任务超时：${JSON.stringify(last || {}).slice(0, 300)}`)
+}
+
+function photoshopResultHref(job: any) {
+  const output = Array.isArray(job?.outputs) ? job.outputs[0] : null
+  return String(output?.href || output?._links?.rendition?.href || job?.output?.href || job?.href || '')
+}
+
+async function downloadPhotoshopResult(input: { accessToken: string; clientId: string; url: string; outputPath: string }) {
+  const resp = await fetch(input.url, {
+    headers: {
+      authorization: `Bearer ${input.accessToken}`,
+      'x-api-key': input.clientId,
+      accept: '*/*',
+    },
+  })
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '')
+    throw new Error(`Photoshop 结果下载失败：${text || `HTTP ${resp.status}`}`)
+  }
+  fs.mkdirSync(path.dirname(input.outputPath), { recursive: true })
+  fs.writeFileSync(input.outputPath, Buffer.from(await resp.arrayBuffer()))
+}
+
+async function runPhotoshopCloudTask(c: any, task: CodexTask, project: CodexProject) {
+  const config = userPhotoshopConfig(task.userId)
+  const clientId = config?.clientId || ''
+  const clientSecret = config?.clientSecret || ''
+  if (!config || !clientId || !clientSecret) throw new Error('请先配置 Photoshop 插件的 Adobe Client ID 和 Client Secret')
+  if (!task.images?.length) throw new Error('Photoshop 插件需要先上传一张图片')
+
+  const operation = photoshopOperationFromPrompt(task.prompt, config.defaultOperation)
+  const outputFormat = normalizePhotoshopOutputFormat(config.outputFormat)
+  appendTaskEvent(task.id, { ts: now(), stream: 'system', type: 'app.photoshop_status', role: 'tool', text: '正在获取 Adobe 访问令牌' })
+  const accessToken = await fetchAdobeAccessToken({ clientId, clientSecret })
+  const inputUrl = attachmentPublicUrl(c, project, task.images[0], config)
+  appendTaskEvent(task.id, { ts: now(), stream: 'system', type: 'app.photoshop_status', role: 'tool', text: '正在提交 Photoshop 云端任务' })
+  const job = await requestPhotoshopJob({
+    accessToken,
+    clientId,
+    operation,
+    inputUrl,
+    outputFormat,
+  })
+  const statusUrl = String(job?._links?.self?.href || job?._links?.status?.href || job?.statusUrl || job?.href || '')
+  const completed = statusUrl
+    ? await pollPhotoshopJob({ accessToken, clientId, statusUrl })
+    : job
+  const resultUrl = photoshopResultHref(completed || job)
+  if (!resultUrl) throw new Error('Photoshop 云端任务完成，但没有返回结果地址')
+
+  appendTaskEvent(task.id, { ts: now(), stream: 'system', type: 'app.photoshop_status', role: 'tool', text: '正在下载 Photoshop 结果' })
+  const outputPath = path.join(taskArtifactDir(project, task.id), `photoshop-${operation}-${Date.now()}.${outputFormat}`)
+  await downloadPhotoshopResult({ accessToken, clientId, url: resultUrl, outputPath })
+  const savedPath = relativeProjectPath(project, outputPath)
+  appendTaskEvent(task.id, {
+    ts: now(),
+    stream: 'system',
+    type: 'app.imageGeneration',
+    role: 'tool',
+    text: JSON.stringify({
+      type: 'imageGeneration',
+      savedPath,
+      status: 'completed',
+      revisedPrompt: operation === 'mask' ? 'Photoshop 云端已生成蒙版' : 'Photoshop 云端已去除背景',
+    }),
+  })
+  appendTaskEvent(task.id, {
+    ts: now(),
+    stream: 'system',
+    type: 'app.agent_message',
+    role: 'assistant',
+    text: operation === 'mask' ? '已生成 Photoshop 蒙版结果。' : '已完成 Photoshop 云端去背景。',
+  })
 }
 
 function publicProject(project: CodexProject) {
@@ -542,6 +874,7 @@ function normalizeReasoningEffort(value: unknown) {
 
 function normalizeSandbox(value: unknown) {
   const sandbox = String(value || '').trim()
+  if (sandbox === 'danger-full-access' && process.env.CODEX_ALLOW_DANGER_FULL_ACCESS !== '1') return 'workspace-write'
   return ['read-only', 'workspace-write', 'danger-full-access'].includes(sandbox) ? sandbox : 'workspace-write'
 }
 
@@ -975,7 +1308,7 @@ function resolveSelectedContext(userId: string, value: unknown): CodexSelectedCo
   const input = value as Record<string, unknown>
   const name = String(input.name || '').trim()
   const rawType = String(input.type || '').trim()
-  const type: CodexSelectedContext['type'] = rawType === 'skill' ? 'skill' : 'mention'
+  const type: CodexSelectedContext['type'] = rawType === 'skill' ? 'skill' : rawType === 'plugin' ? 'plugin' : 'mention'
   if (!name) return null
 
   if (type === 'skill') {
@@ -995,6 +1328,14 @@ function resolveSelectedContext(userId: string, value: unknown): CodexSelectedCo
   }
 
   const requestedPath = String(input.path || '').trim()
+  if (type === 'plugin' && (name === 'Photoshop' || input.id === 'photoshop')) {
+    return {
+      id: 'photoshop',
+      name: 'Photoshop',
+      type: 'plugin',
+      path: 'plugin://Photoshop',
+    }
+  }
   const plugin = listUserPlugins(userId).find((item) => {
     return item.name === name
       || item.id === input.id
@@ -1004,7 +1345,7 @@ function resolveSelectedContext(userId: string, value: unknown): CodexSelectedCo
   return {
     id: String(input.id || plugin?.id || pluginName),
     name: pluginName,
-    type: 'mention',
+    type,
     path: requestedPath.startsWith('plugin://') || requestedPath.startsWith('app://')
       ? requestedPath
       : `plugin://${pluginName}`,
@@ -1060,11 +1401,14 @@ function userMarketplacePath(userId: string) {
 }
 
 function codexProviderKey(config: CodexUserConfig) {
-  return String(config.baseUrl || '').toLowerCase().includes('zenmux.ai') ? 'zenmux' : 'custom'
+  return normalizeProvider(config.provider || inferProviderFromBaseUrl(config.baseUrl || ''))
 }
 
 function codexProviderEnvKey(config: CodexUserConfig) {
-  return codexProviderKey(config) === 'zenmux' ? 'ZENMUX_API_KEY' : 'CODEX_API_KEY'
+  const provider = codexProviderKey(config)
+  if (provider === 'zenmux') return 'ZENMUX_API_KEY'
+  if (provider === 'openai') return 'OPENAI_API_KEY'
+  return 'CODEX_API_KEY'
 }
 
 function appServerConfigSignature(config: CodexUserConfig) {
@@ -1096,12 +1440,21 @@ function writeCodexUserConfig(userId: string, config: CodexUserConfig) {
   const provider = codexProviderKey(config)
   const envKey = codexProviderEnvKey(config)
   const preservedProjects = preservedProjectConfig(home)
+  const providerName = provider === 'zenmux'
+    ? 'ZenMux'
+    : provider === 'openai'
+      ? 'OpenAI'
+      : provider === 'openrouter'
+        ? 'OpenRouter'
+        : provider === 'aihubmix'
+          ? 'AiHubMix'
+          : 'Custom'
   const content = [
     `model_provider = ${tomlString(provider)}`,
     `model = ${tomlString(normalizeConfigModel(config.model) || 'openai/gpt-5.2-codex')}`,
     '',
     `[model_providers.${provider}]`,
-    `name = ${tomlString(provider === 'zenmux' ? 'ZenMux' : 'Custom')}`,
+    `name = ${tomlString(providerName)}`,
     `base_url = ${tomlString(normalizeBaseUrl(config.baseUrl))}`,
     `env_key = ${tomlString(envKey)}`,
     'wire_api = "responses"',
@@ -1181,7 +1534,7 @@ function listUserSkills(userId: string) {
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
-function listUserPlugins(userId: string) {
+function installedPluginMap(userId: string) {
   const root = userPluginsPath(userId)
   fs.mkdirSync(root, { recursive: true })
   const plugins = new Map<string, { id: string; name: string; description: string; path: string; scope: string }>()
@@ -1226,7 +1579,24 @@ function listUserPlugins(userId: string) {
       })
     } catch {}
   }
-  return [...plugins.values()].sort((a, b) => a.name.localeCompare(b.name))
+  return plugins
+}
+
+function listUserPlugins(userId: string) {
+  return [...installedPluginMap(userId).values()].sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function pluginInstalled(installed: Map<string, { id: string; name: string }>, plugin: { id: string; name: string }) {
+  return installed.has(plugin.name) || installed.has(plugin.id)
+}
+
+function listPluginMarketplace(userId: string) {
+  const installed = installedPluginMap(userId)
+  return BUILT_IN_PLUGINS.map(plugin => ({
+    ...plugin,
+    scope: 'builtin',
+    installed: plugin.installedByDefault || pluginInstalled(installed, plugin),
+  }))
 }
 
 function stopUserAppServer(userId: string) {
@@ -1441,6 +1811,14 @@ function buildUserInput(task: CodexTask) {
   return input
 }
 
+function codexAppServerConfig(task: CodexTask) {
+  return {
+    ...(task.reasoningEffort ? { model_reasoning_effort: task.reasoningEffort } : {}),
+    experimental_use_freeform_apply_patch: true,
+    'features.apply_patch_streaming_events': true,
+  }
+}
+
 function normalizeAppServerEvent(message: any): CodexTaskEvent | null {
   const method = message?.method
   const params = message?.params || {}
@@ -1448,150 +1826,62 @@ function normalizeAppServerEvent(message: any): CodexTaskEvent | null {
 
   if (appServerMessageWillRetry(message)) return null
 
+  const officialEvent = (
+    type: string,
+    role: CodexTaskEvent['role'] = 'tool',
+    text = '',
+    stream: CodexTaskEvent['stream'] = 'stdout',
+  ): CodexTaskEvent => ({
+    ts: now(),
+    stream,
+    type,
+    role,
+    text,
+    raw: JSON.stringify(message),
+  })
+
+  const itemText = () => JSON.stringify(item || {})
+  const notificationType = () => `app.${String(method || 'notification').replace(/[^A-Za-z0-9]+/g, '.')}`
+
   if (method === 'item/started') {
-    if (item.type === 'commandExecution') {
-      return {
-        ts: now(),
-        stream: 'stdout',
-        type: 'app.command_started',
-        role: 'tool',
-        text: item.command || '',
-        raw: JSON.stringify(message),
-      }
-    }
-    if (item.type === 'webSearch') {
-      return {
-        ts: now(),
-        stream: 'stdout',
-        type: 'app.webSearch',
-        role: 'tool',
-        text: JSON.stringify(item),
-        raw: JSON.stringify(message),
-      }
-    }
-    if (item.type === 'reasoning') return null
+    if (item.type === 'userMessage') return officialEvent('app.item.started', 'user', itemText(), 'system')
+    if (item.type === 'agentMessage') return officialEvent('app.item.started', 'assistant', item.text || '')
+    if (item.type === 'reasoning') return officialEvent('app.item.started', 'assistant', itemText())
+    return officialEvent('app.item.started', 'tool', itemText())
   }
 
   if (method === 'item/completed') {
     if (item.type === 'userMessage') {
       const parts = Array.isArray(item.content) ? item.content : []
-      const textParts = parts
-        .map((part: any) => part.type === 'text' ? part.text : '')
-        .filter(Boolean)
       const images = parts
         .map((part: any) => part.type === 'localImage' ? String(part.path || '') : '')
         .filter(Boolean)
-      const text = String(textParts[textParts.length - 1] || '').trim()
       return {
-        ts: now(),
-        stream: 'system',
-        type: 'user_message',
-        role: 'user',
-        text,
+        ...officialEvent('app.item.completed', 'user', itemText(), 'system'),
         raw: JSON.stringify({ ...message, huobaoImages: images }),
       }
     }
-    if (item.type === 'agentMessage') {
-      return { ts: now(), stream: 'stdout', type: 'app.agent_message', role: 'assistant', text: item.text || '', raw: JSON.stringify(message) }
-    }
-    if (item.type === 'commandExecution') {
-      return {
-        ts: now(),
-        stream: 'stdout',
-        type: 'app.command',
-        role: 'tool',
-        text: `${item.command || ''}${item.aggregatedOutput ? `\n${item.aggregatedOutput}` : ''}`,
-        raw: JSON.stringify(message),
-      }
-    }
-    if (item.type === 'webSearch') {
-      return {
-        ts: now(),
-        stream: 'stdout',
-        type: 'app.webSearch',
-        role: 'tool',
-        text: JSON.stringify(item),
-        raw: JSON.stringify(message),
-      }
-    }
-    if (item.type === 'fileChange') {
-      return {
-        ts: now(),
-        stream: 'stdout',
-        type: 'app.fileChange',
-        role: 'tool',
-        text: JSON.stringify(item),
-        raw: JSON.stringify(message),
-      }
-    }
-    if (item.type === 'imageGeneration' || item.type === 'imageView') {
-      return {
-        ts: now(),
-        stream: 'stdout',
-        type: `app.${item.type}`,
-        role: 'tool',
-        text: JSON.stringify(item),
-        raw: JSON.stringify(message),
-      }
-    }
-    if (item.type === 'reasoning') return null
-    return { ts: now(), stream: 'stdout', type: `app.${item.type || 'item'}`, role: 'tool', text: item.text || item.command || JSON.stringify(item), raw: JSON.stringify(message) }
+    if (item.type === 'agentMessage') return officialEvent('app.item.completed', 'assistant', item.text || '')
+    if (item.type === 'reasoning') return officialEvent('app.item.completed', 'assistant', itemText())
+    return officialEvent('app.item.completed', 'tool', itemText())
   }
 
-  if (method === 'item/agentMessage/delta') {
-    return { ts: now(), stream: 'stdout', type: 'app.agent_delta', role: 'assistant', text: params.delta || '', raw: JSON.stringify(message) }
-  }
-
-  if (method === 'item/commandExecution/outputDelta') {
-    return { ts: now(), stream: 'stdout', type: 'app.command_delta', role: 'tool', text: params.delta || params.output || '', raw: JSON.stringify(message) }
-  }
-
-  if (method === 'item/fileChange/outputDelta') {
-    return { ts: now(), stream: 'stdout', type: 'app.file_delta', role: 'tool', text: params.delta || params.output || '', raw: JSON.stringify(message) }
-  }
-
-  if (method === 'item/fileChange/patchUpdated') {
-    return {
-      ts: now(),
-      stream: 'stdout',
-      type: 'app.fileChange',
-      role: 'tool',
-      text: JSON.stringify({
-        type: 'fileChange',
-        id: params.itemId || params.item?.id || '',
-        changes: Array.isArray(params.changes) ? params.changes : [],
-        status: 'inProgress',
-      }),
-      raw: JSON.stringify(message),
-    }
-  }
-
-  if (method === 'turn/diff/updated') {
-    return {
-      ts: now(),
-      stream: 'stdout',
-      type: 'app.diff',
-      role: 'tool',
-      text: JSON.stringify(params.diff || params.patch || params),
-      raw: JSON.stringify(message),
-    }
-  }
-
-  if (method === 'turn/plan/updated') {
-    const plan = params.plan || params.items || []
-    const text = Array.isArray(plan)
-      ? plan.map((step: any) => `${step.status ? `[${step.status}] ` : ''}${step.step || step.text || step.title || JSON.stringify(step)}`).join('\n')
-      : JSON.stringify(plan)
-    return { ts: now(), stream: 'system', type: 'app.plan', role: 'system', text, raw: JSON.stringify(message) }
-  }
-
-  if (method === 'item/reasoning/delta' || method === 'item/reasoning/summaryDelta') {
-    return { ts: now(), stream: 'stdout', type: 'app.reasoning_delta', role: 'assistant', text: params.delta || params.text || '', raw: JSON.stringify(message) }
+  if (method === 'item/agentMessage/delta') return officialEvent('app.agent_delta', 'assistant', params.delta || '')
+  if (method === 'item/commandExecution/outputDelta') return officialEvent('app.command_delta', 'tool', params.delta || params.output || '')
+  if (method === 'item/fileChange/outputDelta') return officialEvent('app.file_delta', 'tool', params.delta || params.output || '')
+  if (method === 'item/fileChange/patchUpdated') return officialEvent('app.fileChange.patchUpdated', 'tool', JSON.stringify(params))
+  if (method === 'turn/diff/updated') return officialEvent('app.turn.diff.updated', 'tool', JSON.stringify(params))
+  if (method === 'item/mcpToolCall/progress') return officialEvent('app.mcpToolCall.progress', 'tool', params.message || '')
+  if (method === 'item/plan/delta') return officialEvent('app.plan_delta', 'assistant', params.delta || params.text || '')
+  if (method === 'item/commandExecution/terminalInteraction') return officialEvent('app.commandExecution.terminalInteraction', 'tool', params.stdin || params.text || '')
+  if (method === 'turn/plan/updated') return officialEvent('app.turn.plan.updated', 'system', JSON.stringify(params), 'system')
+  if (method === 'item/reasoning/delta' || method === 'item/reasoning/summaryDelta' || method === 'item/reasoning/textDelta' || method === 'item/reasoning/summaryTextDelta') {
+    return officialEvent('app.reasoning_delta', 'assistant', params.delta || params.text || '')
   }
 
   if (method === 'turn/started') return { ts: now(), stream: 'system', type: 'app.turn_started', text: 'Codex 开始处理', raw: JSON.stringify(message) }
   if (method === 'turn/completed') return { ts: now(), stream: 'system', type: 'app.turn_completed', text: '本轮完成', raw: JSON.stringify(message) }
-  if (method === 'turn/failed') return { ts: now(), stream: 'stderr', type: 'app.turn_failed', text: params.error?.message || params.message || '本轮失败', raw: JSON.stringify(message) }
+  if (method === 'turn/failed') return { ts: now(), stream: 'stderr', type: 'app.turn_failed', text: friendlyCodexErrorMessage(params.error || params.message || message) || '本轮失败', raw: JSON.stringify(message) }
   if (method === 'thread/started') return { ts: now(), stream: 'system', type: 'app.thread_started', text: `线程已连接 ${params.thread?.id || ''}`, raw: JSON.stringify(message) }
   if (method === 'thread/status/changed') return { ts: now(), stream: 'system', type: 'app.thread_status', text: `线程状态 ${params.status?.type || ''}`, raw: JSON.stringify(message) }
   if (method === 'thread/tokenUsage/updated') {
@@ -1605,9 +1895,35 @@ function normalizeAppServerEvent(message: any): CodexTaskEvent | null {
     }
   }
   if (method === 'error' || message?.error) {
-    return { ts: now(), stream: 'stderr', type: 'app.error', text: message.error?.message || params.message || JSON.stringify(message.error || params), raw: JSON.stringify(message) }
+    return { ts: now(), stream: 'stderr', type: 'app.error', text: friendlyCodexErrorMessage(message.error || params) || 'Codex 执行失败', raw: JSON.stringify(message) }
   }
+  if (method) return officialEvent(notificationType(), 'system', JSON.stringify(params), 'system')
   return null
+}
+
+function friendlyCodexErrorMessage(input: any) {
+  const raw = typeof input === 'string' ? input : JSON.stringify(input || {})
+  const message = typeof input === 'string' ? input : String(input?.message || input?.error?.message || raw)
+  const status = input?.codexErrorInfo?.responseTooManyFailedAttempts?.httpStatusCode
+    || input?.codexErrorInfo?.responseStatusCode
+    || input?.httpStatusCode
+    || input?.status
+  if (status === 429 || /\b429\b|too many requests|exceeded retry limit/i.test(raw)) {
+    return '请求过于频繁或当前模型额度受限（429）。请稍后重试，或切换模型/供应商/API Key。'
+  }
+  if (/401|unauthorized|invalid api key|authentication/i.test(raw)) {
+    return 'Codex API Key 无效或认证失败，请检查设置里的 API Key。'
+  }
+  if (/403|forbidden|permission/i.test(raw)) {
+    return '当前 API Key 没有访问该模型的权限，请切换模型或供应商。'
+  }
+  if (/404|not found|model/i.test(raw)) {
+    return '生成接口或模型不可用，请检查 Base URL 和模型名称。'
+  }
+  if (/stream disconnected|connection reset|reconnecting/i.test(raw)) {
+    return '模型响应流中断，请稍后重试；如果反复出现，请切换供应商或模型。'
+  }
+  return message
 }
 
 function appServerMessageWillRetry(message: any) {
@@ -1692,7 +2008,7 @@ async function runCodexAppTurn(task: CodexTask, options: { resumeThreadId?: stri
           runtimeWorkspaceRoots: workspaceRoots,
           approvalPolicy: approvalPolicyForTask(task),
           approvalsReviewer: 'user',
-          config: task.reasoningEffort ? { model_reasoning_effort: task.reasoningEffort } : null,
+          config: codexAppServerConfig(task),
           includeTurnHistory: false,
         })
       } else {
@@ -1703,9 +2019,7 @@ async function runCodexAppTurn(task: CodexTask, options: { resumeThreadId?: stri
           sandbox: sandboxForAppServer(task.sandbox || 'workspace-write'),
           approvalPolicy: approvalPolicyForTask(task),
           approvalsReviewer: 'user',
-          config: task.reasoningEffort ? { model_reasoning_effort: task.reasoningEffort } : null,
-          experimentalRawEvents: false,
-          persistExtendedHistory: false,
+          config: codexAppServerConfig(task),
         })
       }
     } else if ((message.id === 2 || message.id === 3) && message.result && threadId && !turnStarted) {
@@ -1839,8 +2153,104 @@ app.get('/skills', (c) => {
   return success(c, {
     skills: listUserSkills(userId),
     plugins: listUserPlugins(userId),
+    marketplace_plugins: listPluginMarketplace(userId),
     skills_path: userSkillsPath(userId),
     plugins_path: userPluginsPath(userId),
+  })
+})
+
+app.get('/plugins/photoshop/config', (c) => {
+  const userId = currentAuthUserId(c)
+  return success(c, publicPhotoshopConfig(userPhotoshopConfig(userId)))
+})
+
+app.put('/plugins/photoshop/config', async (c) => {
+  const userId = currentAuthUserId(c)
+  const current = userPhotoshopConfig(userId)
+  const body = await c.req.json().catch(() => ({}))
+  const clientId = String(body.client_id || body.clientId || '').trim()
+  const clientSecret = photoshopClientSecret(current, body.client_secret ?? body.clientSecret)
+  const publicBaseUrl = normalizePublicBaseUrl(body.public_base_url ?? body.publicBaseUrl)
+  const defaultOperation = normalizePhotoshopOperation(body.default_operation ?? body.defaultOperation)
+  const outputFormat = normalizePhotoshopOutputFormat(body.output_format ?? body.outputFormat)
+  const error = validatePhotoshopConfigInput({ clientId, clientSecret, publicBaseUrl })
+  if (error) return badRequest(c, error)
+
+  const store = photoshopConfigsStore()
+  const next: PhotoshopUserConfig = {
+    userId,
+    clientId,
+    clientSecret,
+    publicBaseUrl,
+    defaultOperation,
+    outputFormat,
+    updatedAt: now(),
+  }
+  store.configs = [...store.configs.filter(config => config.userId !== userId), next]
+  writePhotoshopConfigsStore(store)
+  return success(c, publicPhotoshopConfig(next))
+})
+
+app.post('/plugins/photoshop/config/test', async (c) => {
+  const userId = currentAuthUserId(c)
+  const current = userPhotoshopConfig(userId)
+  const body = await c.req.json().catch(() => ({}))
+  const clientId = String(body.client_id || body.clientId || current?.clientId || '').trim()
+  const clientSecret = photoshopClientSecret(current, body.client_secret ?? body.clientSecret)
+  const publicBaseUrl = normalizePublicBaseUrl(body.public_base_url ?? body.publicBaseUrl ?? current?.publicBaseUrl)
+  try {
+    return success(c, await testPhotoshopConnection({ clientId, clientSecret, publicBaseUrl }))
+  } catch (err: any) {
+    return badRequest(c, err?.message || 'Photoshop 连接测试失败')
+  }
+})
+
+app.post('/plugins/install', async (c) => {
+  const userId = currentAuthUserId(c)
+  const body = await c.req.json().catch(() => ({}))
+  const pluginId = String(body.plugin_id || body.pluginId || body.id || '').trim()
+  const plugin = BUILT_IN_PLUGINS.find(item => item.id === pluginId || item.name === pluginId)
+  if (!plugin) return badRequest(c, 'plugin not found')
+  if (plugin.installedByDefault) {
+    return success(c, {
+      plugin: { ...plugin, scope: 'builtin', installed: true },
+      plugins: listUserPlugins(userId),
+      marketplace_plugins: listPluginMarketplace(userId),
+    })
+  }
+
+  const pluginDir = path.join(userPluginsPath(userId), plugin.id)
+  const manifestDir = path.join(pluginDir, '.codex-plugin')
+  fs.mkdirSync(manifestDir, { recursive: true })
+  fs.writeFileSync(path.join(manifestDir, 'plugin.json'), JSON.stringify({
+    name: plugin.name,
+    version: '0.1.0',
+    description: plugin.description,
+    interface: {
+      description: plugin.description,
+    },
+    huobao: {
+      builtin_id: plugin.id,
+      status: plugin.id === 'photoshop' ? 'cloud_api' : 'placeholder',
+      runtime: plugin.id === 'photoshop' ? 'adobe_firefly_services' : 'connector',
+    },
+  }, null, 2))
+  fs.writeFileSync(path.join(pluginDir, 'README.md'), [
+    `# ${plugin.name}`,
+    '',
+    plugin.description,
+    '',
+    'This plugin is installed in the current Huobao user CODEX_HOME only.',
+    plugin.id === 'photoshop'
+      ? 'This plugin uses Adobe Photoshop cloud APIs through Huobao. Configure Adobe Client ID and Client Secret in the Photoshop plugin settings.'
+      : 'Connector authorization and runtime bridge still need to be configured before this plugin can access external services.',
+    '',
+  ].join('\n'))
+
+  return success(c, {
+    plugin: { ...plugin, scope: 'user', installed: true, path: pluginDir },
+    plugins: listUserPlugins(userId),
+    marketplace_plugins: listPluginMarketplace(userId),
   })
 })
 
@@ -1899,6 +2309,7 @@ app.post('/approvals/:id/respond', async (c) => {
 app.put('/config', async (c) => {
   const userId = currentAuthUserId(c)
   const body = await c.req.json().catch(() => ({}))
+  const provider = normalizeProvider(body.provider || inferProviderFromBaseUrl(body.base_url ?? body.baseUrl))
   const baseUrl = normalizeBaseUrl(body.base_url ?? body.baseUrl)
   const inputApiKey = String(body.api_key ?? body.apiKey ?? '').trim()
   const model = normalizeConfigModel(body.model)
@@ -1914,6 +2325,7 @@ app.put('/config', async (c) => {
   const current = store.configs.find(config => config.userId === userId)
   const next: CodexUserConfig = {
     userId,
+    provider,
     baseUrl,
     apiKey,
     model,
@@ -2287,7 +2699,6 @@ app.get('/projects/:id/files/view', (c) => {
     '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg',
     '.webp': 'image/webp',
-    '.svg': 'image/svg+xml',
     '.pdf': 'application/pdf',
     '.3g2': 'video/3gpp2',
     '.3gp': 'video/3gpp',
@@ -2313,6 +2724,7 @@ app.get('/projects/:id/files/view', (c) => {
     '.wav': 'audio/wav',
     '.wma': 'audio/x-ms-wma',
   } as Record<string, string>)[ext] || 'application/octet-stream'
+  if (ext === '.svg') return badRequest(c, 'svg preview is not allowed')
 
   return new Response(fs.readFileSync(targetPath), {
     headers: {
@@ -2393,11 +2805,14 @@ app.post('/projects/:id/attachments', async (c) => {
   const body = await c.req.parseBody()
   const uploaded = body.file
   if (!uploaded || !(uploaded instanceof File)) return badRequest(c, 'file is required')
-  if (!String(uploaded.type || '').startsWith('image/')) return badRequest(c, 'only image attachments are supported')
+  const mimeType = String(uploaded.type || '').toLowerCase()
+  if (!ALLOWED_ATTACHMENT_TYPES.has(mimeType)) return badRequest(c, 'only png, jpg, webp and gif images are supported')
+  if (uploaded.size > MAX_CODEX_ATTACHMENT_BYTES) return badRequest(c, 'file is too large')
 
   const attachmentDir = path.join(project.path, '.codex-attachments')
   fs.mkdirSync(attachmentDir, { recursive: true })
-  const ext = path.extname(uploaded.name || '') || '.png'
+  const rawExt = path.extname(uploaded.name || '').toLowerCase()
+  const ext = ALLOWED_ATTACHMENT_EXTS.has(rawExt) ? rawExt : '.png'
   const filename = `${randomUUID()}${ext}`
   const filePath = path.join(attachmentDir, filename)
   fs.writeFileSync(filePath, Buffer.from(await uploaded.arrayBuffer()))
@@ -2425,6 +2840,7 @@ app.get('/projects/:id/terminals', (c) => {
 })
 
 app.post('/projects/:id/terminals', (c) => {
+  if (!ALLOW_CODEX_TERMINALS) return badRequest(c, 'terminal API is disabled')
   const userId = currentAuthUserId(c)
   const projectId = c.req.param('id')
   const project = findProject(userId, projectId)
@@ -2602,6 +3018,7 @@ app.post('/tasks', async (c) => {
   if (!fs.existsSync(CODEX_BIN)) return badRequest(c, 'project Codex CLI is not installed')
   const images = normalizeImagePaths(project, body.images)
   const selectedContext = resolveSelectedContext(userId, body.selected_context ?? body.selectedContext)
+  const isPhotoshopTask = selectedContext?.path === 'plugin://Photoshop' || selectedContext?.id === 'photoshop' || selectedContext?.name === 'Photoshop'
   const resumeTask = resumeTaskId
     ? tasksStore().tasks.find(item => item.userId === userId && item.projectId === project.id && item.id === resumeTaskId)
     : null
@@ -2623,7 +3040,7 @@ app.post('/tasks', async (c) => {
     selectedContext,
     threadId: resumeTask?.threadId,
     status: 'running',
-    runtime: 'app-server',
+    runtime: isPhotoshopTask ? 'photoshop' : 'app-server',
     outputTail: [],
     createdAt: ts,
     updatedAt: ts,
@@ -2634,12 +3051,17 @@ app.post('/tasks', async (c) => {
   writeTasksStore(store)
   appendUserMessage(task.id, prompt, images)
 
-  runCodexAppTurn(task, { resumeThreadId: resumeTask?.threadId }).catch((err) => {
-    appendTaskEvent(task.id, { ts: now(), stream: 'stderr', type: 'app.error', text: err.message || 'Codex app-server 启动失败' })
+  const runner = isPhotoshopTask
+    ? runPhotoshopCloudTask(c, task, project)
+    : runCodexAppTurn(task, { resumeThreadId: resumeTask?.threadId })
+  runner.then(() => {
+    if (isPhotoshopTask) updateTask(task.id, { status: 'completed', exitCode: 0, signal: null })
+  }).catch((err) => {
+    appendTaskEvent(task.id, { ts: now(), stream: 'stderr', type: 'app.error', text: err.message || (isPhotoshopTask ? 'Photoshop 云端任务失败' : 'Codex app-server 启动失败') })
     updateTask(task.id, { status: 'failed', exitCode: 1 })
   })
 
-  return success(c, publicTask(updateTask(task.id, { status: 'running', runtime: 'app-server' }) || task))
+  return success(c, publicTask(updateTask(task.id, { status: 'running', runtime: isPhotoshopTask ? 'photoshop' : 'app-server' }) || task))
 })
 
 app.post('/tasks/:id/messages', async (c) => {
@@ -2658,8 +3080,9 @@ app.post('/tasks/:id/messages', async (c) => {
   if (!project) return badRequest(c, 'codex project not found')
   const images = normalizeImagePaths(project, body.images)
   const selectedContext = resolveSelectedContext(userId, body.selected_context ?? body.selectedContext)
+  const isPhotoshopTask = selectedContext?.path === 'plugin://Photoshop' || selectedContext?.id === 'photoshop' || selectedContext?.name === 'Photoshop'
   if (task.status === 'running') return badRequest(c, 'codex thread is already running')
-  if (!task.threadId) {
+  if (!task.threadId || isPhotoshopTask) {
     const ts = now()
     const newTask: CodexTask = {
       id: `codex_task_${randomUUID()}`,
@@ -2674,7 +3097,7 @@ app.post('/tasks/:id/messages', async (c) => {
       images,
       selectedContext,
       status: 'running',
-      runtime: 'app-server',
+      runtime: isPhotoshopTask ? 'photoshop' : 'app-server',
       outputTail: [],
       createdAt: ts,
       updatedAt: ts,
@@ -2683,8 +3106,13 @@ app.post('/tasks/:id/messages', async (c) => {
     store.tasks.push(newTask)
     writeTasksStore(store)
     appendUserMessage(newTask.id, prompt, images)
-    runCodexAppTurn(newTask, {}).catch((err) => {
-      appendTaskEvent(newTask.id, { ts: now(), stream: 'stderr', type: 'app.error', text: err.message || 'Codex app-server 启动失败' })
+    const runner = isPhotoshopTask
+      ? runPhotoshopCloudTask(c, newTask, project)
+      : runCodexAppTurn(newTask, {})
+    runner.then(() => {
+      if (isPhotoshopTask) updateTask(newTask.id, { status: 'completed', exitCode: 0, signal: null })
+    }).catch((err) => {
+      appendTaskEvent(newTask.id, { ts: now(), stream: 'stderr', type: 'app.error', text: err.message || (isPhotoshopTask ? 'Photoshop 云端任务失败' : 'Codex app-server 启动失败') })
       updateTask(newTask.id, { status: 'failed', exitCode: 1 })
     })
     return success(c, publicTask(newTask))

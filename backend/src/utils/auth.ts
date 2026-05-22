@@ -1,5 +1,9 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { Context } from 'hono'
+import type { MiddlewareHandler } from 'hono'
+import { db, schema } from '../db/index.js'
+import { eq } from 'drizzle-orm'
+import { forbidden, unauthorized } from './response.js'
 
 const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -49,8 +53,47 @@ export function verifyAuthToken(token?: string | null): string | null {
   }
 }
 
-export function currentAuthUserId(c: Context): string {
+function tokenFromRequest(c: Context): string {
   const authorization = c.req.header('authorization') || ''
   const bearer = authorization.toLowerCase().startsWith('bearer ') ? authorization.slice(7).trim() : ''
-  return verifyAuthToken(bearer) || String(c.req.header('x-user-id') || c.req.query('user_id') || 'default').trim() || 'default'
+  return bearer || c.req.query('token') || ''
+}
+
+export function optionalAuthUserId(c: Context): string | null {
+  const verified = verifyAuthToken(tokenFromRequest(c))
+  if (verified) return verified
+  if (process.env.ALLOW_DEV_USER_HEADER === '1') {
+    const devUserId = String(c.req.header('x-user-id') || '').trim()
+    return devUserId || null
+  }
+  return null
+}
+
+export function currentAuthUserId(c: Context): string {
+  return optionalAuthUserId(c) || 'default'
+}
+
+export async function currentAuthUser(c: Context) {
+  const userId = optionalAuthUserId(c)
+  if (!userId) return null
+  const row = (await db.select().from(schema.aiUsers).where(eq(schema.aiUsers.id, userId)).execute())[0]
+  if (!row || !row.isActive || row.deletedAt || row.isDeleted) return null
+  return row
+}
+
+export const requireAuth: MiddlewareHandler = async (c, next) => {
+  const user = await currentAuthUser(c)
+  if (!user) return unauthorized(c, '请先登录')
+  c.set('authUser', user)
+  c.set('authUserId', user.id)
+  await next()
+}
+
+export const requireAdmin: MiddlewareHandler = async (c, next) => {
+  const user = await currentAuthUser(c)
+  if (!user) return unauthorized(c, '请先登录')
+  if (user.role !== 'admin') return forbidden(c, '需要管理员权限')
+  c.set('authUser', user)
+  c.set('authUserId', user.id)
+  await next()
 }

@@ -1,49 +1,22 @@
 <template>
   <!-- Video node wrapper | 视频节点包裹层 -->
   <div class="video-node-wrapper relative" @mouseenter="showActions = true; showHandleMenu = true" @mouseleave="showActions = false; showHandleMenu = false">
+    <NodeTitle
+      :label="data.label"
+      :icon="VideocamOutline"
+      :editing="isEditingLabel"
+      v-model="editingLabelValue"
+      @start-edit="startEditLabel"
+      @finish-edit="finishEditLabel"
+      @cancel-edit="cancelEditLabel"
+    />
+
     <!-- Video node | 视频节点 -->
     <div 
-      class="video-node bg-[var(--bg-secondary)] rounded-xl border w-[400px] relative transition-all duration-200"
-      :class="data.selected ? 'border-1 border-blue-500 shadow-lg shadow-blue-500/20' : 'border border-[var(--border-color)]'"
+      class="video-node canvas-node-card rounded-xl w-[400px] relative transition-all duration-200"
+      :class="{ 'is-selected': data.selected }"
       
     >
-    <!-- Header | 头部 -->
-    <div class="px-3 py-2 border-b border-[var(--border-color)]">
-      <div class="flex items-center justify-between">
-        <span
-          v-if="!isEditingLabel"
-          @dblclick="startEditLabel"
-          class="text-sm font-medium text-[var(--text-secondary)] cursor-text hover:bg-[var(--bg-tertiary)] px-1 rounded transition-colors"
-          title="双击编辑名称"
-        >{{ data.label }}</span>
-        <input
-          v-else
-          ref="labelInputRef"
-          v-model="editingLabelValue"
-          @blur="finishEditLabel"
-          @keydown.enter="finishEditLabel"
-          @keydown.escape="cancelEditLabel"
-          class="text-sm font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] px-1 rounded outline-none border border-blue-500"
-        />
-        <div class="flex items-center gap-1">
-          <button @click="handleDuplicate" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors" title="复制节点">
-            <n-icon :size="14">
-              <CopyOutline />
-            </n-icon>
-          </button>
-          <button @click="handleDelete" class="p-1 hover:bg-[var(--bg-tertiary)] rounded transition-colors" title="删除节点">
-            <n-icon :size="14">
-              <TrashOutline />
-            </n-icon>
-          </button>
-        </div>
-      </div>
-      <!-- Model name | 模型名称 -->
-      <div v-if="data.model" class="mt-1 text-xs text-[var(--text-secondary)] truncate">
-        {{ data.model }}
-      </div>
-    </div>
-    
     <!-- Video preview area | 视频预览区域 -->
     <div class="p-3">
       <!-- Loading state | 加载状态 -->
@@ -143,10 +116,11 @@
 import { ref, nextTick, watch, onMounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { NIcon, NSpin } from 'naive-ui'
-import { TrashOutline, ExpandOutline, VideocamOutline, CopyOutline, CloseCircleOutline, DownloadOutline, EyeOutline, CreateOutline } from '@vicons/ionicons5'
-import { updateNode, removeNode, duplicateNode, addNode, addEdge, nodes } from '../../stores/canvas'
+import { VideocamOutline, CloseCircleOutline, DownloadOutline, EyeOutline } from '@vicons/ionicons5'
+import { updateNode, addNode, addEdge, nodes } from '../../stores/canvas'
 import { useVideoGeneration } from '../../hooks/useApi'
 import NodeHandleMenu from './NodeHandleMenu.vue'
+import NodeTitle from './NodeTitle.vue'
 
 const props = defineProps({
   id: String,
@@ -166,7 +140,6 @@ const showHandleMenu = ref(false)
 // Label editing state | Label 编辑状态
 const isEditingLabel = ref(false)
 const editingLabelValue = ref('')
-const labelInputRef = ref(null)
 
 // Video node menu operations | 视频节点菜单操作
 const operations = [
@@ -272,10 +245,6 @@ const formatDuration = (seconds) => {
 const startEditLabel = () => {
   editingLabelValue.value = props.data?.label || ''
   isEditingLabel.value = true
-  nextTick(() => {
-    labelInputRef.value?.focus()
-    labelInputRef.value?.select()
-  })
 }
 
 // Finish editing label | 完成编辑 label
@@ -290,11 +259,6 @@ const finishEditLabel = () => {
 // Cancel editing label | 取消编辑 label
 const cancelEditLabel = () => {
   isEditingLabel.value = false
-}
-
-// Handle delete | 处理删除
-const handleDelete = () => {
-  removeNode(props.id)
 }
 
 // Handle preview | 处理预览
@@ -317,25 +281,17 @@ const handleDownload = () => {
   }
 }
 
-// Handle duplicate | 处理复制
-const handleDuplicate = () => {
-  const newId = duplicateNode(props.id)
-  if (newId) {
-    // Clear selection and select the new node | 清除选中并选中新节点
-    updateNode(props.id, { selected: false })
-    updateNode(newId, { selected: true })
-    window.$message?.success('节点已复制')
-  }
-}
 </script>
 
 <style scoped>
 .video-node-wrapper {
   padding-right: 50px;
-  padding-top: 20px;
+  padding-top: 26px;
+  position: relative;
 }
 
 .video-node {
   cursor: default;
+  overflow: visible;
 }
 </style>

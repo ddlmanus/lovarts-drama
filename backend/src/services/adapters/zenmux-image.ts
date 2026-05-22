@@ -83,6 +83,13 @@ function extractB64(result: any): string | null {
   return result?.data?.[0]?.b64_json || result?.b64_json || null
 }
 
+function extractB64List(result: any): string[] {
+  if (Array.isArray(result?.data)) {
+    return result.data.map((item: any) => item?.b64_json).filter(Boolean)
+  }
+  return extractB64(result) ? [extractB64(result)!] : []
+}
+
 function parseReferenceImages(raw?: string | null): string[] {
   if (!raw) return []
   try {
@@ -118,7 +125,7 @@ function buildOpenAIImageOptions(config: AIConfig, record: ImageGenerationRecord
 
   const stream = firstBoolean(record.stream, defaults.stream)
   return cleanUndefined({
-    n: firstNumber(defaults.n, defaults.numberOfImages, defaults.number_of_images) || 1,
+    n: firstNumber(record.numberOfImages, defaults.n, defaults.numberOfImages, defaults.number_of_images) || 1,
     size: normalizeSize(firstString(record.size, defaults.size, defaults.imageSize, defaults.image_size, defaults.resolution)),
     quality: firstString(record.quality, defaults.quality, capabilities.quality),
     output_format: outputFormat,
@@ -132,8 +139,10 @@ function buildOpenAIImageOptions(config: AIConfig, record: ImageGenerationRecord
   })
 }
 
-function buildJsonImageReference(imageUrl: string) {
-  return { image_url: imageUrl }
+function buildJsonImageReference(image: string) {
+  const parsed = String(image || '').match(/^data:([^;]+);base64,(.+)$/)
+  if (parsed) return { image: parsed[2], mime_type: parsed[1] }
+  return { image }
 }
 
 export class ZenMuxImageAdapter implements ImageProviderAdapter {
@@ -174,10 +183,10 @@ export class ZenMuxImageAdapter implements ImageProviderAdapter {
           contents: [{ parts }],
           generationConfig: {
             responseModalities: ['TEXT', 'IMAGE'],
-            imageConfig: {
+            imageConfig: cleanUndefined({
               aspectRatio: this.parseAspectRatio(record.size, referenceImages.length > 0 ? '1:1' : '3:4'),
-              imageSize: this.parseImageSize(record.size),
-            },
+              imageSize: this.parseImageSize(record.sampleImageSize || config.modelDefaults?.sampleImageSize || config.modelDefaults?.sample_image_size),
+            }),
           },
         },
       }
@@ -201,7 +210,7 @@ export class ZenMuxImageAdapter implements ImageProviderAdapter {
     const body = referenceImages.length > 0 ? {
       model,
       prompt: record.prompt,
-      images: referenceImages.map(buildJsonImageReference),
+      image: referenceImages.map(buildJsonImageReference),
       ...editOptions,
     } : {
       model,
@@ -262,6 +271,11 @@ export class ZenMuxImageAdapter implements ImageProviderAdapter {
     return result?.data?.[0]?.url || result?.url || null
   }
 
+  extractImageUrls(result: any): string[] {
+    if (Array.isArray(result?.data)) return result.data.map((item: any) => item?.url).filter(Boolean)
+    return this.extractImageUrl(result) ? [this.extractImageUrl(result)!] : []
+  }
+
   extractImageBase64(result: any): { data: string; mimeType: string } | null {
     const b64 = extractB64(result)
     if (b64) {
@@ -289,6 +303,19 @@ export class ZenMuxImageAdapter implements ImageProviderAdapter {
       }
     }
     return null
+  }
+
+  extractImageBase64List(result: any): Array<{ data: string; mimeType: string }> {
+    const outputFormat = String(result?.output_format || result?.data?.[0]?.output_format || '').toLowerCase()
+    const mimeType = outputFormat === 'jpeg' || outputFormat === 'jpg'
+      ? 'image/jpeg'
+      : outputFormat === 'webp'
+        ? 'image/webp'
+        : 'image/png'
+    const list = extractB64List(result).map(data => ({ data, mimeType }))
+    if (list.length) return list
+    const one = this.extractImageBase64(result)
+    return one ? [one] : []
   }
 
   private parseAspectRatio(size?: string | null, fallback = '1:1'): string {

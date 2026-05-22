@@ -2,8 +2,8 @@
   <div class="shortvideo-container">
     <section class="hero-section">
       <div class="hero-content">
-        <h1 class="hero-title">火爆短剧，就用火宝</h1>
-        <p class="hero-subtitle">AI 火宝轻松制作，让每一段故事都火起来</p>
+        <h1 class="hero-title">火爆短剧，就用Lovarts.短剧</h1>
+        <p class="hero-subtitle">AI Lovarts.短剧轻松制作，让每一段故事都火起来</p>
         <div class="hero-actions">
           <button class="action-btn primary-action" type="button" @click="showCreate = true">
             <Film :size="24" />

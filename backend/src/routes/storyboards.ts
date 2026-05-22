@@ -5,6 +5,7 @@ import { success, created, now, badRequest } from '../utils/response.js'
 import { toSnakeCase } from '../utils/transform.js'
 import { generateTTS } from '../services/tts-generation.js'
 import { logTaskError, logTaskPayload, logTaskProgress, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
+import { currentAuthUserId } from '../utils/auth.js'
 
 const app = new Hono()
 
@@ -24,7 +25,7 @@ function parseDialogueForTTS(dialogue?: string | null) {
 function syncStoryboardCharacters(storyboardId: number, characterIds: number[]) {
   db.delete(schema.storyboardCharacters)
     .where(eq(schema.storyboardCharacters.storyboardId, storyboardId))
-    .run()
+    .execute()
 
   const uniqueIds = [...new Set((characterIds || []).filter(Boolean))]
   if (!uniqueIds.length) return
@@ -33,13 +34,13 @@ function syncStoryboardCharacters(storyboardId: number, characterIds: number[]) 
     db.insert(schema.storyboardCharacters).values({
       storyboardId,
       characterId,
-    }).run()
+    }).execute()
   }
 }
 
 function getStoryboardCharacterIds(storyboardId: number) {
   return db.select().from(schema.storyboardCharacters)
-    .where(eq(schema.storyboardCharacters.storyboardId, storyboardId)).all()
+    .where(eq(schema.storyboardCharacters.storyboardId, storyboardId)).execute()
     .map(link => link.characterId)
 }
 
@@ -59,12 +60,12 @@ function normalizeIdArray(value: any) {
 function validateStoryboardBindings(episodeId: number, sceneId: number | null | undefined, characterIds: number[] | undefined) {
   const episodeSceneIds = new Set(
     db.select().from(schema.episodeScenes)
-      .where(eq(schema.episodeScenes.episodeId, episodeId)).all()
+      .where(eq(schema.episodeScenes.episodeId, episodeId)).execute()
       .map(link => link.sceneId),
   )
   const episodeCharacterIds = new Set(
     db.select().from(schema.episodeCharacters)
-      .where(eq(schema.episodeCharacters.episodeId, episodeId)).all()
+      .where(eq(schema.episodeCharacters.episodeId, episodeId)).execute()
       .map(link => link.characterId),
   )
 
@@ -114,10 +115,10 @@ app.post('/', async (c) => {
     duration: body.duration ?? body.duration_seconds ?? body.durationSeconds ?? 4,
     createdAt: ts,
     updatedAt: ts,
-  }).run()
-  syncStoryboardCharacters(Number(res.lastInsertRowid), characterIds)
+  }).execute()
+  syncStoryboardCharacters(Number(res.insertId), characterIds)
   const [result] = db.select().from(schema.storyboards)
-    .where(eq(schema.storyboards.id, Number(res.lastInsertRowid))).all()
+    .where(eq(schema.storyboards.id, Number(res.insertId))).execute()
   logTaskSuccess('StoryboardAPI', 'create', {
     storyboardId: result.id,
     episodeId: result.episodeId,
@@ -133,7 +134,7 @@ app.post('/', async (c) => {
 app.put('/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json()
-  const [storyboard] = db.select().from(schema.storyboards).where(eq(schema.storyboards.id, id)).all()
+  const [storyboard] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, id)).execute()
   if (!storyboard) return badRequest(c, '镜头不存在')
   logTaskStart('StoryboardAPI', 'update', {
     storyboardId: id,
@@ -177,7 +178,7 @@ app.put('/:id', async (c) => {
       : getStoryboardCharacterIds(id),
   )
 
-  db.update(schema.storyboards).set(updates).where(eq(schema.storyboards.id, id)).run()
+  await db.update(schema.storyboards).set(updates).where(eq(schema.storyboards.id, id)).execute()
   if ('character_ids' in body || 'characterIds' in body || 'characters_in_shot' in body || 'charactersInShot' in body) {
     syncStoryboardCharacters(id, normalizeIdArray(body.character_ids ?? body.characterIds ?? body.characters_in_shot ?? body.charactersInShot))
   }
@@ -192,7 +193,7 @@ app.put('/:id', async (c) => {
 // POST /storyboards/:id/generate-tts
 app.post('/:id/generate-tts', async (c) => {
   const id = Number(c.req.param('id'))
-  const [sb] = db.select().from(schema.storyboards).where(eq(schema.storyboards.id, id)).all()
+  const [sb] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, id)).execute()
   if (!sb) return badRequest(c, '镜头不存在')
   const parsedDialogue = parseDialogueForTTS(sb.dialogue)
   if (parsedDialogue.ignorable) return badRequest(c, '该镜头没有可生成的对白或旁白')
@@ -212,9 +213,9 @@ app.post('/:id/generate-tts', async (c) => {
 
   if (speaker) {
     if (!/^(旁白|画外音|narrator)$/i.test(speaker)) {
-      const [ep] = db.select().from(schema.episodes).where(eq(schema.episodes.id, sb.episodeId)).all()
+      const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, sb.episodeId)).execute()
       if (ep) {
-        const chars = db.select().from(schema.characters).where(eq(schema.characters.dramaId, ep.dramaId)).all()
+        const chars = await db.select().from(schema.characters).where(eq(schema.characters.dramaId, ep.dramaId)).execute()
         const found = chars.find((char) => char.name === speaker)
         if (found?.voiceStyle) voiceId = found.voiceStyle
       }
@@ -224,13 +225,20 @@ app.post('/:id/generate-tts', async (c) => {
   const pureDialogue = parsedDialogue.pureText
   if (!pureDialogue) return badRequest(c, '未提取到可合成的文本')
 
-  const [ep] = db.select().from(schema.episodes).where(eq(schema.episodes.id, sb.episodeId)).all()
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, sb.episodeId)).execute()
   try {
-    const audioPath = await generateTTS({ text: pureDialogue, voice: voiceId, configId: ep?.audioConfigId || null })
+    const audioPath = await generateTTS({
+      text: pureDialogue,
+      voice: voiceId,
+      configId: ep?.audioConfigId || null,
+      userId: currentAuthUserId(c),
+      relatedTaskId: id,
+      taskType: 'storyboard_tts',
+    })
   db.update(schema.storyboards)
     .set({ ttsAudioUrl: audioPath, updatedAt: now() })
     .where(eq(schema.storyboards.id, id))
-    .run()
+    .execute()
 
     logTaskSuccess('StoryboardAPI', 'generate-tts', {
       storyboardId: id,
@@ -249,8 +257,8 @@ app.post('/:id/generate-tts', async (c) => {
 app.delete('/:id', async (c) => {
   const id = Number(c.req.param('id'))
   logTaskStart('StoryboardAPI', 'delete', { storyboardId: id })
-  db.delete(schema.storyboardCharacters).where(eq(schema.storyboardCharacters.storyboardId, id)).run()
-  db.delete(schema.storyboards).where(eq(schema.storyboards.id, id)).run()
+  await db.delete(schema.storyboardCharacters).where(eq(schema.storyboardCharacters.storyboardId, id)).execute()
+  await db.delete(schema.storyboards).where(eq(schema.storyboards.id, id)).execute()
   logTaskSuccess('StoryboardAPI', 'delete', { storyboardId: id })
   return success(c)
 })

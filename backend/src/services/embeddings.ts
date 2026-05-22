@@ -1,4 +1,4 @@
-import { getActiveConfig, getConfigForModel, getTextConfig, getTextProviderBaseUrl, type AIConfig } from './ai.js'
+import { getActiveConfigAsync, getConfigForModelAsync, getTextConfigAsync, getTextProviderBaseUrl, type AIConfig } from './ai.js'
 import { joinProviderUrl } from './adapters/url.js'
 import { logTaskPayload, logTaskProgress } from '../utils/task-logger.js'
 
@@ -12,19 +12,19 @@ export interface CreateEmbeddingParams {
   configId?: number | null
 }
 
-function resolveEmbeddingConfig(params: CreateEmbeddingParams): AIConfig {
+async function resolveEmbeddingConfig(params: CreateEmbeddingParams): Promise<AIConfig> {
   if (params.model) {
-    const modelConfig = getConfigForModel('embedding', params.model, params.configId, params.userId)
+    const modelConfig = await getConfigForModelAsync('embedding', params.model, params.configId, params.userId)
     if (modelConfig) return modelConfig
   }
   const active = params.configId
-    ? getConfigForModel('embedding', null, params.configId, params.userId)
-    : getActiveConfig('embedding')
+    ? await getConfigForModelAsync('embedding', null, params.configId, params.userId)
+    : await getActiveConfigAsync('embedding')
   if (active) return params.model ? { ...active, model: params.model } : active
 
   const textConfig = params.model
-    ? getConfigForModel('text', params.model, params.configId, params.userId) || getTextConfig()
-    : getTextConfig()
+    ? await getConfigForModelAsync('text', params.model, params.configId, params.userId) || await getTextConfigAsync()
+    : await getTextConfigAsync()
   return {
     ...textConfig,
     model: params.model || 'openai/text-embedding-3-small',
@@ -32,7 +32,7 @@ function resolveEmbeddingConfig(params: CreateEmbeddingParams): AIConfig {
 }
 
 export async function createEmbedding(params: CreateEmbeddingParams) {
-  const config = resolveEmbeddingConfig(params)
+  const config = await resolveEmbeddingConfig(params)
   const baseUrl = getTextProviderBaseUrl(config)
   const url = joinProviderUrl(baseUrl, '/v1', '/embeddings')
   const body = {
