@@ -9,6 +9,7 @@ SERVER_IP="${SERVER_IP:-103.171.35.146}"
 SERVER_USER="${SERVER_USER:-root}"
 SERVER_PASS="${SERVER_PASS:-20zKHvlw47CJEg}"
 DOMAIN="${DOMAIN:-drama.lovarts.art}"
+SKIP_DB_SYNC="${SKIP_DB_SYNC:-1}"
 
 REMOTE_DIR="${REMOTE_DIR:-/www/wwwroot/drama-lovarts}"
 APP_NAME="${APP_NAME:-drama-lovarts-backend}"
@@ -320,7 +321,11 @@ install_base_packages
 deploy_release
 write_nginx_http_config
 issue_https_cert
-npm --prefix "${REMOTE_DIR}/current/backend" run db:sync:membership || true
+if [ "${SKIP_DB_SYNC}" = "1" ] || [ "${SKIP_DB_SYNC}" = "true" ]; then
+  log "Skipping database sync"
+else
+  npm --prefix "${REMOTE_DIR}/current/backend" run db:sync:membership || true
+fi
 pm2 restart "$APP_NAME" --update-env || true
 
 log "Deployment finished: https://${DOMAIN}"
@@ -330,7 +335,7 @@ log "Uploading remote deploy runner"
 scp_upload "$REMOTE_SCRIPT_LOCAL" "$REMOTE_SCRIPT_PATH"
 
 log "Installing and starting application on server"
-ssh_run "DOMAIN='$DOMAIN' REMOTE_DIR='$REMOTE_DIR' APP_NAME='$APP_NAME' APP_PORT='$APP_PORT' REMOTE_TARBALL='$REMOTE_TARBALL' bash '$REMOTE_SCRIPT_PATH'"
+ssh_run "DOMAIN='$DOMAIN' REMOTE_DIR='$REMOTE_DIR' APP_NAME='$APP_NAME' APP_PORT='$APP_PORT' SKIP_DB_SYNC='$SKIP_DB_SYNC' REMOTE_TARBALL='$REMOTE_TARBALL' bash '$REMOTE_SCRIPT_PATH'"
 
 rm -f "$REMOTE_SCRIPT_LOCAL"
 rm -f "$LOCAL_TARBALL"
