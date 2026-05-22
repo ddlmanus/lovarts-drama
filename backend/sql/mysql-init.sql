@@ -90,8 +90,8 @@ CREATE TABLE IF NOT EXISTS ai_user_provider_configs (
   deleted_by VARCHAR(64) NULL,
   deleted_at DATETIME NULL,
   is_deleted TINYINT(1) NOT NULL DEFAULT 0,
-  UNIQUE KEY uk_ai_user_provider_configs (user_id, provider_id),
-  KEY idx_ai_user_provider_configs_user_provider (user_id, provider, is_active, is_deleted)
+  KEY idx_ai_user_provider_configs_user_provider (user_id, provider, is_active, is_deleted),
+  KEY idx_ai_user_provider_configs_user_provider_id (user_id, provider_id, is_active, is_deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS ai_model_parameter_profiles (
@@ -470,8 +470,8 @@ CREATE TABLE IF NOT EXISTS canvas_projects (
 
 INSERT INTO system_settings (setting_key, setting_value, group_name, label, value_type, created_by, updated_by)
 VALUES
-  ('site_name', 'Lovarts.短剧', 'site', '网站名称', 'string', 'system', 'system'),
-  ('site_title', 'Lovarts.短剧', 'site', '网站标题', 'string', 'system', 'system'),
+  ('site_name', 'Lovarts短剧平台', 'site', '网站名称', 'string', 'system', 'system'),
+  ('site_title', 'Lovarts短剧平台', 'site', '网站标题', 'string', 'system', 'system'),
   ('site_description', 'AI短剧创作平台', 'site', '网站描述', 'string', 'system', 'system'),
   ('site_keywords', 'AI短剧,短剧创作,Lovarts', 'site', '网站关键词', 'string', 'system', 'system'),
   ('site_logo_url', '/static/uploads/lovarts-logo.png', 'brand', '网站 Logo', 'image', 'system', 'system'),

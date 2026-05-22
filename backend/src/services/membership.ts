@@ -133,6 +133,16 @@ async function ensurePlatformProviderSchema() {
   )
   if (!Number(tableExists?.count || 0)) return
   await mysqlExec("ALTER TABLE `ai_user_provider_configs` MODIFY COLUMN `user_id` VARCHAR(64) NULL COMMENT '用户ID，NULL 表示平台供应商'")
+  const uniqueProviderIndex = await mysqlOne<{ count: number }>(
+    `SELECT COUNT(*) AS count
+       FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'ai_user_provider_configs'
+        AND INDEX_NAME = 'uk_ai_user_provider_configs'`,
+  )
+  if (Number(uniqueProviderIndex?.count || 0) > 0) {
+    await mysqlExec('ALTER TABLE `ai_user_provider_configs` DROP INDEX `uk_ai_user_provider_configs`')
+  }
 }
 
 export async function ensureMembershipSchema() {

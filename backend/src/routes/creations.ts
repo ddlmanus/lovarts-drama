@@ -160,7 +160,6 @@ function supportsBatchImageGeneration(config: any) {
   const provider = String(config?.provider || '').toLowerCase()
   const model = String(config?.model || '').toLowerCase()
   if (provider === 'zenmux') return true
-  if (provider === 'apimart' && model.includes('gemini')) return true
   return false
 }
 
@@ -376,16 +375,18 @@ async function processVideoTask(taskId: number, body: any, userId: string) {
       imageUrl: body.image_url ?? body.imageUrl,
       firstFrameUrl: body.first_frame_url ?? body.firstFrameUrl,
       lastFrameUrl: body.last_frame_url ?? body.lastFrameUrl,
-      referenceImageUrls: normalizeStringArray(body.reference_image_urls ?? body.referenceImageUrls),
-      referenceVideoUrls: normalizeStringArray(body.reference_video_urls ?? body.video_urls ?? body.referenceVideoUrls),
+      referenceImageUrls: normalizeStringArray(body.reference_image_urls ?? body.image_urls ?? body.imageUrls ?? body.referenceImageUrls),
+      referenceVideoUrls: normalizeStringArray(body.reference_video_urls ?? body.video_urls ?? body.videoUrls ?? body.video_url ?? body.videoUrl ?? body.referenceVideoUrls),
       referenceAudioUrls: normalizeStringArray(body.reference_audio_urls ?? body.audio_urls ?? body.referenceAudioUrls),
       duration: numberParam(body.duration) || undefined,
       fps: numberParam(body.fps) || undefined,
-      resolution: body.resolution,
+      mode: body.mode,
+      resolution: body.resolution ?? body.quality ?? body.mode,
       aspectRatio: body.aspect_ratio ?? body.aspectRatio ?? body.size,
       frames: numberParam(body.frames) || undefined,
       seed: numberParam(body.seed) || undefined,
       generateAudio: body.generate_audio ?? body.generateAudio,
+      audioSetting: body.audio_setting ?? body.audioSetting,
       cameraFixed: body.camera_fixed ?? body.cameraFixed,
       watermark: body.watermark,
       returnLastFrame: body.return_last_frame ?? body.returnLastFrame,
@@ -393,9 +394,14 @@ async function processVideoTask(taskId: number, body: any, userId: string) {
       executionExpiresAfter: numberParam(body.execution_expires_after, body.executionExpiresAfter) || undefined,
       draft: body.draft,
       draftTaskId: body.draft_task_id ?? body.draftTaskId,
-      tools: body.tools,
+      tools: {
+        ...(body.tools && typeof body.tools === 'object' ? body.tools : {}),
+        ...(body.metadata ? { metadata: body.metadata } : {}),
+        ...(body.prompt_extend !== undefined ? { prompt_extend: body.prompt_extend } : {}),
+        ...(body.promptExtend !== undefined ? { promptExtend: body.promptExtend } : {}),
+      },
       negativePrompt: body.negative_prompt ?? body.negativePrompt,
-      enhancePrompt: body.enhance_prompt ?? body.enhancePrompt,
+      enhancePrompt: body.enhance_prompt ?? body.enhancePrompt ?? body.prompt_optimizer ?? body.promptOptimizer,
       personGeneration: body.person_generation ?? body.personGeneration,
       numberOfVideos: numberParam(body.number_of_videos, body.numberOfVideos, body.sample_count, body.sampleCount) || undefined,
       configId: numberParam(body.model_config_id, body.modelConfigId) || undefined,

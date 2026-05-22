@@ -75,7 +75,14 @@
     <main class="content-wrapper" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <div class="content-area">
         <div class="content-container">
-          <slot />
+          <div v-if="!modelCatalogReady" class="global-loading">
+            <div class="global-loading-card">
+              <div class="global-loading-spinner"></div>
+              <strong>模型加载中</strong>
+              <span>正在准备图片与视频模型配置...</span>
+            </div>
+          </div>
+          <slot v-else />
         </div>
       </div>
     </main>
@@ -150,21 +157,33 @@
         <form v-else-if="authMode === 'provider'" class="login-form provider-form" @submit.prevent="saveProvider">
           <div class="form-header">
             <h2 class="form-title">选择供应商</h2>
-            <p class="form-subtitle">填写你的 Base URL 和 API Key，后续模型调用会优先使用你的密钥。</p>
+            <p class="form-subtitle">填写你的 Base URL 和 API Key，可以为同一账号添加多个供应商密钥。</p>
           </div>
           <div class="form-content">
             <div class="form-group">
-              <select v-model.number="providerForm.providerId">
+              <select v-model.number="providerForm.providerId" @change="syncSelectedProviderDefaults">
                 <option disabled :value="0">选择供应商</option>
                 <option v-for="p in activeProviders" :key="p.id" :value="p.id">{{ p.display_name || p.name }}</option>
               </select>
             </div>
+            <div class="form-group"><div class="input-prefix"><SettingsIcon :size="18" /><input v-model="providerForm.name" type="text" placeholder="配置名称，例如 Gemini 官方 / ZenMux 主账号" /></div></div>
             <div class="form-group"><div class="input-prefix"><LinkIcon :size="18" /><input v-model="providerForm.baseUrl" type="text" placeholder="Base URL，例如 https://zenmux.ai/api/v1" /></div></div>
             <div class="form-group"><div class="input-prefix"><KeyRound :size="18" /><input v-model="providerForm.apiKey" type="password" placeholder="API Key" /></div></div>
-            <button class="login-btn" type="submit" :disabled="authLoading">{{ authLoading ? '保存中...' : '保存并开始使用' }}</button>
+            <button class="login-btn" type="submit" :disabled="authLoading">{{ authLoading ? '保存中...' : '添加并开始使用' }}</button>
             <div class="actions"><button type="button" @click="authMode = 'resourceMode'">返回选择</button></div>
           </div>
         </form>
+
+        <section v-else-if="authMode === 'providerSaved'" class="login-form provider-saved-card">
+          <div class="form-header">
+            <h2 class="form-title">供应商已添加</h2>
+            <p class="form-subtitle">是否继续添加其他供应商密钥？完成后会刷新页面，重新获取你的所有供应商模型和平台模型。</p>
+          </div>
+          <div class="provider-saved-actions">
+            <button class="login-btn" type="button" :disabled="authLoading" @click="continueAddingProvider">继续添加</button>
+            <button class="secondary-action full" type="button" :disabled="authLoading" @click="finishProviderSetup">完成并刷新</button>
+          </div>
+        </section>
 
         <form v-else class="login-form" @submit.prevent="submitLogin">
           <div class="tabs">
@@ -205,6 +224,7 @@ import {
   PanelLeftClose,
   Presentation,
   ScrollText,
+  Settings as SettingsIcon,
   ShieldCheck,
   SquarePlay,
   Ticket,
@@ -212,11 +232,12 @@ import {
 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { aiModelAPI, authAPI, billingAPI, clearAuthSession, getAuthUser, setAuthSession, siteAPI, subscribeCreditEvents, updateAuthUser } from '~/composables/useApi'
+import { useModelCatalog } from '~/composables/useModelCatalog'
 
 const route = useRoute()
 const sidebarOpen = ref(false)
 const sidebarCollapsed = ref(false)
-const siteName = ref('Lovarts.短剧')
+const siteName = ref('Lovarts短剧平台')
 const authDialogOpen = ref(false)
 const authMode = ref('login')
 const authLoading = ref(false)
@@ -224,10 +245,11 @@ const currentUser = ref(null)
 const billingStatus = ref(null)
 const captchaText = ref('')
 const providers = ref([])
+const { loaded: modelCatalogReady, loadModelCatalog, resetModelCatalog } = useModelCatalog()
 let creditEventSource = null
 const loginForm = reactive({ account: '', password: '', captcha: '' })
 const registerForm = reactive({ account: '', password: '', confirmPassword: '', captcha: '', inviteCode: '' })
-const providerForm = reactive({ providerId: 0, baseUrl: 'https://zenmux.ai/api/v1', apiKey: '' })
+const providerForm = reactive({ providerId: 0, name: '', baseUrl: 'https://zenmux.ai/api/v1', apiKey: '' })
 const activeProviders = computed(() => (Array.isArray(providers.value) ? providers.value : []).filter(p => p.is_active !== false))
 const userInitial = computed(() => String(currentUser.value?.name || currentUser.value?.account || currentUser.value?.id || 'U').trim().slice(0, 1).toUpperCase())
 const membershipStatusLabel = computed(() => {
@@ -254,21 +276,38 @@ const isAdminUser = computed(() => String(currentUser.value?.role || '').toLower
 
 onMounted(() => {
   currentUser.value = getAuthUser()
+  preloadModels()
   loadSiteSettings()
   refreshCaptcha()
   window.addEventListener('huobao-auth-change', syncAuthUser)
+  window.addEventListener('huobao-model-config-change', reloadModelCatalog)
   connectCreditEvents()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('huobao-auth-change', syncAuthUser)
+  window.removeEventListener('huobao-model-config-change', reloadModelCatalog)
   disconnectCreditEvents()
 })
 
 function syncAuthUser() {
   currentUser.value = getAuthUser()
+  reloadModelCatalog()
   loadBillingStatus()
   connectCreditEvents()
+}
+
+async function preloadModels() {
+  try {
+    await loadModelCatalog()
+  } catch (err) {
+    toast.error(err.message || '模型加载失败')
+  }
+}
+
+async function reloadModelCatalog() {
+  resetModelCatalog()
+  await preloadModels()
 }
 
 async function loadSiteSettings() {
@@ -348,7 +387,15 @@ async function loadProviders() {
   const result = await aiModelAPI.providers()
   providers.value = Array.isArray(result) ? result : (result?.items || [])
   const zenmux = providers.value.find(p => p.key === 'zenmux' || p.provider === 'zenmux')
-  if (zenmux) providerForm.providerId = zenmux.id
+  if (zenmux && !providerForm.providerId) providerForm.providerId = zenmux.id
+  syncSelectedProviderDefaults()
+}
+
+function syncSelectedProviderDefaults() {
+  const selected = providers.value.find(p => Number(p.id) === Number(providerForm.providerId))
+  if (!selected) return
+  providerForm.name = providerForm.name || selected.display_name || selected.name || ''
+  providerForm.baseUrl = selected.default_url || selected.defaultUrl || providerForm.baseUrl || ''
 }
 
 async function openProviderSettings() {
@@ -476,19 +523,38 @@ async function saveProvider() {
     authLoading.value = true
     await aiModelAPI.connectUserProvider({
       provider_id: providerForm.providerId,
+      name: providerForm.name,
       base_url: providerForm.baseUrl,
       api_key: providerForm.apiKey,
     })
-    toast.success('供应商已保存')
+    toast.success('供应商密钥已添加')
+    providerForm.apiKey = ''
     const user = await loadCurrentUser()
     if (user) updateCurrentUser(user)
     window.dispatchEvent(new CustomEvent('huobao-model-config-change'))
-    closeAuthDialog()
+    authMode.value = 'providerSaved'
   } catch (err) {
     toast.error(err.message || '保存失败')
   } finally {
     authLoading.value = false
   }
+}
+
+async function continueAddingProvider() {
+  try {
+    await loadProviders()
+    providerForm.name = ''
+    providerForm.apiKey = ''
+    syncSelectedProviderDefaults()
+    authMode.value = 'provider'
+  } catch (err) {
+    toast.error(err.message || '供应商加载失败')
+  }
+}
+
+function finishProviderSetup() {
+  closeAuthDialog()
+  window.location.reload()
 }
 
 </script>
@@ -738,6 +804,43 @@ async function saveProvider() {
   background: #1f1f1f;
 }
 
+.global-loading {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  background: #1f1f1f;
+  color: #f8fafc;
+}
+
+.global-loading-card {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 22px 28px;
+  color: rgba(248, 250, 252, 0.72);
+  font-size: 13px;
+}
+
+.global-loading-card strong {
+  color: #f8fafc;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.global-loading-spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid rgba(255, 255, 255, 0.14);
+  border-top-color: #3b82f6;
+  border-radius: 999px;
+  animation: global-loading-spin 0.8s linear infinite;
+}
+
+@keyframes global-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
 .mobile-menu,
 .mobile-backdrop {
   display: none;
@@ -784,8 +887,15 @@ async function saveProvider() {
 
 .login-form.register,
 .provider-form,
+.provider-saved-card,
 .resource-mode-card {
   padding-top: 34px;
+}
+
+.provider-saved-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .profile-card {
@@ -863,6 +973,11 @@ async function saveProvider() {
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.secondary-action.full {
+  width: 100%;
+  letter-spacing: 0;
 }
 
 .secondary-action {

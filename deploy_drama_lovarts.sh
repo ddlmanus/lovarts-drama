@@ -3,12 +3,12 @@ set -Eeuo pipefail
 
 # One-command deploy for Lovarts Drama.
 # Override any default by prefixing the command, for example:
-#   SERVER_PASS='...' DOMAIN='drama.Lovarts.短剧' bash deploy_drama_lovarts.sh
+#   SERVER_PASS='...' DOMAIN='drama.lovarts.art' bash deploy_drama_lovarts.sh
 
-SERVER_IP="${SERVER_IP:-你的服务器}"
+SERVER_IP="${SERVER_IP:-103.171.35.146}"
 SERVER_USER="${SERVER_USER:-root}"
-SERVER_PASS="${SERVER_PASS:-密码}"
-DOMAIN="${DOMAIN:-域名}"
+SERVER_PASS="${SERVER_PASS:-20zKHvlw47CJEg}"
+DOMAIN="${DOMAIN:-drama.lovarts.art}"
 
 REMOTE_DIR="${REMOTE_DIR:-/www/wwwroot/drama-lovarts}"
 APP_NAME="${APP_NAME:-drama-lovarts-backend}"
@@ -128,7 +128,7 @@ install_base_packages() {
 
 write_nginx_http_config() {
   if [ -x /www/server/nginx/sbin/nginx ] && [ -d /www/server/panel/vhost/nginx ]; then
-    local cert_name="Lovarts.短剧"
+    local cert_name="lovarts.art"
     if [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
       cert_name="$DOMAIN"
     fi

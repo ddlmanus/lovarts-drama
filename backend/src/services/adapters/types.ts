@@ -136,10 +136,13 @@ export interface VideoGenerationRecord {
   duration?: number | null
   fps?: number | null
   resolution?: string | null
+  mode?: string | null
+  quality?: string | null
   aspectRatio?: string | null
   frames?: number | null
   seed?: number | null
   generateAudio?: boolean | null
+  audioSetting?: string | null
   cameraFixed?: boolean | null
   watermark?: boolean | null
   returnLastFrame?: boolean | null

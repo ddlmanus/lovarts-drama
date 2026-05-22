@@ -73,6 +73,8 @@ function isBillingRuleType(row: typeof schema.aiModelBillingRules.$inferSelect, 
   return types.map(normalizeParameterType).includes(normalized)
 }
 
+type BillingRuleRow = typeof schema.aiModelBillingRules.$inferSelect
+
 function nullableDateInput(value: any, fallback: any = null) {
   if (value === undefined) return fallback
   if (value === null || value === '') return null
@@ -110,7 +112,6 @@ function providerKey(value: string) {
 
 function serializeProvider(row: typeof schema.aiServiceProviders.$inferSelect) {
   const snake = toSnakeCase(row)
-  delete snake.default_url
   delete snake.support_open_a_i
   return {
     ...snake,
@@ -191,18 +192,34 @@ async function replaceBillingRulesFromMap(
   const rows = await db.select().from(schema.aiModelBillingRules)
     .where(eq(schema.aiModelBillingRules.modelConfigId, modelConfigId))
     .execute()
-  const activeRows = rows
-    .filter(row => !row.deletedAt)
-    .filter(row => isBillingRuleType(row, parameterTypes))
-  for (const row of activeRows) {
+  const targetRows = rows.filter(row => isBillingRuleType(row, parameterTypes))
+  const targetRowsByKey = new Map<string, BillingRuleRow>(targetRows.map(row => [`${normalizeParameterType(row.parameterType)}:${row.parameterValue}`, row]))
+  const nextValues = new Set(Object.keys(creditMap).map(parameterValue => `${normalizeParameterType(parameterTypes[0] || 'resolution')}:${parameterValue}`))
+
+  for (const row of targetRows) {
+    const key = `${normalizeParameterType(row.parameterType)}:${row.parameterValue}`
+    if (nextValues.has(key)) continue
     await db.update(schema.aiModelBillingRules)
-      .set({ deletedAt: ts, updatedAt: ts })
+      .set({ deletedAt: ts, isDeleted: true, updatedAt: ts })
       .where(eq(schema.aiModelBillingRules.id, row.id))
       .execute()
   }
 
   const parameterType = parameterTypes[0] || 'resolution'
   for (const [parameterValue, credits] of Object.entries(creditMap)) {
+    const existing = targetRowsByKey.get(`${normalizeParameterType(parameterType)}:${parameterValue}`)
+    if (existing) {
+      await db.update(schema.aiModelBillingRules).set({
+        serviceType,
+        credits,
+        unit,
+        deletedAt: null,
+        isDeleted: false,
+        updatedAt: ts,
+      }).where(eq(schema.aiModelBillingRules.id, existing.id)).execute()
+      continue
+    }
+
     await db.insert(schema.aiModelBillingRules).values({
       modelConfigId,
       serviceType,
@@ -1015,6 +1032,8 @@ app.get('/user/providers', async (c) => {
   const userId = currentUserId(c)
   await ensureUser(userId)
   const rows = (await db.select().from(schema.aiUserProviderConfigs).where(eq(schema.aiUserProviderConfigs.userId, userId)).execute())
+    .filter(row => !row.isDeleted)
+    .sort((a, b) => b.id - a.id)
   return success(c, rows.map(row => ({ ...toSnakeCase(row), api_key: row.apiKey ? '********' : '' })))
 })
 
@@ -1136,30 +1155,20 @@ app.post('/user/providers/connect', async (c) => {
   if (!baseUrl || !apiKey) return badRequest(c, 'base_url and api_key are required')
   const ts = now()
 
-  const existing = (await db.select().from(schema.aiUserProviderConfigs)
-    .where(and(eq(schema.aiUserProviderConfigs.userId, userId), eq(schema.aiUserProviderConfigs.providerId, providerId))).execute())[0]
-  if (existing) {
-    await db.update(schema.aiUserProviderConfigs).set({
-      name: provider.displayName || provider.name,
-      provider: provider.provider,
-      baseUrl,
-      apiKey,
-      isActive: true,
-      updatedAt: ts,
-    }).where(eq(schema.aiUserProviderConfigs.id, existing.id)).execute()
-  } else {
-    await db.insert(schema.aiUserProviderConfigs).values({
-      userId,
-      providerId,
-      provider: provider.provider,
-      name: provider.displayName || provider.name,
-      baseUrl,
-      apiKey,
-      isActive: true,
-      createdAt: ts,
-      updatedAt: ts,
-    }).execute()
-  }
+  const result = await db.insert(schema.aiUserProviderConfigs).values({
+    userId,
+    providerId,
+    provider: provider.provider,
+    name: String(body.name || '').trim() || provider.displayName || provider.name,
+    baseUrl,
+    apiKey,
+    isActive: true,
+    createdAt: ts,
+    updatedAt: ts,
+  }).execute()
+  const connected = (await db.select().from(schema.aiUserProviderConfigs)
+    .where(eq(schema.aiUserProviderConfigs.id, Number(result.insertId)))
+    .execute())[0]
 
   const availableModels = (await publicModels())
     .filter(model => model.isActive)
@@ -1172,7 +1181,12 @@ app.post('/user/providers/connect', async (c) => {
     updatedAt: ts,
   }).where(eq(schema.aiUsers.id, userId)).execute()
 
-  return success(c, { provider: serializeProvider(provider), copied: 0, available_models: availableModels })
+  return success(c, {
+    provider: serializeProvider(provider),
+    user_provider: connected ? { ...toSnakeCase(connected), api_key: connected.apiKey ? '********' : '' } : null,
+    copied: 0,
+    available_models: availableModels,
+  })
 })
 
 app.post('/seed-from-configs', async (c) => {

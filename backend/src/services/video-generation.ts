@@ -2,7 +2,7 @@ import { schema } from '../db/index.js'
 import { getConfigForModelAsync } from './ai.js'
 import { now } from '../utils/response.js'
 import { downloadFile, readImageAsCompressedDataUrl } from '../utils/storage.js'
-import { getVideoAdapter } from './adapters/registry'
+import { getVideoAdapterForConfig } from './adapters/registry'
 import type { AIConfig } from './adapters/types'
 import { generateZenmuxVideoDirect, shouldUseZenmuxDirect } from './zenmux-direct.js'
 import { chargeCreditsAsync } from './credits.js'
@@ -23,11 +23,14 @@ interface GenerateVideoParams {
   referenceAudioUrls?: string[]
   duration?: number
   fps?: number
+  mode?: string
   resolution?: string
+  quality?: string
   aspectRatio?: string
   frames?: number
   seed?: number
   generateAudio?: boolean
+  audioSetting?: string
   cameraFixed?: boolean
   watermark?: boolean
   returnLastFrame?: boolean
@@ -48,6 +51,7 @@ interface GenerateVideoParams {
 
 interface VideoRuntimeOptions {
   generateAudio?: boolean
+  audioSetting?: string
   cameraFixed?: boolean
   watermark?: boolean
   returnLastFrame?: boolean
@@ -68,8 +72,8 @@ export async function generateVideo(params: GenerateVideoParams): Promise<number
   const config = await getConfigForModelAsync('video', params.model, params.configId, params.userId, params.userProviderId)
   if (!config) throw new Error('No active video AI config')
   const defaults = config.modelDefaults || {}
-  const duration = Number(params.duration || defaults.duration || 5)
-  const resolution = params.resolution || defaults.resolution || '720p'
+  const duration = params.duration === 0 ? 0 : Number(params.duration || defaults.duration || 5)
+  const resolution = params.mode || params.resolution || params.quality || defaults.mode || defaults.resolution || defaults.quality || '720p'
 
   const lastId = await insertVideoGeneration({
     storyboardId: params.storyboardId,
@@ -129,6 +133,7 @@ export async function generateVideo(params: GenerateVideoParams): Promise<number
   })
   const runtimeOptions: VideoRuntimeOptions = {
     generateAudio: params.generateAudio ?? defaults.generate_audio ?? defaults.generateAudio,
+    audioSetting: params.audioSetting || defaults.audio_setting || defaults.audioSetting,
     cameraFixed: params.cameraFixed ?? defaults.camera_fixed ?? defaults.cameraFixed,
     watermark: params.watermark ?? defaults.watermark,
     returnLastFrame: params.returnLastFrame ?? defaults.return_last_frame ?? defaults.returnLastFrame,
@@ -183,7 +188,7 @@ function buildVideoChargeRequest(
 }
 
 async function processVideoGeneration(id: number, config: AIConfig, runtimeOptions: VideoRuntimeOptions = {}, userId?: string) {
-  const adapter = getVideoAdapter(config.provider)
+  const adapter = getVideoAdapterForConfig(config)
 
   try {
     const record = await findVideoGeneration(id)
@@ -247,11 +252,14 @@ async function processVideoGeneration(id: number, config: AIConfig, runtimeOptio
       referenceAudioUrls: resolvedReferenceAudioUrls ? JSON.stringify(resolvedReferenceAudioUrls) : null,
       duration: record.duration,
       fps: record.fps,
+      mode: record.resolution,
       resolution: record.resolution,
+      quality: record.resolution,
       aspectRatio: record.aspectRatio,
       frames: record.frames,
       seed: record.seed,
       generateAudio: record.generateAudio ?? runtimeOptions.generateAudio,
+      audioSetting: runtimeOptions.audioSetting,
       cameraFixed: record.cameraFixed ?? runtimeOptions.cameraFixed,
       watermark: record.watermark ?? runtimeOptions.watermark,
       returnLastFrame: record.returnLastFrame ?? runtimeOptions.returnLastFrame,
@@ -371,7 +379,7 @@ function normalizeMediaReferenceUrls(raw: string | null | undefined): string[] {
 }
 
 async function pollVideoTask(id: number, config: AIConfig, taskId: string, storyboardId?: number | null, userId?: string) {
-  const adapter = getVideoAdapter(config.provider)
+  const adapter = getVideoAdapterForConfig(config)
 
   for (let i = 0; i < 300; i++) {
     await new Promise(r => setTimeout(r, 10000))

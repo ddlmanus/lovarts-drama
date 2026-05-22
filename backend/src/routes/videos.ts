@@ -12,7 +12,15 @@ const app = new Hono()
 app.post('/', async (c) => {
   const body = await c.req.json()
   const referenceMode = String(body.reference_mode || body.referenceMode || '').toLowerCase()
-  if (!body.prompt && referenceMode !== 'draft_task') return badRequest(c, 'prompt is required')
+  const hasVideoInput = Boolean(
+    body.video_url ||
+    body.videoUrl ||
+    body.video_urls ||
+    body.videoUrls ||
+    body.reference_video_urls ||
+    body.referenceVideoUrls,
+  )
+  if (!body.prompt && referenceMode !== 'draft_task' && !hasVideoInput) return badRequest(c, 'prompt is required')
   const userId = currentAuthUserId(c)
 
   try {
@@ -41,16 +49,18 @@ app.post('/', async (c) => {
       imageUrl: body.image_url,
       firstFrameUrl: body.first_frame_url,
       lastFrameUrl: body.last_frame_url,
-      referenceImageUrls: body.reference_image_urls,
-      referenceVideoUrls: body.reference_video_urls ?? body.video_urls ?? body.referenceVideoUrls,
+      referenceImageUrls: body.reference_image_urls ?? body.image_urls ?? body.imageUrls ?? body.referenceImageUrls,
+      referenceVideoUrls: body.reference_video_urls ?? body.video_urls ?? body.videoUrls ?? body.video_url ?? body.videoUrl ?? body.referenceVideoUrls,
       referenceAudioUrls: body.reference_audio_urls ?? body.audio_urls ?? body.referenceAudioUrls,
       duration: body.duration,
       fps: body.fps,
-      resolution: body.resolution,
+      mode: body.mode,
+      resolution: body.resolution ?? body.quality ?? body.mode,
       aspectRatio: body.aspect_ratio,
       frames: body.frames,
       seed: body.seed,
       generateAudio: body.generate_audio ?? body.generateAudio,
+      audioSetting: body.audio_setting ?? body.audioSetting,
       cameraFixed: body.camera_fixed ?? body.cameraFixed,
       watermark: body.watermark,
       returnLastFrame: body.return_last_frame ?? body.returnLastFrame,
@@ -59,9 +69,14 @@ app.post('/', async (c) => {
       callbackUrl: body.callback_url ?? body.callbackUrl,
       draft: body.draft,
       draftTaskId: body.draft_task_id ?? body.draftTaskId,
-      tools: body.tools,
+      tools: {
+        ...(body.tools && typeof body.tools === 'object' ? body.tools : {}),
+        ...(body.metadata ? { metadata: body.metadata } : {}),
+        ...(body.prompt_extend !== undefined ? { prompt_extend: body.prompt_extend } : {}),
+        ...(body.promptExtend !== undefined ? { promptExtend: body.promptExtend } : {}),
+      },
       negativePrompt: body.negative_prompt ?? body.negativePrompt,
-      enhancePrompt: body.enhance_prompt ?? body.enhancePrompt,
+      enhancePrompt: body.enhance_prompt ?? body.enhancePrompt ?? body.prompt_optimizer ?? body.promptOptimizer,
       personGeneration: body.person_generation ?? body.personGeneration,
       numberOfVideos: body.number_of_videos ?? body.numberOfVideos ?? body.sample_count ?? body.sampleCount,
       configId,

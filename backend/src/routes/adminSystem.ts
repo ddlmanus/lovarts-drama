@@ -19,8 +19,8 @@ async function publicSettings() {
 export async function publicBrandSettings() {
   const settings = await publicSettings()
   return {
-    site_name: settings.site_name || 'Lovarts.短剧',
-    site_title: settings.site_title || settings.site_name || 'Lovarts.短剧',
+    site_name: settings.site_name || 'Lovarts短剧平台',
+    site_title: settings.site_title || settings.site_name || 'Lovarts短剧平台',
     site_logo_url: settings.site_logo_url || '',
     default_avatar_url: settings.default_avatar_url || '',
   }

@@ -1,7 +1,7 @@
 /**
  * AI 音色管理
  * GET  /api/v1/ai-voices       - 获取音色列表
- * POST /api/v1/ai-voices/sync  - 从Lovarts.短剧/MiniMax 音频链路同步音色
+ * POST /api/v1/ai-voices/sync  - 从Lovarts短剧平台/MiniMax 音频链路同步音色
  */
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
@@ -36,7 +36,7 @@ app.get('/', async (c) => {
 
 // POST /ai-voices/sync
 app.post('/sync', async (c) => {
-  // 从数据库获取Lovarts.短剧或 MiniMax 的音频配置
+  // 从数据库获取Lovarts短剧平台或 MiniMax 的音频配置
   const rows = db.select().from(schema.aiServiceConfigs)
     .where(eq(schema.aiServiceConfigs.serviceType, 'audio'))
     .execute()

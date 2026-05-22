@@ -3,8 +3,8 @@
     <section class="settings-section">
       <h3>网站信息</h3>
       <div class="form-grid">
-        <label>网站名称<input v-model="admin.systemSettingsForm.site_name" placeholder="Lovarts.短剧" /></label>
-        <label>网站标题<input v-model="admin.systemSettingsForm.site_title" placeholder="Lovarts.短剧" /></label>
+        <label>网站名称<input v-model="admin.systemSettingsForm.site_name" placeholder="Lovarts短剧平台" /></label>
+        <label>网站标题<input v-model="admin.systemSettingsForm.site_title" placeholder="Lovarts短剧平台" /></label>
       </div>
       <label>网站描述<textarea v-model="admin.systemSettingsForm.site_description" rows="3" /></label>
       <label>网站关键词<input v-model="admin.systemSettingsForm.site_keywords" placeholder="AI短剧,短剧创作" /></label>

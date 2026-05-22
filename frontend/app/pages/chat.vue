@@ -766,7 +766,7 @@
           </div>
         </div>
         <p v-if="projectSource === 'local'" class="dialog-note">
-          本地目录只适合Lovarts.短剧后端运行在你这台电脑时使用；服务器部署时应改用 GitHub/仓库工作区。为安全起见，不能绑定Lovarts.短剧应用自身目录或它的父子目录。
+          本地目录只适合Lovarts短剧平台后端运行在你这台电脑时使用；服务器部署时应改用 GitHub/仓库工作区。为安全起见，不能绑定Lovarts短剧平台应用自身目录或它的父子目录。
         </p>
         <p v-if="projectSource === 'github'" class="dialog-note">
           支持公开仓库或当前机器 Git 已授权可访问的私有仓库；下载后的代码会保存在 Codex 工作区里。

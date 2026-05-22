@@ -254,7 +254,7 @@ app.post('/huobao-preset', async (c) => {
     const values = {
       serviceType: preset.serviceType,
       provider: preset.provider,
-      name: `Lovarts.短剧默认${preset.label}服务`,
+      name: `Lovarts短剧平台默认${preset.label}服务`,
       baseUrl: preset.baseUrl,
       apiKey,
       model: JSON.stringify([preset.model]),

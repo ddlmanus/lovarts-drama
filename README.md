@@ -308,6 +308,25 @@ frontend/dist
 
 ```
 
+## 部署
+
+当前服务器部署脚本：
+
+```bash
+./deploy_drama_lovarts.sh
+```
+
+默认部署目标：
+
+| 项 | 值 |
+| --- | --- |
+| 服务器 | `103.171.35.146` |
+| 用户 | `root` |
+| 域名 | `drama.lovarts.art` |
+| 远端目录 | `/www/wwwroot/drama-lovarts` |
+| PM2 应用名 | `drama-lovarts-backend` |
+| 应用端口 | `5679` |
+| Nginx | 优先适配宝塔路径 `/www/server/nginx` |
 
 脚本会做这些事：
 

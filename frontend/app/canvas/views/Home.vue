@@ -3,7 +3,7 @@
     <main class="max-w-5xl mx-auto px-4 py-8 md:py-16">
       <section class="text-center mb-12">
         <div class="flex items-center justify-center gap-4 mb-8">
-          <h1 class="text-2xl md:text-4xl font-bold text-[var(--text-primary)]">Lovarts.短剧无限画布</h1>
+          <h1 class="text-2xl md:text-4xl font-bold text-[var(--text-primary)]">Lovarts短剧平台无限画布</h1>
         </div>
       </section>
 

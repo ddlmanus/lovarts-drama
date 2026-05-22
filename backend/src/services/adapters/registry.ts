@@ -10,6 +10,13 @@ import { ZenMuxImageAdapter } from './zenmux-image'
 import { GeminiImageAdapter } from './gemini-image'
 import { ApimartImageAdapter } from './apimart-image'
 import { ApimartVideoAdapter } from './apimart-video'
+import { ApimartHappyHorseVideoAdapter } from './apimart-happyhorse-video'
+import { ApimartSkyReelsVideoAdapter } from './apimart-skyreels-video'
+import { ApimartGrokImagineVideoAdapter } from './apimart-grok-imagine-video'
+import { ApimartKlingOmniVideoAdapter } from './apimart-kling-omni-video'
+import { ApimartViduQ3VideoAdapter } from './apimart-vidu-q3-video'
+import { ApimartWanVideoEditAdapter } from './apimart-wan-video-edit'
+import { ApimartOmniFlashExtVideoAdapter } from './apimart-omni-flash-ext-video'
 import { VolcEngineImageAdapter } from './volcengine-image'
 import { VolcEngineVideoAdapter } from './volcengine-video'
 import { ViduVideoAdapter } from './vidu-video'
@@ -43,6 +50,14 @@ export const videoAdapters: Record<string, VideoProviderAdapter> = {
   // Chatfire 视频 - 待确认 API 格式
 }
 
+const apimartHappyHorseVideoAdapter = new ApimartHappyHorseVideoAdapter()
+const apimartSkyReelsVideoAdapter = new ApimartSkyReelsVideoAdapter()
+const apimartGrokImagineVideoAdapter = new ApimartGrokImagineVideoAdapter()
+const apimartKlingOmniVideoAdapter = new ApimartKlingOmniVideoAdapter()
+const apimartViduQ3VideoAdapter = new ApimartViduQ3VideoAdapter()
+const apimartWanVideoEditAdapter = new ApimartWanVideoEditAdapter()
+const apimartOmniFlashExtVideoAdapter = new ApimartOmniFlashExtVideoAdapter()
+
 // TTS Adapter 注册表
 export const ttsAdapters: Record<string, TTSProviderAdapter> = {
   minimax: new MiniMaxTTSAdapter(),
@@ -75,7 +90,9 @@ function configuredProtocol(config?: Pick<AIConfig, 'modelDefaults' | 'modelCapa
 }
 
 export function getImageAdapterForConfig(config: AIConfig): ImageProviderAdapter {
-  if (configuredProtocol(config) === 'openai-image') return imageAdapters['openai']
+  const protocol = configuredProtocol(config)
+  if (protocol === 'openai-image') return imageAdapters['openai']
+  if (protocol === 'gemini-image' || protocol === 'google-gemini-image') return imageAdapters['gemini']
   return getImageAdapter(config.provider)
 }
 
@@ -86,4 +103,32 @@ export function getImageAdapterForConfig(config: AIConfig): ImageProviderAdapter
  */
 export function getVideoAdapter(provider: string): VideoProviderAdapter {
   return videoAdapters[provider.toLowerCase()] || videoAdapters['minimax']
+}
+
+export function getVideoAdapterForConfig(config: AIConfig): VideoProviderAdapter {
+  const protocol = configuredProtocol(config)
+  const provider = String(config.provider || '').trim().toLowerCase()
+  const model = String(config.model || '').trim().toLowerCase()
+  if (provider === 'apimart' && (protocol === 'apimart-happyhorse-video' || model === 'happyhorse-1.0')) {
+    return apimartHappyHorseVideoAdapter
+  }
+  if (provider === 'apimart' && (protocol === 'apimart-skyreels-v4-video' || model === 'skyreels-v4-fast' || model === 'skyreels-v4-std')) {
+    return apimartSkyReelsVideoAdapter
+  }
+  if (provider === 'apimart' && (protocol === 'apimart-grok-imagine-video' || model === 'grok-imagine-1.0-video-apimart')) {
+    return apimartGrokImagineVideoAdapter
+  }
+  if (provider === 'apimart' && (protocol === 'apimart-kling-v3-omni-video' || model === 'kling-v3-omni')) {
+    return apimartKlingOmniVideoAdapter
+  }
+  if (provider === 'apimart' && (protocol === 'apimart-vidu-q3-video' || model === 'viduq3-pro' || model === 'viduq3-turbo')) {
+    return apimartViduQ3VideoAdapter
+  }
+  if (provider === 'apimart' && (protocol === 'apimart-wan-video-edit' || model === 'wan2.7-videoedit')) {
+    return apimartWanVideoEditAdapter
+  }
+  if (provider === 'apimart' && (protocol === 'apimart-omni-flash-ext-video' || model === 'omni-flash-ext')) {
+    return apimartOmniFlashExtVideoAdapter
+  }
+  return getVideoAdapter(config.provider)
 }

@@ -285,6 +285,10 @@ export const useVideoGeneration = () => {
     }
     if (params.last_frame_image) requestData.last_frame_url = params.last_frame_image
 
+    if (Array.isArray(params.images) && params.images.length > 0) {
+      requestData.reference_image_urls = params.images.filter(Boolean)
+    }
+
     // Call API to create task | 调用 API 创建任务
     const task = await videoAPI.generate(requestData)
 

@@ -95,7 +95,7 @@
     </div>
     <div class="footer">
       <div class="action-buttons">
-        <button class="model-select-button" type="button" @click="typeMenuOpen = !typeMenuOpen; modelMenuOpen = false; imageSizeMenuOpen = false; resolutionMenuOpen = false; countMenuOpen = false">
+        <button class="model-select-button" type="button" @click="typeMenuOpen = !typeMenuOpen; modelMenuOpen = false; imageSizeMenuOpen = false; resolutionMenuOpen = false; durationMenuOpen = false; countMenuOpen = false">
           <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="currentColor" d="M5 21q-.825 0-1.412-.587T3 19V5q0-.825.588-1.412T5 3h14q.825 0 1.413.588T21 5v14q0 .825-.587 1.413T19 21zm1-4h12l-3.75-5l-3 4L9 13z" />
           </svg>
@@ -109,7 +109,7 @@
             </button>
           </div>
         </button>
-        <button class="model-select-button model-picker-button" type="button" @click="modelMenuOpen = !modelMenuOpen; typeMenuOpen = false; imageSizeMenuOpen = false; resolutionMenuOpen = false; countMenuOpen = false">
+        <button class="model-select-button model-picker-button" type="button" @click="modelMenuOpen = !modelMenuOpen; typeMenuOpen = false; imageSizeMenuOpen = false; resolutionMenuOpen = false; durationMenuOpen = false; countMenuOpen = false">
           <img src="https://ffile.chatfire.site/cf/chatfire-media/icon/dark/google-color.png" alt="" class="model-icon" />
           <span class="selected-model-text">
             <span>{{ selectedModelLabel }}</span>
@@ -137,7 +137,7 @@
             <div v-if="!activeModels.length" class="empty-option">当前用户没有可用{{ activeTypeLabel }}模型</div>
           </div>
         </button>
-        <button v-if="activeType === 'video'" class="model-select-button mode-picker-button" type="button" @click="modeMenuOpen = !modeMenuOpen; typeMenuOpen = false; modelMenuOpen = false; imageSizeMenuOpen = false; resolutionMenuOpen = false; countMenuOpen = false">
+        <button v-if="activeType === 'video'" class="model-select-button mode-picker-button" type="button" @click="modeMenuOpen = !modeMenuOpen; typeMenuOpen = false; modelMenuOpen = false; imageSizeMenuOpen = false; resolutionMenuOpen = false; durationMenuOpen = false; countMenuOpen = false">
           <span>{{ selectedModeLabel }}</span>
           <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="currentColor" d="m12 15.4l-6-6L7.4 8l4.6 4.6L16.6 8L18 9.4z" />
@@ -157,7 +157,7 @@
         </button>
       </div>
       <div class="footer-right">
-        <button v-if="activeType === 'image'" class="parameter-button count-button" type="button" @click="countMenuOpen = !countMenuOpen; imageSizeMenuOpen = false; resolutionMenuOpen = false; typeMenuOpen = false; modelMenuOpen = false">
+        <button v-if="activeType === 'image'" class="parameter-button count-button" type="button" @click="countMenuOpen = !countMenuOpen; imageSizeMenuOpen = false; resolutionMenuOpen = false; durationMenuOpen = false; typeMenuOpen = false; modelMenuOpen = false">
           <span>{{ selectedCount }} 张</span>
           <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="currentColor" d="m12 15.4l-6-6L7.4 8l4.6 4.6L16.6 8L18 9.4z" />
@@ -175,7 +175,7 @@
             </button>
           </div>
         </button>
-        <button class="parameter-button" type="button" @click="imageSizeMenuOpen = !imageSizeMenuOpen; countMenuOpen = false; resolutionMenuOpen = false; typeMenuOpen = false; modelMenuOpen = false">
+        <button class="parameter-button" type="button" @click="imageSizeMenuOpen = !imageSizeMenuOpen; countMenuOpen = false; resolutionMenuOpen = false; durationMenuOpen = false; typeMenuOpen = false; modelMenuOpen = false">
           <span>{{ selectedImageSizeLabel }}</span>
           <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="currentColor" d="m12 15.4l-6-6L7.4 8l4.6 4.6L16.6 8L18 9.4z" />
@@ -194,7 +194,26 @@
             <div v-if="!imageSizeOptions.length" class="empty-option">当前模型没有可选{{ imageSizeGroupTitle }}</div>
           </div>
         </button>
-        <button class="parameter-button" type="button" @click="resolutionMenuOpen = !resolutionMenuOpen; countMenuOpen = false; imageSizeMenuOpen = false; typeMenuOpen = false; modelMenuOpen = false">
+        <button v-if="activeType === 'video'" class="parameter-button" type="button" @click="durationMenuOpen = !durationMenuOpen; countMenuOpen = false; imageSizeMenuOpen = false; resolutionMenuOpen = false; typeMenuOpen = false; modelMenuOpen = false">
+          <span>{{ selectedDurationLabel }}</span>
+          <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="m12 15.4l-6-6L7.4 8l4.6 4.6L16.6 8L18 9.4z" />
+          </svg>
+          <div v-if="durationMenuOpen" class="select-popover size-popover">
+            <div v-if="durationOptions.length" class="option-group-title">视频时长</div>
+            <button
+              v-for="item in durationOptions"
+              :key="item.value"
+              type="button"
+              :class="{ active: selectedDuration === item.value }"
+              @click.stop="selectDuration(item.value)"
+            >
+              {{ item.label }}
+            </button>
+            <div v-if="!durationOptions.length" class="empty-option">当前模型没有可选时长</div>
+          </div>
+        </button>
+        <button class="parameter-button" type="button" @click="resolutionMenuOpen = !resolutionMenuOpen; countMenuOpen = false; imageSizeMenuOpen = false; durationMenuOpen = false; typeMenuOpen = false; modelMenuOpen = false">
           <span>{{ selectedResolutionLabel }}</span>
           <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="currentColor" d="m12 15.4l-6-6L7.4 8l4.6 4.6L16.6 8L18 9.4z" />
@@ -231,8 +250,9 @@
 
 <script setup>
 import { toast } from 'vue-sonner'
-import { aiModelAPI, billingAPI, uploadAPI } from '~/composables/useApi'
+import { billingAPI, uploadAPI } from '~/composables/useApi'
 import { useCreationTasks } from '~/composables/useCreationTasks'
+import { useModelCatalog } from '~/composables/useModelCatalog'
 
 const model = defineModel({ type: String, default: '' })
 const props = defineProps({
@@ -256,10 +276,11 @@ const selectedModel = ref('')
 const selectedImageSize = ref('')
 const selectedResolution = ref('')
 const selectedQuality = ref('')
+const selectedDuration = ref('')
 const selectedCount = ref(1)
 const selectedMode = ref('none')
 const countOptions = [1, 2, 3, 4]
-const modeOptions = [
+const fallbackModeOptions = [
   { label: '文生视频', value: 'none', desc: '不引用素材' },
   { label: '首帧', value: 'first_frame', desc: '使用 1 张图片作为首帧' },
   { label: '首尾帧', value: 'first_last', desc: '使用 2 张图片控制首尾帧' },
@@ -271,6 +292,7 @@ const typeMenuOpen = ref(false)
 const modelMenuOpen = ref(false)
 const imageSizeMenuOpen = ref(false)
 const resolutionMenuOpen = ref(false)
+const durationMenuOpen = ref(false)
 const countMenuOpen = ref(false)
 const modeMenuOpen = ref(false)
 const assetPickerOpen = ref(false)
@@ -283,8 +305,7 @@ const submitting = ref(false)
 const pendingUploadRole = ref('')
 const editingPrompt = ref(false)
 const assetCounters = reactive({ image: 0, video: 0, audio: 0 })
-const imageModels = ref([])
-const videoModels = ref([])
+const { imageModels, videoModels, loadModelCatalog } = useModelCatalog()
 const activeModels = computed(() => activeType.value === 'video' ? videoModels.value : imageModels.value)
 const activeTypeLabel = computed(() => typeOptions.find(item => item.value === activeType.value)?.label || '图片')
 const selectedModelLabel = computed(() => {
@@ -325,6 +346,21 @@ const isApimartGeminiImage = computed(() => {
   const modelId = String(config?.model_id || config?.value || '').toLowerCase()
   return provider === 'apimart' && modelId.startsWith('gemini-3.1-flash-image-preview')
 })
+const isGeminiImageProtocol = computed(() => {
+  const config = selectedModelConfig.value
+  const provider = String(config?.provider || '').toLowerCase()
+  const modelId = String(config?.model_id || config?.value || '').toLowerCase()
+  const protocol = String(
+    config?.defaults?.protocol ||
+    config?.defaults?.apiProtocol ||
+    config?.defaults?.api_protocol ||
+    config?.capabilities?.protocol ||
+    config?.capabilities?.apiProtocol ||
+    config?.capabilities?.api_protocol ||
+    ''
+  ).toLowerCase().replace(/_/g, '-')
+  return protocol === 'gemini-image' || provider === 'gemini' || modelId.startsWith('gemini-3.1-flash-image-preview') || modelId.startsWith('gemini-3-pro-image-preview') || modelId.startsWith('gemini-2.5-flash-image')
+})
 const maxUploads = computed(() => {
   const config = selectedModelConfig.value
   const capabilityMax = Number(config?.capabilities?.max_reference_images || config?.capabilities?.maxReferenceImages || 0)
@@ -335,17 +371,20 @@ const maxUploads = computed(() => {
     return Number.isFinite(refMax) ? Math.max(max, refMax) : max
   }, 0)
   if (profileMax > 0) return profileMax
-  if (isApimartGeminiImage.value) return 14
+  if (isApimartGeminiImage.value || isGeminiImageProtocol.value) return 14
   return (isApimartGptImage2.value || isApimartOfficialImage.value || isOpenAIImageProtocol.value) ? 16 : 4
 })
 const imageSizeOptions = computed(() => activeType.value === 'video' ? buildAspectRatioOptions(selectedModelConfig.value) : buildImageSizeOptions(selectedModelConfig.value))
 const resolutionOptions = computed(() => buildResolutionOptions(selectedModelConfig.value))
+const durationOptions = computed(() => activeType.value === 'video' ? buildDurationOptions(selectedModelConfig.value) : [])
 const qualityOptions = computed(() => buildQualityOptions(selectedModelConfig.value))
+const modeOptions = computed(() => buildVideoModeOptions(selectedModelConfig.value))
 const selectedImageSizeLabel = computed(() => imageSizeOptions.value.find(item => item.value === selectedImageSize.value)?.label || imageSizeOptions.value[0]?.label || imageSizeGroupTitle.value)
 const selectedResolutionLabel = computed(() => resolutionOptions.value.find(item => item.value === selectedResolution.value)?.label || resolutionOptions.value[0]?.label || '分辨率')
+const selectedDurationLabel = computed(() => durationOptions.value.find(item => item.value === selectedDuration.value)?.label || durationOptions.value[0]?.label || '时长')
 const imageSizeGroupTitle = computed(() => '画面比例')
 const visibleStackImages = computed(() => uploadedImages.value.slice(0, 3))
-const selectedModeLabel = computed(() => modeOptions.find(item => item.value === selectedMode.value)?.label || '模式')
+const selectedModeLabel = computed(() => modeOptions.value.find(item => item.value === selectedMode.value)?.label || modeOptions.value[0]?.label || '模式')
 const activeAssets = computed(() => activeType.value === 'image' ? uploadedImages.value.map(imageToAsset) : uploadedAssets.value)
 const availableAssets = computed(() => activeType.value === 'image' ? activeAssets.value.filter(item => item.type === 'image') : activeAssets.value)
 const firstFrameAsset = computed(() => uploadedAssets.value.find(item => item.role === 'first_frame') || uploadedAssets.value.filter(item => item.type === 'image')[0] || null)
@@ -379,7 +418,8 @@ const estimatedCreditCost = computed(() => {
   if (isUserApiModel(config) || config.is_free) return 0
   const quantity = activeType.value === 'image' ? Number(selectedCount.value || 1) : 1
   const unitCost = costForSelectedResolution(config)
-  return Math.max(0, Math.ceil(unitCost * quantity))
+  const durationMultiplier = activeType.value === 'video' ? Number(selectedDuration.value || config.defaults?.duration || 1) : 1
+  return Math.max(0, Math.ceil(unitCost * quantity * Math.max(1, durationMultiplier || 1)))
 })
 const shouldShowCreditCost = computed(() => !selectedModelUsesUserApi.value)
 
@@ -603,24 +643,19 @@ function removeImage(url) {
 }
 
 async function loadModels() {
-  const [images, videos] = await Promise.all([
-    aiModelAPI.options('image'),
-    aiModelAPI.options('video'),
-  ])
-  imageModels.value = images
-  videoModels.value = videos
+  await loadModelCatalog()
   ensureSelectedModel()
 }
 
 async function reloadModels() {
-  imageModels.value = []
-  videoModels.value = []
   selectedModel.value = ''
   selectedImageSize.value = ''
   selectedResolution.value = ''
+  selectedDuration.value = ''
   selectedQuality.value = ''
   try {
-    await loadModels()
+    await loadModelCatalog(true)
+    ensureSelectedModel()
   } catch (err) {
     toast.error(err.message || '模型加载失败')
   }
@@ -686,6 +721,16 @@ function isResolutionValue(value) {
   return /^(\d+k|\d+p)$/i.test(String(value || '').trim())
 }
 
+function normalizeDurationValue(value) {
+  const match = String(value || '').trim().match(/\d+/)
+  return match ? String(Math.max(1, Number(match[0]) || 0)) : ''
+}
+
+function durationOptionFromValue(value) {
+  const normalized = normalizeDurationValue(value)
+  return normalized ? { label: `${normalized}s`, value: normalized } : null
+}
+
 function isApimartImageModel() {
   return isApimartGptImage2.value || isApimartOfficialImage.value || isApimartGeminiImage.value
 }
@@ -699,6 +744,81 @@ function profileOptions(modelConfig, predicate) {
   return parameterItems(modelConfig)
     .filter(item => predicate(String(item.value || '').trim(), String(item.type || '').toUpperCase()))
     .map(item => ({ label: item.label || item.value, value: item.value }))
+}
+
+function normalizeVideoModeValue(value) {
+  const raw = String(value || '').trim().toLowerCase().replace(/-/g, '_')
+  const aliases = {
+    text2video: 'none',
+    t2v: 'none',
+    none: 'none',
+    image2video: 'first_frame',
+    i2v: 'first_frame',
+    single: 'first_frame',
+    first: 'first_frame',
+    first_frame: 'first_frame',
+    first_last: 'first_last',
+    first_last_frame: 'first_last',
+    start_end: 'first_last',
+    reference: 'reference',
+    multiple: 'reference',
+    reference_fusion: 'reference',
+    multimodal_reference: 'multimodal_reference',
+    omni: 'multimodal_reference',
+    video_edit: 'video_edit',
+    edit: 'video_edit',
+  }
+  return aliases[raw] || raw
+}
+
+function videoModeMeta(value) {
+  return {
+    none: { label: '文生视频', desc: '不引用素材' },
+    first_frame: { label: '首帧', desc: '使用 1 张图片作为首帧' },
+    first_last: { label: '首尾帧', desc: '使用 2 张图片控制首尾帧' },
+    reference: { label: '多图参考', desc: '引用多张图片生成视频' },
+    multimodal_reference: { label: '全能参考', desc: '图片、视频、音频混合参考' },
+    video_edit: { label: '视频编辑', desc: '基于视频素材编辑' },
+  }[value] || { label: value, desc: '' }
+}
+
+function modeOption(value, label, desc) {
+  const normalized = normalizeVideoModeValue(value)
+  const meta = videoModeMeta(normalized)
+  return { label: label || meta.label, value: normalized, desc: desc || meta.desc }
+}
+
+function buildVideoModeOptions(modelConfig) {
+  if (!modelConfig) return fallbackModeOptions
+  const methodItems = parameterItems(modelConfig).filter(item => String(item.type || '').toUpperCase() === 'METHOD')
+  if (methodItems.length) {
+    return uniqueOptions(methodItems.map((item) => {
+      const config = item.config || {}
+      const imageUrls = config.imageUrls || config.image_urls || {}
+      const desc = item.description || item.desc || (imageUrls.min !== undefined || imageUrls.max !== undefined
+        ? `需要 ${imageUrls.min ?? 0}-${imageUrls.max ?? imageUrls.min ?? 0} 张图片`
+        : '')
+      return modeOption(item.value, item.label, desc)
+    }))
+  }
+
+  const capabilities = modelConfig.capabilities || {}
+  const explicitModes = [
+    ...(Array.isArray(capabilities.modes) ? capabilities.modes : []),
+    ...(Array.isArray(capabilities.methods) ? capabilities.methods : []),
+    ...(Array.isArray(capabilities.supported_modes) ? capabilities.supported_modes : []),
+    ...(Array.isArray(capabilities.supportedModes) ? capabilities.supportedModes : []),
+  ]
+  if (explicitModes.length) return uniqueOptions(explicitModes.map(value => modeOption(value)))
+
+  const inferred = []
+  if (capabilities.text2video) inferred.push(modeOption('none'))
+  if (capabilities.image2video) inferred.push(modeOption('first_frame'))
+  if (capabilities.first_last || capabilities.firstLast) inferred.push(modeOption('first_last'))
+  if (capabilities.reference_fusion || capabilities.referenceFusion || capabilities.image_urls || capabilities.imageUrls) inferred.push(modeOption('reference'))
+  if (capabilities.omni || capabilities.multimodal_reference || capabilities.multimodalReference) inferred.push(modeOption('multimodal_reference'))
+  if (capabilities.video_edit || capabilities.videoEdit) inferred.push(modeOption('video_edit'))
+  return inferred.length ? uniqueOptions(inferred) : fallbackModeOptions
 }
 
 function buildImageSizeOptions(modelConfig) {
@@ -748,6 +868,34 @@ function buildResolutionOptions(modelConfig) {
   return []
 }
 
+function buildDurationOptions(modelConfig) {
+  if (!modelConfig) return []
+  const fromProfile = profileOptions(modelConfig, (_value, type) => type === 'DURATION')
+    .map(item => ({ label: item.label || `${normalizeDurationValue(item.value)}s`, value: normalizeDurationValue(item.value) }))
+    .filter(item => item.value)
+  if (fromProfile.length) return uniqueOptions(fromProfile)
+
+  const defaults = modelConfig.defaults || {}
+  const capabilities = modelConfig.capabilities || {}
+  const values = Array.isArray(capabilities.durations)
+    ? capabilities.durations
+    : Array.isArray(capabilities.duration?.values)
+      ? capabilities.duration.values
+      : []
+  const explicit = [
+    ...values,
+    defaults.duration,
+  ].map(durationOptionFromValue).filter(Boolean)
+  if (explicit.length) return uniqueOptions(explicit)
+
+  const min = Number(capabilities.duration?.min || capabilities.duration_min || capabilities.durationMin || 0)
+  const max = Number(capabilities.duration?.max || capabilities.duration_max || capabilities.durationMax || 0)
+  if (Number.isFinite(min) && Number.isFinite(max) && min > 0 && max >= min && max - min <= 30) {
+    return Array.from({ length: max - min + 1 }, (_, index) => durationOptionFromValue(min + index)).filter(Boolean)
+  }
+  return []
+}
+
 function buildQualityOptions(modelConfig) {
   if (!modelConfig) return []
   const fromProfile = profileOptions(modelConfig, (_value, type) => type === 'QUALITY' || type === 'MODE')
@@ -784,8 +932,14 @@ function ensureSelectedParams() {
   if (!selectedResolution.value || !resOptions.some(item => item.value === selectedResolution.value)) {
     selectedResolution.value = pickOption(resOptions, [defaults.sampleImageSize, defaults.sample_image_size, defaults.imageSizeLevel, defaults.image_size_level, defaults.resolution])
   }
+  if (activeType.value === 'video' && (!selectedDuration.value || !durationOptions.value.some(item => item.value === selectedDuration.value))) {
+    selectedDuration.value = pickOption(durationOptions.value, [defaults.duration])
+  }
   if (!selectedQuality.value || !qualityOptions.value.some(item => item.value === selectedQuality.value)) {
     selectedQuality.value = pickOption(qualityOptions.value, [defaults.quality])
+  }
+  if (activeType.value === 'video' && (!selectedMode.value || !modeOptions.value.some(item => item.value === selectedMode.value))) {
+    selectedMode.value = pickOption(modeOptions.value, [defaults.reference_mode, defaults.referenceMode, defaults.mode])
   }
 }
 
@@ -810,6 +964,11 @@ function selectImageSize(value) {
 function selectResolution(value) {
   selectedResolution.value = value
   resolutionMenuOpen.value = false
+}
+
+function selectDuration(value) {
+  selectedDuration.value = value
+  durationMenuOpen.value = false
 }
 
 function selectCount(value) {
@@ -982,7 +1141,7 @@ async function submitPrompt() {
       const record = await createGeneration({
         type: 'video',
         ...payload,
-        duration: 8,
+        duration: Number(selectedDuration.value || modelConfig?.defaults?.duration || 5),
         aspect_ratio: selectedImageSize.value || '16:9',
         resolution: selectedResolution.value || undefined,
         reference_mode: mode,
@@ -1020,8 +1179,8 @@ async function submitPrompt() {
       reference_images: imageAssetUrls.length ? imageAssetUrls : referenceUrls,
       image_urls: isApimartImageModel() ? (imageAssetUrls.length ? imageAssetUrls : referenceUrls) : undefined,
       official_fallback: isApimartGptImage2.value ? (selectedModelConfig.value?.defaults?.official_fallback ?? selectedModelConfig.value?.defaults?.officialFallback ?? false) : undefined,
-      google_search: isApimartGeminiImage.value ? (selectedModelConfig.value?.defaults?.google_search ?? selectedModelConfig.value?.defaults?.googleSearch ?? false) : undefined,
-      google_image_search: isApimartGeminiImage.value ? (selectedModelConfig.value?.defaults?.google_image_search ?? selectedModelConfig.value?.defaults?.googleImageSearch ?? false) : undefined,
+      google_search: isGeminiImageProtocol.value ? (selectedModelConfig.value?.defaults?.google_search ?? selectedModelConfig.value?.defaults?.googleSearch ?? false) : undefined,
+      google_image_search: isGeminiImageProtocol.value ? (selectedModelConfig.value?.defaults?.google_image_search ?? selectedModelConfig.value?.defaults?.googleImageSearch ?? false) : undefined,
     })
     toast.success('任务已提交')
     emit('submitted', record)
@@ -1042,7 +1201,7 @@ watch(activeType, () => {
 watch(selectedModelConfig, ensureSelectedParams)
 onMounted(() => {
   syncPromptEditable()
-  reloadModels()
+  loadModels()
   window.addEventListener('huobao-auth-change', reloadModels)
   window.addEventListener('huobao-model-config-change', reloadModels)
 })

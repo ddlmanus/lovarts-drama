@@ -265,7 +265,7 @@ const galleryItems = [
     type: '图片',
     height: 284.4,
     image: '/inspiration/f66ff5b3e5b0466dba51696fd38065fc_20250730_073500_c2fda4d1-6a4be035.jpg',
-    prompt: '画图问答找Lovarts.短剧，模型切换不用愁，复古印刷字体，彩色毛线缠绕，淡黄色绒布背景，温暖手工质感。',
+    prompt: '画图问答找Lovarts短剧平台，模型切换不用愁，复古印刷字体，彩色毛线缠绕，淡黄色绒布背景，温暖手工质感。',
   },
   {
     id: 17,
