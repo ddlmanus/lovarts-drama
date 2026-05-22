@@ -1,5 +1,0 @@
-{"ts":"2026-05-19T10:04:13.363Z","stream":"system","type":"user_message","role":"user","text":"看这张图片，只回答它是否包含火宝 logo 或文字"}
-{"ts":"2026-05-19T10:04:13.363Z","stream":"system","text":"启动 Codex：/Users/dudianlong/tool/huobao/backend/node_modules/.bin/codex \"exec\" \"--json\" \"--color\" \"never\" \"--skip-git-repo-check\" \"--sandbox\" \"workspace-write\" \"-C\" \"/Users/dudianlong/tool/huobao/data/codex/workspaces/codex_test_user/codex-test\" \"-c\" \"model_reasoning_effort=\\\"minimal\\\"\" \"--image\" \"/Users/dudianlong/tool/huobao/data/codex/workspaces/codex_test_user/codex-test/.codex-attachments/3b15e943-9cb0-46c2-b656-1115e746892d.png\" \"看这张图片，只回答它是否包含火宝 logo 或文字\""}
-{"ts":"2026-05-19T10:04:13.496Z","stream":"stderr","text":"Reading prompt from stdin...","raw":"Reading prompt from stdin..."}
-{"ts":"2026-05-19T10:04:13.496Z","stream":"stderr","text":"No prompt provided via stdin.","raw":"No prompt provided via stdin."}
-{"ts":"2026-05-19T10:04:13.501Z","stream":"system","text":"Codex 退出：code=1 signal=null"}

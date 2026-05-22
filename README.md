@@ -30,11 +30,18 @@
   <img src="./6b284a8a-c265-4475-ada0-fc7815b1bcea.png" alt="Lovarts Drama Preview" width="860" />
 </p>
 
-<p align="center">
-   在线使用教程  访问地址：https://drama.lovarts.art/   适用设计图和短剧制作的的网站：https://lovarts.art/
-   注册一个账号->填写使用自己的供应商信息->开始使用  注意 此时消耗的是你自己的api，不会产生收费情况 
-   如果没有自己api的用户 可以自己使用平台提供会员信息进行购买
-</p>
+## 在线使用
+
+| 入口 | 说明 |
+| --- | --- |
+| [Lovarts Drama 在线教程](https://drama.lovarts.art/) | 短剧制作、角色场景、分镜和视频生成工作台。 |
+| [Lovarts 设计图创作平台](https://lovarts.art/) | 适用于设计图、图片生成和通用 AI 创作。 |
+
+使用流程：
+
+1. 注册账号。
+2. 填写自己的供应商信息后开始使用，此时消耗你自己的 API，不会产生平台调用费用。
+3. 没有自有 API 的用户，可以购买平台提供的会员或积分后使用。
 
 ## 项目概览
 
