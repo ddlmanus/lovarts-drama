@@ -2,7 +2,7 @@
   <img src="./frontend/public/huobao-logo.png" width="88" alt="Lovarts Drama Logo" />
 </p>
 
-<h1 align="center">Lovarts Drama / Lovarts.短剧</h1>
+<h1 align="center">Lovarts Drama / Lovarts短剧平台</h1>
 
 <p align="center">
   AI 短剧生产工作台：剧本、角色、场景、分镜、图片、视频、配音、合成、灵感流和节点画布。
@@ -27,8 +27,7 @@
 </p>
 
 <p align="center">
-<img width="2928" height="1484" alt="image" src="https://github.com/user-attachments/assets/5fa31e58-e178-4315-853e-1b6c8d52bb2c" />
-
+  <img src="./6b284a8a-c265-4475-ada0-fc7815b1bcea.png" alt="Lovarts Drama Preview" width="860" />
 </p>
 
 ## 在线使用
@@ -65,24 +64,6 @@ Lovarts Drama 是一个全栈 AI 短剧生产平台。它把短剧项目、分�
 | 会员/积分 | 支持套餐、积分包、订单、支付配置和会员发放任务。 |
 | Codex 工作区 | 支持在产品内运行 Codex 任务、插件和用户隔离技能。 |
 
-## 页面路由
-
-| 路由 | 用途 |
-| --- | --- |
-| `/` | 短剧项目入口 |
-| `/home` | 灵感流和快捷创作入口 |
-| `/generate` | 生成工作台 |
-| `/canvas` | 全屏节点画布 |
-| `/chat` | Codex/聊天工作区 |
-| `/account` | 账户、会员、积分 |
-| `/transactions` | 交易记录 |
-| `/settings` | AI 服务和 Agent 配置 |
-| `/admin-login` | 管理员登录 |
-| `/admin` | 管理后台 |
-| `/library/characters` | 角色库 |
-| `/library/scenes` | 场景库 |
-| `/drama/:id` | 短剧详情 |
-| `/drama/:id/episode/:episodeNumber` | 分集生产工作台 |
 
 ## 技术栈
 
@@ -280,59 +261,6 @@ npm run dev
 Frontend: http://localhost:3013
 Backend:  http://localhost:5679
 Health:   http://localhost:5679/api/v1/health
-```
-
-前端开发服务器会把 `/api` 和 `/static` 代理到 `http://localhost:5679`，配置在 `frontend/nuxt.config.ts`。
-
-## MySQL 数据库
-
-当前后端默认使用 MySQL：
-
-```ts
-DB_DRIVER=mysql
-```
-
-主要配置入口在 `backend/src/config/env.ts`。读取顺序为：
-
-1. `DATABASE_URL`
-2. `MYSQL_*` / `DB_*` 拆分变量
-3. 默认值
-
-常用数据库变量：
-
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `DB_DRIVER` | `mysql` | 当前应保持为 `mysql` |
-| `DATABASE_URL` | 空 | MySQL 连接串 |
-| `MYSQL_HOST` / `DB_HOST` | `127.0.0.1` | MySQL 主机 |
-| `MYSQL_PORT` / `DB_PORT` | `3306` | MySQL 端口 |
-| `MYSQL_USER` / `DB_USER` | `root` | MySQL 用户 |
-| `MYSQL_PASSWORD` / `DB_PASSWORD` | 空 | MySQL 密码 |
-| `MYSQL_DATABASE` / `DB_NAME` | `huobao` | 数据库名 |
-| `MYSQL_CONNECTION_LIMIT` | `10` | 连接池大小 |
-| `MYSQL_CONNECT_TIMEOUT` | `60000` | 连接超时毫秒 |
-| `MYSQL_SSL` | `false` | 是否启用 SSL |
-| `MYSQL_TIMEZONE` | `+08:00` | MySQL 时区 |
-
-Redis 变量：
-
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `REDIS_URL` | 空 | Redis URL，存在时优先使用 |
-| `REDIS_HOST` | `127.0.0.1` | Redis 主机 |
-| `REDIS_PORT` | `6379` | Redis 端口 |
-| `REDIS_PASSWORD` | 空 | Redis 密码 |
-| `REDIS_DB` | `0` | Redis DB |
-| `REDIS_KEY_PREFIX` | `huobao:` | key 前缀 |
-| `REDIS_TLS` | `false` | 是否启用 TLS |
-
-## API
-
-主 API 挂载在：
-
-```text
-/api/v1
-```
 
 常用模块：
 
@@ -359,18 +287,6 @@ Redis 变量：
 | `/skills` | Agent 技能 |
 | `/codex` | Codex 工作区 |
 
-静态文件：
-
-```text
-/static/*
-```
-
-Webhook：
-
-```text
-/webhooks
-```
-
 ## 常用命令
 
 后端：
@@ -382,64 +298,16 @@ npm run start                # 直接启动后端
 npm run build                # TypeScript 编译
 npm run typecheck            # 仅类型检查
 npm run db:mysql:init        # 初始化 MySQL 基础表
-npm run db:sync:membership   # 同步会员/用户/积分相关字段
 ```
 
-前端：
-
-```bash
-cd frontend
-npm run dev                  # Nuxt dev server，端口 3013
-npm run build                # Nuxt production build
-npm run generate             # 静态生成 .output/public
-npm run preview              # 预览构建结果
-```
-
-## 生产构建
-
-当前后端会托管 Nuxt 静态产物。生产构建流程：
-
-```bash
-cd frontend
-npm ci
-npm run generate
-
-cd ../backend
-npm ci
-PORT=5679 NODE_ENV=production npm run start
-```
-
-后端启动后会优先读取：
-
-```text
-frontend/.output/public
-```
 
 如果没有该目录，会回退读取：
 
 ```text
 frontend/dist
+
 ```
 
-## 部署
-
-当前服务器部署脚本：
-
-```bash
-./deploy_drama_lovarts.sh
-```
-
-默认部署目标：
-
-| 项 | 值 |
-| --- | --- |
-| 服务器 | `103.171.35.146` |
-| 用户 | `root` |
-| 域名 | `drama.Lovarts.短剧` |
-| 远端目录 | `/www/wwwroot/drama-lovarts` |
-| PM2 应用名 | `drama-lovarts-backend` |
-| 应用端口 | `5679` |
-| Nginx | 优先适配宝塔路径 `/www/server/nginx` |
 
 脚本会做这些事：
 
@@ -450,7 +318,7 @@ frontend/dist
 5. 远端执行 `backend npm ci`。
 6. 用 PM2 启动或重启 `drama-lovarts-backend`。
 7. 写入宝塔 Nginx 虚拟主机配置。
-8. 使用 Certbot 为 `drama.Lovarts.短剧` 申请 HTTPS 证书。
+8. 使用 Certbot 为 `drama.lovarts.art` 申请 HTTPS 证书。
 9. 执行 `npm run db:sync:membership` 并重启后端。
 
 可覆盖默认值：
@@ -469,7 +337,7 @@ APP_PORT=5679 \
 部署后检查：
 
 ```bash
-curl https://drama.Lovarts.短剧/api/v1/health
+curl https://drama.lovarts.art/api/v1/health
 ssh root@103.171.35.146 "pm2 list"
 ```
 
@@ -485,25 +353,6 @@ ssh root@103.171.35.146 "pm2 list"
 - `REDIS_*` 环境变量。
 - `data/static` 持久化卷。
 
-## 故障排查
-
-### 后端健康检查失败
-
-```bash
-curl http://localhost:5679/api/v1/health
-```
-
-检查：
-
-- `backend/.env` 是否存在。
-- MySQL 是否可连。
-- Redis 是否可连。
-- `PORT` 是否被占用。
-- PM2 日志：`pm2 logs drama-lovarts-backend`
-
-### MySQL 报 Unknown column
-
-说明库结构落后于代码，运行：
 
 ```bash
 cd backend
@@ -512,42 +361,6 @@ npm run db:sync:membership
 
 然后重启后端。
 
-### 前端请求接口失败
-
-开发环境检查 `frontend/nuxt.config.ts` 的代理：
-
-```text
-/api    -> http://localhost:5679
-/static -> http://localhost:5679
-```
-
-生产环境检查 Nginx 是否反代到 `127.0.0.1:5679`。
-
-### 上传或媒体生成失败
-
-检查 FFmpeg 和静态目录权限：
-
-```bash
-ffmpeg -version
-mkdir -p data/static
-```
-
-后端默认本地存储路径是：
-
-```text
-data/static
-```
-
-可用 `STORAGE_PATH` 覆盖。
-
-### HTTPS 证书申请失败
-
-确认：
-
-- 域名 A 记录指向服务器。
-- 服务器 80/443 端口开放。
-- Nginx 的 `/.well-known/acme-challenge/` 没有被强制跳转到应用首页。
-- 宝塔 Nginx 使用 `/www/server/nginx/sbin/nginx -t/-s reload`。
 
 ## 提交前检查
 
@@ -558,21 +371,6 @@ npm run build
 cd ../backend
 npm run typecheck
 ```
-
-不要提交：
-
-```text
-node_modules/
-.env
-.env.local
-frontend/.nuxt/
-frontend/.output/
-backend/dist/
-data/
-output/
-*.log
-```
-
 ## License
 
 Released under the [MIT License](./LICENSE).
