@@ -95,7 +95,7 @@ onMounted(load)
 .library-page {
   min-height: 100%;
   padding: 14px;
-  background: var(--chatfire-bg-primary);
+  background: transparent;
   color: var(--chatfire-text-primary);
 }
 .library-hero {

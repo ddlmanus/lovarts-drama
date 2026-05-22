@@ -155,14 +155,14 @@ onMounted(load)
 .library-page {
   min-height: 100%;
   padding: 14px;
-  background: var(--chatfire-bg-primary);
+  background: transparent;
   color: var(--chatfire-text-primary);
 }
 .library-panel {
   min-height: calc(100vh - 28px);
-  border-radius: 10px;
-  background: #151a20;
-  padding: 18px 22px 28px;
+  border-radius: 0;
+  background: transparent;
+  padding: 4px 16px 18px;
   overflow: hidden;
 }
 .library-hero {
@@ -439,8 +439,8 @@ onMounted(load)
   }
   .library-panel {
     min-height: calc(100vh - 20px);
-    padding: 18px;
-    border-radius: 14px;
+    padding: 4px 0 18px;
+    border-radius: 0;
   }
   .library-hero {
     align-items: flex-start;
