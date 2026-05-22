@@ -142,8 +142,8 @@ server {
     location / { return 301 https://\$host\$request_uri; }
 }
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
     server_name ${DOMAIN};
     client_max_body_size 1024m;
     ssl_certificate /etc/letsencrypt/live/${cert_name}/fullchain.pem;

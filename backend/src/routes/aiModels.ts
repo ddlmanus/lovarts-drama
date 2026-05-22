@@ -8,6 +8,9 @@ import { isPlatformUserId } from '../repositories/models.js'
 
 const app = new Hono()
 const DEFAULT_USER_ID = 'default'
+type ProviderRow = typeof schema.aiServiceProviders.$inferSelect
+type ModelConfigRow = typeof schema.aiModelConfigs.$inferSelect
+type ParameterProfileRow = typeof schema.aiModelParameterProfiles.$inferSelect
 
 function parseJson(value: string | null | undefined, fallback: any) {
   if (!value) return fallback
@@ -275,6 +278,22 @@ function serializeParameterItem(row: typeof schema.aiModelParameterProfileItems.
   }
 }
 
+function serializeParameterProfileWithItems(
+  row: typeof schema.aiModelParameterProfiles.$inferSelect,
+  allItems: Array<typeof schema.aiModelParameterProfileItems.$inferSelect>,
+) {
+  const items = allItems
+    .filter(item => item.profileId === row.id && !item.deletedAt)
+    .sort((a, b) => (a.rank || 0) - (b.rank || 0) || a.id - b.id)
+  return {
+    ...toSnakeCase(row),
+    model_type: typeFromService(row.serviceType),
+    parameters: items.map(serializeParameterItem),
+    items: items.map(serializeParameterItem),
+    item_count: items.length,
+  }
+}
+
 function currentUserId(c: any) {
   return currentAuthUserId(c)
 }
@@ -451,11 +470,128 @@ async function serializeModelOption(row: typeof schema.aiModelConfigs.$inferSele
   }
 }
 
+function billingRuleCreditMapFromRows(
+  rows: Array<typeof schema.aiModelBillingRules.$inferSelect>,
+  modelConfigId: number | null | undefined,
+  parameterTypes: string[],
+) {
+  if (!modelConfigId) return {}
+  return Object.fromEntries(rows
+    .filter(row => row.modelConfigId === modelConfigId)
+    .filter(row => !row.deletedAt)
+    .filter(row => isBillingRuleType(row, parameterTypes))
+    .map(row => [row.parameterValue, Number(row.credits || 0)]))
+}
+
+function serializeBillingRulesFromRows(rows: Array<typeof schema.aiModelBillingRules.$inferSelect>, modelConfigId: number) {
+  return rows
+    .filter(row => row.modelConfigId === modelConfigId)
+    .filter(row => !row.deletedAt)
+    .sort((a, b) => a.parameterType.localeCompare(b.parameterType) || a.parameterValue.localeCompare(b.parameterValue) || a.id - b.id)
+    .map(serializeBillingRule)
+}
+
+async function serializeModelOptions(rows: Array<{
+  model: typeof schema.aiModelConfigs.$inferSelect
+  userProvider: typeof schema.aiUserProviderConfigs.$inferSelect | null
+}>) {
+  const [allProviders, allModels, allBillingRules, allProfiles, allProfileItems] = await Promise.all([
+    db.select().from(schema.aiServiceProviders).execute(),
+    db.select().from(schema.aiModelConfigs).execute(),
+    db.select().from(schema.aiModelBillingRules).execute(),
+    db.select().from(schema.aiModelParameterProfiles).execute(),
+    db.select().from(schema.aiModelParameterProfileItems).execute(),
+  ])
+  const providersById = new Map<number, ProviderRow>(allProviders.map(row => [row.id, row]))
+  const providersByKey = new Map<string, ProviderRow>(allProviders.map(row => [row.provider, row]))
+  const modelsById = new Map<number, ModelConfigRow>(allModels.map(row => [row.id, row]))
+  const publicFallbackByKey = new Map<string, ModelConfigRow>(
+    allModels
+      .filter(row => !row.userId)
+      .map(row => [`${row.serviceType}:${row.provider}:${row.modelId}`, row]),
+  )
+  const profilesById = new Map<number, ParameterProfileRow>(allProfiles.map(row => [row.id, row]))
+
+  return rows.map(({ model: row, userProvider }) => {
+    const defaults = parseJson(row.defaults, {})
+    const provider = row.providerId ? providersById.get(row.providerId) : providersByKey.get(row.provider)
+    const sourceModel = row.sourceModelId ? modelsById.get(row.sourceModelId) : null
+    const publicFallback = row.userId ? publicFallbackByKey.get(`${row.serviceType}:${row.provider}:${row.modelId}`) : null
+    const ownImageCredits = parseJson(row.imageCreditByResolution, {})
+    const sourceImageCredits = parseJson(sourceModel?.imageCreditByResolution, {})
+    const fallbackImageCredits = parseJson(publicFallback?.imageCreditByResolution, {})
+    const ownImageRuleCredits = billingRuleCreditMapFromRows(allBillingRules, row.id, ['resolution', 'sample_image_size'])
+    const sourceImageRuleCredits = billingRuleCreditMapFromRows(allBillingRules, sourceModel?.id, ['resolution', 'sample_image_size'])
+    const fallbackImageRuleCredits = billingRuleCreditMapFromRows(allBillingRules, publicFallback?.id, ['resolution', 'sample_image_size'])
+    const ownVideoCredits = parseJson(row.videoCreditPerSecondByResolution, {})
+    const sourceVideoCredits = parseJson(sourceModel?.videoCreditPerSecondByResolution, {})
+    const fallbackVideoCredits = parseJson(publicFallback?.videoCreditPerSecondByResolution, {})
+    const ownVideoRuleCredits = billingRuleCreditMapFromRows(allBillingRules, row.id, ['resolution'])
+    const sourceVideoRuleCredits = billingRuleCreditMapFromRows(allBillingRules, sourceModel?.id, ['resolution'])
+    const fallbackVideoRuleCredits = billingRuleCreditMapFromRows(allBillingRules, publicFallback?.id, ['resolution'])
+    const ownBillingConfig = parseJson(row.billingConfig, {})
+    const sourceBillingConfig = parseJson(sourceModel?.billingConfig, {})
+    const fallbackBillingConfig = parseJson(publicFallback?.billingConfig, {})
+    const imageCredits = mergeObjects(
+      fallbackImageCredits,
+      sourceImageCredits,
+      ownImageCredits,
+      fallbackImageRuleCredits,
+      sourceImageRuleCredits,
+      ownImageRuleCredits,
+    )
+    const videoCredits = mergeObjects(
+      fallbackVideoCredits,
+      sourceVideoCredits,
+      ownVideoCredits,
+      fallbackVideoRuleCredits,
+      sourceVideoRuleCredits,
+      ownVideoRuleCredits,
+    )
+    const profile = row.parameterProfileId ? profilesById.get(row.parameterProfileId) : null
+    const isUserProvider = Boolean(userProvider?.userId && !isPlatformUserId(userProvider.userId))
+
+    return {
+      label: row.name || row.modelId,
+      value: row.modelId,
+      id: row.id,
+      model_config_id: row.id,
+      model_id: row.modelId,
+      name: row.name,
+      description: row.description,
+      provider: row.provider,
+      provider_id: row.providerId,
+      provider_name: userProvider?.name || provider?.displayName || provider?.name || row.provider,
+      user_provider_id: isUserProvider ? userProvider?.id || null : null,
+      resource_mode: isUserProvider ? 'user_api' : 'platform',
+      is_platform_model: !isUserProvider,
+      is_official: String(row.modelId || '').toLowerCase().includes('official') || String(row.name || '').includes('官方'),
+      billing_required: !isUserProvider && !row.isFree,
+      service_type: row.serviceType,
+      user_id: row.userId,
+      parameters: parseJson(row.parameters, {}),
+      defaults,
+      capabilities: parseJson(row.capabilities, {}),
+      image_credit_by_resolution: imageCredits,
+      video_credit_per_second_by_resolution: videoCredits,
+      billing_config: firstNonEmptyObject(ownBillingConfig, sourceBillingConfig, fallbackBillingConfig),
+      billing_rules: serializeBillingRulesFromRows(allBillingRules, row.id),
+      is_free: Boolean(row.isFree),
+      member_only: Boolean(row.memberOnly),
+      parameter_profile: profile ? serializeParameterProfileWithItems(profile, allProfileItems) : null,
+      default_aspect_ratio: defaults.aspect_ratio || defaults.aspectRatio || '',
+      default_resolution: defaults.resolution || defaults.sample_image_size || defaults.sampleImageSize || '',
+      is_default: row.isDefault,
+    }
+  })
+}
+
 // User creation options: active user providers -> public platform models under each provider.
 app.get('/options', async (c) => {
   const userId = currentUserId(c)
   const serviceType = c.req.query('service_type')
   await ensureUser(userId)
+  const publicModelRows = await publicModels()
 
   const userProviders = (await db.select().from(schema.aiUserProviderConfigs)
     .where(eq(schema.aiUserProviderConfigs.userId, userId))
@@ -469,7 +605,7 @@ app.get('/options', async (c) => {
   }> = []
   const seen = new Set<string>()
   for (const userProvider of userProviders) {
-    const providerModels = (await publicModels())
+    const providerModels = publicModelRows
       .filter(row => row.isActive)
       .filter(row => !serviceType || row.serviceType === serviceType)
       .filter(row => row.providerId === userProvider.providerId || row.provider === userProvider.provider)
@@ -482,7 +618,7 @@ app.get('/options', async (c) => {
       rows.push({ model, userProvider })
     }
   }
-  const platformModels = (await publicModels())
+  const platformModels = publicModelRows
     .filter(row => row.isActive)
     .filter(row => !serviceType || row.serviceType === serviceType)
     .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || (b.priority || 0) - (a.priority || 0))
@@ -500,7 +636,7 @@ app.get('/options', async (c) => {
     (b.model.priority || 0) - (a.model.priority || 0)
   )
 
-  return success(c, await Promise.all(rows.map(({ model, userProvider }) => serializeModelOption(model, userProvider))))
+  return success(c, await serializeModelOptions(rows))
 })
 
 app.get('/providers', async (c) => {
