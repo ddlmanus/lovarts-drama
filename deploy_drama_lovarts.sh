@@ -193,6 +193,11 @@ server {
     }
 }
 NGINX
+    # Nginx applies protocol options per listen socket. Other vhosts on the
+    # same 443 socket can keep HTTP/2 enabled for this domain unless normalized.
+    if [ -f "/www/server/panel/vhost/nginx/lovarts.art.conf" ]; then
+      sed -i 's/listen 443 ssl http2;/listen 443 ssl;/g; s/listen \[::\]:443 ssl http2;/listen [::]:443 ssl;/g' "/www/server/panel/vhost/nginx/lovarts.art.conf"
+    fi
     /www/server/nginx/sbin/nginx -t -c /www/server/nginx/conf/nginx.conf
     /www/server/nginx/sbin/nginx -s reload -c /www/server/nginx/conf/nginx.conf || kill -HUP "$(cat /www/server/nginx/logs/nginx.pid)"
     return
