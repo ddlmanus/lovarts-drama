@@ -27,7 +27,8 @@
 </p>
 
 <p align="center">
-  <img src="./6b284a8a-c265-4475-ada0-fc7815b1bcea.png" alt="Lovarts Drama Preview" width="860" />
+<img width="2928" height="1484" alt="image" src="https://github.com/user-attachments/assets/5fa31e58-e178-4315-853e-1b6c8d52bb2c" />
+
 </p>
 
 ## 在线使用
