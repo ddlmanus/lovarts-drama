@@ -565,7 +565,7 @@ app.post('/split', async (c) => {
   if (!rows || !cols) return badRequest(c, 'rows and cols required')
   if (!assignments?.length) return badRequest(c, 'assignments required')
 
-  const [imgRecord] = db.select().from(schema.imageGenerations)
+  const [imgRecord] = await db.select().from(schema.imageGenerations)
     .where(eq(schema.imageGenerations.id, image_generation_id)).execute()
 
   if (!imgRecord) return badRequest(c, 'Image generation not found')
@@ -604,7 +604,7 @@ app.post('/split', async (c) => {
 // GET /grid/status/:id
 app.get('/status/:id', async (c) => {
   const id = Number(c.req.param('id'))
-  const [row] = db.select().from(schema.imageGenerations)
+  const [row] = await db.select().from(schema.imageGenerations)
     .where(eq(schema.imageGenerations.id, id)).execute()
   if (!row) return badRequest(c, 'Not found')
   return success(c, {

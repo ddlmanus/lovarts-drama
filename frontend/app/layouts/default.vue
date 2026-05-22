@@ -27,7 +27,7 @@
           </a>
 
           <p class="menu-category">AI 创作</p>
-          <NuxtLink to="/home" class="menu-item" :class="{ active: route.path === '/home' }" @click="sidebarOpen = false">
+          <NuxtLink to="/" class="menu-item" :class="{ active: route.path === '/' }" @click="sidebarOpen = false">
             <House :size="20" />
             <span>灵感</span>
           </NuxtLink>
@@ -39,7 +39,7 @@
             <Presentation :size="20" />
             <span>画布</span>
           </NuxtLink>
-          <NuxtLink to="/" class="menu-item" :class="{ active: route.path === '/' }" @click="sidebarOpen = false">
+          <NuxtLink to="/drama" class="menu-item" :class="{ active: route.path === '/drama' || route.path.startsWith('/drama/') }" @click="sidebarOpen = false">
             <SquarePlay :size="20" />
             <span>AI短剧</span>
           </NuxtLink>
@@ -75,14 +75,7 @@
     <main class="content-wrapper" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <div class="content-area">
         <div class="content-container">
-          <div v-if="!modelCatalogReady" class="global-loading">
-            <div class="global-loading-card">
-              <div class="global-loading-spinner"></div>
-              <strong>模型加载中</strong>
-              <span>正在准备图片与视频模型配置...</span>
-            </div>
-          </div>
-          <slot v-else />
+          <slot />
         </div>
       </div>
     </main>
@@ -245,7 +238,7 @@ const currentUser = ref(null)
 const billingStatus = ref(null)
 const captchaText = ref('')
 const providers = ref([])
-const { loaded: modelCatalogReady, loadModelCatalog, resetModelCatalog } = useModelCatalog()
+const { loadModelCatalog, resetModelCatalog } = useModelCatalog()
 let creditEventSource = null
 const loginForm = reactive({ account: '', password: '', captcha: '' })
 const registerForm = reactive({ account: '', password: '', confirmPassword: '', captcha: '', inviteCode: '' })
@@ -366,7 +359,7 @@ function connectCreditEvents() {
 
 function goHome() {
   sidebarOpen.value = false
-  navigateTo('/home')
+  navigateTo('/')
 }
 
 function toggleSidebarCollapsed() {
@@ -564,20 +557,20 @@ function finishProviderSetup() {
   min-height: 100vh;
   width: 100vw;
   overflow: hidden;
-  background: #1f1f1f;
+  background: #18191b;
   color: var(--chatfire-text-primary);
 }
 
 .floating-sidebar {
   position: fixed;
-  top: 8px;
-  left: 8px;
+  top: 10px;
+  left: 10px;
   z-index: 100;
-  width: 180px;
-  height: calc(100vh - 16px);
+  width: 196px;
+  height: calc(100vh - 20px);
   overflow: hidden;
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
   transition: width 0.3s cubic-bezier(.25,.46,.45,.94), transform 0.3s cubic-bezier(.25,.46,.45,.94);
 }
 
@@ -590,9 +583,9 @@ function finishProviderSetup() {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: #252527;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(10px);
+  background: linear-gradient(180deg, #26272a 0%, #202124 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
 }
 
 .logo-section {
@@ -602,7 +595,7 @@ function finishProviderSetup() {
   gap: 10px;
   width: 100%;
   min-height: 60px;
-  padding: 12px;
+  padding: 13px 14px;
   color: var(--chatfire-text-primary);
   border: 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -649,7 +642,8 @@ function finishProviderSetup() {
 }
 
 .logo-copy strong {
-  font-size: 17px;
+  font-size: 16px;
+  font-weight: 800;
   color: #fff;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -701,7 +695,7 @@ function finishProviderSetup() {
 .menu-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 10px 0;
 }
 
 .menu-list::-webkit-scrollbar {
@@ -709,9 +703,10 @@ function finishProviderSetup() {
 }
 
 .menu-category {
-  padding: 8px 16px;
+  padding: 10px 16px 6px;
   font-size: 11px;
-  color: #737373;
+  font-weight: 700;
+  color: rgba(148, 163, 184, 0.58);
 }
 
 .menu-item {
@@ -719,13 +714,13 @@ function finishProviderSetup() {
   align-items: center;
   gap: 12px;
   width: calc(100% - 16px);
-  height: 40px;
+  height: 42px;
   margin: 4px 8px;
-  padding: 0 16px;
+  padding: 0 14px;
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--chatfire-text-primary);
+  color: rgba(226, 232, 240, 0.82);
   font-size: 14px;
   text-decoration: none;
   transition: all 0.2s cubic-bezier(.25,.46,.45,.94);
@@ -733,17 +728,17 @@ function finishProviderSetup() {
 
 .menu-item:hover,
 .bottom-item:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.07);
   color: #fff;
 }
 
 .menu-item.active {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(90deg, #0078ff, #5b4fff);
+  background: linear-gradient(135deg, #1d7cff, #675cff);
   color: #fff;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(0, 120, 255, 0.3);
+  box-shadow: 0 8px 18px rgba(0, 120, 255, 0.24);
 }
 
 .sidebar-bottom {
@@ -779,7 +774,7 @@ function finishProviderSetup() {
   position: relative;
   height: 100vh;
   width: 100vw;
-  padding-left: 190px;
+  padding-left: 216px;
   transition: padding-left 0.3s cubic-bezier(.25,.46,.45,.94);
 }
 
@@ -791,54 +786,18 @@ function finishProviderSetup() {
   height: 100%;
   overflow: auto;
   overflow-x: hidden;
-  padding: 8px;
-  background: #1f1f1f;
+  padding: 10px 10px 10px 0;
+  background: #18191b;
 }
 
 .content-container {
-  min-height: calc(100vh - 16px);
-  height: calc(100vh - 16px);
+  min-height: calc(100vh - 20px);
+  height: calc(100vh - 20px);
   margin: 0 auto;
   overflow: hidden;
   border-radius: 8px;
-  background: #1f1f1f;
-}
-
-.global-loading {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  background: #1f1f1f;
-  color: #f8fafc;
-}
-
-.global-loading-card {
-  display: grid;
-  justify-items: center;
-  gap: 10px;
-  padding: 22px 28px;
-  color: rgba(248, 250, 252, 0.72);
-  font-size: 13px;
-}
-
-.global-loading-card strong {
-  color: #f8fafc;
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.global-loading-spinner {
-  width: 34px;
-  height: 34px;
-  border: 3px solid rgba(255, 255, 255, 0.14);
-  border-top-color: #3b82f6;
-  border-radius: 999px;
-  animation: global-loading-spin 0.8s linear infinite;
-}
-
-@keyframes global-loading-spin {
-  to { transform: rotate(360deg); }
+  background: #1b1c1f;
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .mobile-menu,

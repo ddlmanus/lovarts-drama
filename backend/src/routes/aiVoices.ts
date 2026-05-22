@@ -14,11 +14,11 @@ const app = new Hono()
 // GET /ai-voices?provider=minimax
 app.get('/', async (c) => {
   const provider = c.req.query('provider') || 'minimax'
-  let rows = db.select().from(schema.aiVoices)
+  let rows = await db.select().from(schema.aiVoices)
     .where(eq(schema.aiVoices.provider, provider))
     .execute()
   if (!rows.length && provider === 'chatfire') {
-    rows = db.select().from(schema.aiVoices)
+    rows = await db.select().from(schema.aiVoices)
       .where(eq(schema.aiVoices.provider, 'minimax'))
       .execute()
   }
@@ -37,9 +37,10 @@ app.get('/', async (c) => {
 // POST /ai-voices/sync
 app.post('/sync', async (c) => {
   // 从数据库获取Lovarts短剧平台或 MiniMax 的音频配置
-  const rows = db.select().from(schema.aiServiceConfigs)
+  const rows = (await db.select().from(schema.aiServiceConfigs)
     .where(eq(schema.aiServiceConfigs.serviceType, 'audio'))
     .execute()
+  )
     .filter(r => r.isActive && ['chatfire', 'minimax'].includes((r.provider || '').toLowerCase()))
     .sort((a, b) => (b.priority || 0) - (a.priority || 0))
 

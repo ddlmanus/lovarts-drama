@@ -49,7 +49,7 @@
               <path fill="currentColor" d="M12 2.5 22 8l-10 13.5L2 8zm0 3.1L6.3 8l5.7 7.7L17.7 8z"></path>
             </svg>
             <span class="credit-label">积分:</span>
-            <span class="credit-value">110</span>
+            <span class="credit-value">{{ currentCredits }}</span>
           </div>
         </div>
       </div>
@@ -2092,12 +2092,10 @@ import { toast } from 'vue-sonner'
 import {
   Download, FileText, FolderKanban, ImageIcon, Layers, MapPin, Mic2, Users, Video, Clapperboard,
 } from 'lucide-vue-next'
-import { dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, imageAPI, videoAPI, composeAPI, mergeAPI, gridAPI, aiConfigAPI, aiModelAPI, voicesAPI, uploadAPI, taskAPI } from '~/composables/useApi'
+import { dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, imageAPI, videoAPI, composeAPI, mergeAPI, gridAPI, aiModelAPI, voicesAPI, uploadAPI, taskAPI, authAPI, billingAPI, getAuthUser, subscribeCreditEvents, updateAuthUser } from '~/composables/useApi'
 import { useAgent } from '~/composables/useAgent'
 import BaseSelect from '~/components/BaseSelect.vue'
 import { apimartMultimodalChatModels } from '~/utils/apimartModels'
-
-definePageMeta({ layout: 'studio' })
 
 const route = useRoute()
 const dramaId = Number(route.params.id)
@@ -2226,9 +2224,9 @@ const fallbackVoiceProfiles = [
 const voiceProfiles = ref(fallbackVoiceProfiles)
 const voiceSelectOptions = computed(() => voiceProfiles.value.map(v => ({ label: `${v.label} · ${v.traits}`, value: v.id })))
 const videoConfigSelectOptions = computed(() => videoConfigs.value.map(c => {
-  let modelName = ''
-  try { const m = JSON.parse(c.model || '[]'); modelName = Array.isArray(m) ? (m[0] || '') : (m || '') } catch { modelName = c.model || '' }
-  const label = modelName ? `${modelName} (${c.provider})` : `${c.name} (${c.provider})`
+  const modelName = getConfigModelName(c)
+  const provider = c.provider_name || c.provider || ''
+  const label = modelName ? `${modelName} (${provider})` : `${c.name} (${provider})`
   return { label, value: c.id }
 }))
 const frameModeOptions = [{ label: '仅首帧', value: 'first' }, { label: '首尾帧', value: 'first_last' }]
@@ -2264,6 +2262,10 @@ const taskItems = ref([])
 const taskTotal = ref(0)
 const taskFilters = ref({ category: '', status: '' })
 const taskPollTimer = ref(null)
+const currentUser = ref(getAuthUser())
+const billingStatus = ref(null)
+let creditEventSource = null
+const currentCredits = computed(() => Number(billingStatus.value?.credits ?? currentUser.value?.credits ?? 0))
 const taskCategoryOptions = [
   { label: '文本提取', value: 'text' },
   { label: '图片生成', value: 'image' },
@@ -2317,9 +2319,38 @@ function formatTaskTime(value) {
 
 function configLabel(config) {
   if (!config) return '未配置'
-  let modelName = ''
-  try { const m = JSON.parse(config.model || '[]'); modelName = Array.isArray(m) ? (m[0] || '') : (m || '') } catch { modelName = config.model || '' }
-  return modelName ? `${config.name} · ${modelName} (${config.provider})` : `${config.name} (${config.provider})`
+  const modelName = getConfigModelName(config)
+  const provider = config.provider_name || config.provider || ''
+  const name = config.name || config.label || modelName
+  return modelName ? `${name} · ${modelName} (${provider})` : `${name} (${provider})`
+}
+
+function getConfigModelName(config) {
+  if (!config) return ''
+  if (config.model_id || config.value) return config.model_id || config.value
+  try {
+    const model = JSON.parse(config.model || '[]')
+    return Array.isArray(model) ? (model[0] || '') : (model || '')
+  } catch {
+    return config.model || ''
+  }
+}
+
+function normalizeModelConfig(config) {
+  const modelName = config.model_id || config.value || config.model || ''
+  return {
+    ...config,
+    id: config.model_config_id || config.id,
+    name: config.name || config.label || modelName,
+    model: JSON.stringify([modelName]),
+    provider: config.provider || config.provider_name || '',
+    provider_name: config.provider_name || config.provider || '',
+    priority: Number(config.priority || 0),
+  }
+}
+
+function normalizeModelConfigs(configs) {
+  return Array.isArray(configs) ? configs.map(normalizeModelConfig) : []
 }
 
 function isPendingCharImage(id) {
@@ -2388,6 +2419,8 @@ function handleImageViewerKeydown(event) {
 onMounted(() => {
   window.addEventListener('keydown', handleImageViewerKeydown)
   loadTasks()
+  loadCurrentCredits()
+  connectCreditEvents()
   taskPollTimer.value = window.setInterval(() => {
     if (taskModalOpen.value || activeTaskCount.value) loadTasks()
   }, 5000)
@@ -2396,8 +2429,59 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleImageViewerKeydown)
   if (taskPollTimer.value) window.clearInterval(taskPollTimer.value)
+  disconnectCreditEvents()
   stopExtractProgress()
 })
+
+function updateCurrentUser(user) {
+  currentUser.value = {
+    ...(currentUser.value || {}),
+    ...(user || {}),
+  }
+  if (currentUser.value?.id) updateAuthUser(currentUser.value)
+}
+
+async function loadCurrentCredits() {
+  if (!getAuthUser()?.id) {
+    currentUser.value = null
+    billingStatus.value = null
+    return
+  }
+  try {
+    const [user, status] = await Promise.all([
+      authAPI.me(),
+      billingAPI.membershipStatus(),
+    ])
+    if (user) updateCurrentUser(user)
+    billingStatus.value = status || null
+  } catch (err) {
+    console.error('Failed to load current credits', err)
+  }
+}
+
+function disconnectCreditEvents() {
+  if (creditEventSource) {
+    creditEventSource.close()
+    creditEventSource = null
+  }
+}
+
+function connectCreditEvents() {
+  disconnectCreditEvents()
+  if (!getAuthUser()?.id) return
+  creditEventSource = subscribeCreditEvents((event) => {
+    if (event?.type !== 'credits.changed') return
+    billingStatus.value = {
+      ...(billingStatus.value || {}),
+      credits: event.credits,
+    }
+    currentUser.value = {
+      ...(currentUser.value || {}),
+      credits: event.credits,
+    }
+    if (currentUser.value?.id) updateAuthUser(currentUser.value)
+  })
+}
 
 function framePendingKey(id, frameType) {
   return `${id}:${frameType}`
@@ -3922,7 +4006,7 @@ async function batchGenSamples() {
 }
 function doBreakdown() {
   const cfg = videoConfigs.value.find(c => c.id === lockedVideoConfigId.value)
-  const label = cfg ? `${cfg.name} (${cfg.provider})` : '默认'
+  const label = cfg ? configLabel(cfg) : '默认'
   runAgent('storyboard_breaker', `请把当前剧本转换成生产级结构化分镜脚本，并调用 save_storyboards 保存。每条分镜必须包含 shotNumber、title、shotType、cameraAngle、cameraMovement、durationSeconds、visualDescription、action、dialogue、soundEffects、backgroundMusic、atmosphere、charactersInShot、sceneId、image_prompt、video_prompt。shotType/cameraAngle/cameraMovement 使用标准英文枚举；角色和场景必须来自 read_storyboard_context。视频模型：${label}，请同时生成适配该模型的 video_prompt。`, dramaId, epId.value, async () => {
     await refresh()
     scriptStep.value = 4
@@ -4841,17 +4925,16 @@ function getRefs(sb) {
 
 async function loadConfigs() {
   try {
-    const [imgCfgs, vidCfgs, audCfgs, textModels, imageModels] = await Promise.all([
-      aiConfigAPI.list('image'),
-      aiConfigAPI.list('video'),
-      aiConfigAPI.list('audio'),
-      aiModelAPI.options('text'),
-      aiModelAPI.options('image'),
+    const modelScope = getAuthUser()?.id ? {} : { scope: 'public' }
+    const [textModels, imageModels, videoModels, audioModels] = await Promise.all([
+      aiModelAPI.options('text', modelScope),
+      aiModelAPI.options('image', modelScope),
+      aiModelAPI.options('video', modelScope),
+      aiModelAPI.options('audio', modelScope),
     ])
-    const byPriority = (a, b) => (b.priority || 0) - (a.priority || 0)
-    imageConfigs.value = [...(imgCfgs || [])].sort(byPriority)
-    videoConfigs.value = [...(vidCfgs || [])].sort(byPriority)
-    audioConfigs.value = [...(audCfgs || [])].sort(byPriority)
+    imageConfigs.value = normalizeModelConfigs(imageModels)
+    videoConfigs.value = normalizeModelConfigs(videoModels)
+    audioConfigs.value = normalizeModelConfigs(audioModels)
     dbTextModelOptions.value = Array.isArray(textModels) ? textModels : []
     dbImageModelOptions.value = Array.isArray(imageModels) ? imageModels : []
     if (dbTextModelOptions.value.length && !dbTextModelOptions.value.some(m => m.value === scriptModel.value)) {
@@ -4985,7 +5068,9 @@ button {
   min-height: 62px;
   padding: 0 24px;
   border-radius: 8px;
-  background: #171c22;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, #26272a 0%, #202124 100%);
+  backdrop-filter: blur(14px);
   color: rgba(255,255,255,0.82);
 }
 

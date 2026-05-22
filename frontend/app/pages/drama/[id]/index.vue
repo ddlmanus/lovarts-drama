@@ -1,7 +1,7 @@
 <template>
   <div v-if="drama" class="project-overview-container">
     <section class="immersive-header" :class="{ 'has-cover': coverSrc }">
-      <button class="home-btn" type="button" aria-label="返回首页" @click="navigateTo('/')">
+      <button class="home-btn" type="button" aria-label="返回短剧列表" @click="navigateTo('/drama')">
         <Home :size="22" />
       </button>
 
@@ -233,7 +233,7 @@ import {
   UserRound,
   Users,
 } from 'lucide-vue-next'
-import { aiConfigAPI, dramaAPI, episodeAPI } from '~/composables/useApi'
+import { aiModelAPI, dramaAPI, episodeAPI, getAuthUser } from '~/composables/useApi'
 
 const route = useRoute()
 const drama = ref(null)
@@ -279,14 +279,37 @@ function episodeMinutes(ep) {
 
 function configLabel(config) {
   if (!config) return ''
-  let modelName = ''
+  const modelName = getConfigModelName(config)
+  const provider = config.provider_name || config.provider || ''
+  const name = config.name || config.label || modelName
+  return modelName ? `${name} · ${modelName} (${provider})` : `${name} (${provider})`
+}
+
+function getConfigModelName(config) {
+  if (config.model_id || config.value) return config.model_id || config.value
   try {
     const model = JSON.parse(config.model || '[]')
-    modelName = Array.isArray(model) ? (model[0] || '') : (model || '')
+    return Array.isArray(model) ? (model[0] || '') : (model || '')
   } catch {
-    modelName = config.model || ''
+    return config.model || ''
   }
-  return modelName ? `${config.name} · ${modelName} (${config.provider})` : `${config.name} (${config.provider})`
+}
+
+function normalizeModelConfig(config) {
+  const modelName = config.model_id || config.value || config.model || ''
+  return {
+    ...config,
+    id: config.model_config_id || config.id,
+    name: config.name || config.label || modelName,
+    model: JSON.stringify([modelName]),
+    provider: config.provider || config.provider_name || '',
+    provider_name: config.provider_name || config.provider || '',
+    priority: Number(config.priority || 0),
+  }
+}
+
+function normalizeModelConfigs(configs) {
+  return Array.isArray(configs) ? configs.map(normalizeModelConfig) : []
 }
 
 const imageConfigOptions = computed(() => imageConfigs.value.map(c => ({ label: configLabel(c), value: c.id })))
@@ -304,15 +327,15 @@ async function load() {
 
 async function loadConfigs() {
   try {
+    const modelScope = getAuthUser()?.id ? {} : { scope: 'public' }
     const [imgs, vids, auds] = await Promise.all([
-      aiConfigAPI.list('image'),
-      aiConfigAPI.list('video'),
-      aiConfigAPI.list('audio'),
+      aiModelAPI.options('image', modelScope),
+      aiModelAPI.options('video', modelScope),
+      aiModelAPI.options('audio', modelScope),
     ])
-    const byPriority = (a, b) => (b.priority || 0) - (a.priority || 0)
-    imageConfigs.value = [...(imgs || [])].sort(byPriority)
-    videoConfigs.value = [...(vids || [])].sort(byPriority)
-    audioConfigs.value = [...(auds || [])].sort(byPriority)
+    imageConfigs.value = normalizeModelConfigs(imgs)
+    videoConfigs.value = normalizeModelConfigs(vids)
+    audioConfigs.value = normalizeModelConfigs(auds)
     if (!newEpisodeImageConfigId.value && imageConfigs.value.length) newEpisodeImageConfigId.value = imageConfigs.value[0].id
     if (!newEpisodeVideoConfigId.value && videoConfigs.value.length) newEpisodeVideoConfigId.value = videoConfigs.value[0].id
     if (!newEpisodeAudioConfigId.value && audioConfigs.value.length) newEpisodeAudioConfigId.value = audioConfigs.value[0].id

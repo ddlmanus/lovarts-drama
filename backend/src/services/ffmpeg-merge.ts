@@ -25,7 +25,7 @@ function toAbsPath(relativePath: string): string {
  * 拼接一集的所有合成镜头视频
  */
 export async function mergeEpisodeVideos(episodeId: number, dramaId: number): Promise<number> {
-  const storyboards = db.select().from(schema.storyboards)
+  const storyboards = await db.select().from(schema.storyboards)
     .where(eq(schema.storyboards.episodeId, episodeId))
     .orderBy(schema.storyboards.storyboardNumber)
     .execute()
@@ -44,7 +44,7 @@ export async function mergeEpisodeVideos(episodeId: number, dramaId: number): Pr
 
   // 创建 merge 记录
   const ts = now()
-  const res = db.insert(schema.videoMerges).values({
+  const res = await db.insert(schema.videoMerges).values({
     episodeId,
     dramaId,
     title: `Episode ${episodeId} Merge`,
@@ -114,12 +114,12 @@ async function doMerge(mergeId: number, episodeId: number, videos: string[]) {
   const mergedRelative = `static/merged/${outputFilename}`
 
   // 更新 merge 记录
-  db.update(schema.videoMerges)
+  await db.update(schema.videoMerges)
     .set({ status: 'completed', mergedUrl: mergedRelative, duration, completedAt: now() })
     .where(eq(schema.videoMerges.id, mergeId)).execute()
 
   // 更新 episode
-  db.update(schema.episodes)
+  await db.update(schema.episodes)
     .set({ videoUrl: mergedRelative, updatedAt: now() })
     .where(eq(schema.episodes.id, episodeId)).execute()
 

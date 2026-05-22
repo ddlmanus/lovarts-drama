@@ -26,7 +26,7 @@ function buildSceneImagePrompt(scene: typeof schema.scenes.$inferSelect) {
 // GET /scenes/library
 app.get('/library', async (c) => {
   const q = String(c.req.query('q') || '').trim().toLowerCase()
-  const rows = await db.select().from(schema.sceneLibrary).execute()
+  const rows = (await db.select().from(schema.sceneLibrary).execute())
     .filter(row => !row.deletedAt)
     .filter(row => {
       if (!q) return true
@@ -41,7 +41,7 @@ app.get('/library', async (c) => {
 app.post('/', async (c) => {
   const body = await c.req.json()
   const ts = now()
-  const res = db.insert(schema.scenes).values({
+  const res = await db.insert(schema.scenes).values({
     dramaId: body.drama_id,
     episodeId: body.episode_id,
     location: body.location,
@@ -52,13 +52,13 @@ app.post('/', async (c) => {
   }).execute()
   const sceneId = Number(res.insertId)
   if (body.episode_id) {
-    db.insert(schema.episodeScenes).values({
+    await db.insert(schema.episodeScenes).values({
       episodeId: Number(body.episode_id),
       sceneId,
       createdAt: ts,
     }).execute()
   }
-  const [result] = db.select().from(schema.scenes)
+  const [result] = await db.select().from(schema.scenes)
     .where(eq(schema.scenes.id, sceneId)).execute()
   return created(c, result)
 })
@@ -70,7 +70,7 @@ app.post('/:id/save-to-library', async (c) => {
   if (!scene || scene.deletedAt) return badRequest(c, 'Scene not found')
 
   const ts = now()
-  const result = db.insert(schema.sceneLibrary).values({
+  const result = await db.insert(schema.sceneLibrary).values({
     location: scene.location,
     time: scene.time || '',
     prompt: scene.prompt || '',
@@ -95,7 +95,7 @@ app.post('/library/:id/apply', async (c) => {
   if (!item || item.deletedAt) return badRequest(c, 'Library scene not found')
 
   const ts = now()
-  const result = db.insert(schema.scenes).values({
+  const result = await db.insert(schema.scenes).values({
     dramaId,
     episodeId,
     location: item.location,
@@ -106,7 +106,7 @@ app.post('/library/:id/apply', async (c) => {
     updatedAt: ts,
   }).execute()
   const sceneId = Number(result.insertId)
-  db.insert(schema.episodeScenes).values({
+  await db.insert(schema.episodeScenes).values({
     episodeId,
     sceneId,
     createdAt: ts,
@@ -208,7 +208,7 @@ app.post('/:id/delete', async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const episodeId = Number(body.episode_id ?? body.episodeId)
   if (episodeId) {
-    db.delete(schema.episodeScenes)
+    await db.delete(schema.episodeScenes)
       .where(and(eq(schema.episodeScenes.sceneId, id), eq(schema.episodeScenes.episodeId, episodeId)))
       .execute()
   }

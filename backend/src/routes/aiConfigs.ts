@@ -220,7 +220,7 @@ app.post('/', async (c) => {
     return badRequest(c, 'service_type and provider are required')
   }
 
-  const res = db.insert(schema.aiServiceConfigs).values({
+  const res = await db.insert(schema.aiServiceConfigs).values({
     serviceType: body.service_type,
     provider: body.provider,
     name: body.name || `${body.provider}-${body.service_type}`,
@@ -233,7 +233,7 @@ app.post('/', async (c) => {
     updatedAt: ts,
   }).execute()
 
-  const [row] = db.select().from(schema.aiServiceConfigs)
+  const [row] = await db.select().from(schema.aiServiceConfigs)
     .where(eq(schema.aiServiceConfigs.id, Number(res.insertId))).execute()
 
   return created(c, serializeConfig(row))
@@ -302,7 +302,7 @@ app.post('/huobao-preset', async (c) => {
   }
 
   const configs = (await db.select().from(schema.aiServiceConfigs).execute()).map(serializeConfig)
-  const agents = await db.select().from(schema.agentConfigs).execute().map(row => toSnakeCase(row))
+  const agents = (await db.select().from(schema.agentConfigs).execute()).map(row => toSnakeCase(row))
 
   logTaskSuccess('AIConfig', 'huobao-preset-applied', {
     serviceCount: HUOBAO_PRESET_SERVICES.length,

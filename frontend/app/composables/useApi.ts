@@ -329,7 +329,14 @@ export const aiModelAPI = {
     })
     return api.get(`/ai-models${query.toString() ? `?${query.toString()}` : ''}`)
   },
-  options: (serviceType?: string) => api.get(`/ai-models/options${serviceType ? `?service_type=${encodeURIComponent(serviceType)}` : ''}`),
+  options: (serviceType?: string, params: Record<string, any> = {}) => {
+    const query = new URLSearchParams()
+    if (serviceType) query.set('service_type', serviceType)
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') query.set(key, String(value))
+    })
+    return api.get(`/ai-models/options${query.toString() ? `?${query.toString()}` : ''}`)
+  },
   providers: (serviceType?: string) => api.get(`/ai-models/providers${serviceType ? `?service_type=${encodeURIComponent(serviceType)}` : ''}`),
   create: (d: any) => api.post('/ai-models', d),
   update: (id: number, d: any) => api.put(`/ai-models/${id}`, d),

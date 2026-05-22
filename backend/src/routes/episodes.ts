@@ -16,12 +16,12 @@ app.post('/', async (c) => {
   const ts = now()
 
   // Get next episode number
-  const existing = db.select().from(schema.episodes)
+  const existing = await db.select().from(schema.episodes)
     .where(eq(schema.episodes.dramaId, body.drama_id))
     .orderBy(schema.episodes.episodeNumber).execute()
   const nextNum = existing.length ? Math.max(...existing.map(e => e.episodeNumber)) + 1 : 1
 
-  const res = db.insert(schema.episodes).values({
+  const res = await db.insert(schema.episodes).values({
     dramaId: body.drama_id,
     episodeNumber: nextNum,
     title: body.title || `第${nextNum}集`,
@@ -32,7 +32,7 @@ app.post('/', async (c) => {
     updatedAt: ts,
   }).execute()
 
-  const [ep] = db.select().from(schema.episodes)
+  const [ep] = await db.select().from(schema.episodes)
     .where(eq(schema.episodes.id, Number(res.insertId))).execute()
   return success(c, {
     id: ep.id,
@@ -64,14 +64,14 @@ app.put('/:id', async (c) => {
   if ('description' in updates) drizzleUpdates.description = updates.description
   if ('status' in updates) drizzleUpdates.status = updates.status
 
-  await db.update(schema.episodes).set(drizzleUpdates).where(eq(schema.episodes.id, id))
+  await db.update(schema.episodes).set(drizzleUpdates).where(eq(schema.episodes.id, id)).execute()
   return success(c)
 })
 
 // GET /episodes/:id/characters — characters linked to this episode
 app.get('/:id/characters', async (c) => {
   const episodeId = Number(c.req.param('id'))
-  const links = db.select().from(schema.episodeCharacters)
+  const links = await db.select().from(schema.episodeCharacters)
     .where(eq(schema.episodeCharacters.episodeId, episodeId)).execute()
   const charIds = links.map(l => l.characterId)
   if (!charIds.length) return success(c, [])
@@ -83,7 +83,7 @@ app.get('/:id/characters', async (c) => {
 // GET /episodes/:id/scenes — scenes linked to this episode
 app.get('/:id/scenes', async (c) => {
   const episodeId = Number(c.req.param('id'))
-  const links = db.select().from(schema.episodeScenes)
+  const links = await db.select().from(schema.episodeScenes)
     .where(eq(schema.episodeScenes.episodeId, episodeId)).execute()
   const sceneIds = links.map(l => l.sceneId)
   if (!sceneIds.length) return success(c, [])
@@ -95,7 +95,7 @@ app.get('/:id/scenes', async (c) => {
 // GET /episodes/:episode_id/storyboards
 app.get('/:episode_id/storyboards', async (c) => {
   const episodeId = Number(c.req.param('episode_id'))
-  const rows = db.select().from(schema.storyboards)
+  const rows = await db.select().from(schema.storyboards)
     .where(eq(schema.storyboards.episodeId, episodeId))
     .orderBy(schema.storyboards.storyboardNumber)
     .execute()
@@ -107,15 +107,15 @@ app.get('/:episode_id/storyboards', async (c) => {
     charIdsByStoryboard.set(link.storyboardId, arr)
   }
 
-  const episodeCharIds = db.select().from(schema.episodeCharacters)
+  const episodeCharIds = (await db.select().from(schema.episodeCharacters)
     .where(eq(schema.episodeCharacters.episodeId, episodeId)).execute()
-    .map(link => link.characterId)
-  const allChars = await db.select().from(schema.characters).execute()
+    ).map(link => link.characterId)
+  const allChars = (await db.select().from(schema.characters).execute())
     .filter(ch => episodeCharIds.includes(ch.id) && !ch.deletedAt)
-  const episodeSceneIds = db.select().from(schema.episodeScenes)
+  const episodeSceneIds = (await db.select().from(schema.episodeScenes)
     .where(eq(schema.episodeScenes.episodeId, episodeId)).execute()
-    .map(link => link.sceneId)
-  const allScenes = await db.select().from(schema.scenes).execute()
+    ).map(link => link.sceneId)
+  const allScenes = (await db.select().from(schema.scenes).execute())
     .filter(scene => episodeSceneIds.includes(scene.id) && !scene.deletedAt)
 
   return success(c, rows.map((row) => ({

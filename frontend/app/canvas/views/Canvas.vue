@@ -947,7 +947,7 @@ const sendMessage = async () => {
 
 // Go back to home | 返回首页
 const goBack = () => {
-  router.push('/home')
+  router.push('/')
 }
 
 // Check if mobile | 检测是否移动端

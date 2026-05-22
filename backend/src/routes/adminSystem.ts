@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
 import { now, success } from '../utils/response.js'
+import { ensureRewardSettings, rewardSettingKeys } from '../services/reward-settings.js'
 
 const app = new Hono()
 
@@ -9,9 +10,11 @@ const groups = {
   site: ['site_name', 'site_title', 'site_description', 'site_keywords'],
   brand: ['site_logo_url', 'default_avatar_url'],
   storage: ['storage_driver', 'oss_region', 'oss_bucket', 'oss_endpoint', 'oss_access_key_id', 'oss_access_key_secret', 'oss_public_base_url'],
+  rewards: rewardSettingKeys,
 }
 
 async function publicSettings() {
+  await ensureRewardSettings()
   const rows = (await db.select().from(schema.systemSettings).execute())
   return Object.fromEntries(rows.map(row => [row.key, row.isSecret && row.value ? '********' : row.value || '']))
 }
@@ -40,6 +43,7 @@ app.get('/public-settings', async (c) => {
 
 app.put('/settings', async (c) => {
   const body = await c.req.json()
+  await ensureRewardSettings()
   const keys = allowedKeys()
   const ts = now()
 
@@ -48,10 +52,12 @@ app.put('/settings', async (c) => {
     const existing = (await db.select().from(schema.systemSettings).where(eq(schema.systemSettings.key, key)).execute())[0]
     const next = String(body[key] ?? '').trim()
     if (existing?.isSecret && !next) continue
-    await db.update(schema.systemSettings)
-      .set({ value: next, updatedAt: ts })
-      .where(eq(schema.systemSettings.key, key))
-      .execute()
+    if (existing) {
+      await db.update(schema.systemSettings)
+        .set({ value: next, updatedAt: ts })
+        .where(eq(schema.systemSettings.key, key))
+        .execute()
+    }
   }
 
   return success(c, await publicSettings())

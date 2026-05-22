@@ -22,8 +22,8 @@ function parseDialogueForTTS(dialogue?: string | null) {
   return { speaker, pureText, ignorable }
 }
 
-function syncStoryboardCharacters(storyboardId: number, characterIds: number[]) {
-  db.delete(schema.storyboardCharacters)
+async function syncStoryboardCharacters(storyboardId: number, characterIds: number[]) {
+  await db.delete(schema.storyboardCharacters)
     .where(eq(schema.storyboardCharacters.storyboardId, storyboardId))
     .execute()
 
@@ -31,17 +31,17 @@ function syncStoryboardCharacters(storyboardId: number, characterIds: number[]) 
   if (!uniqueIds.length) return
 
   for (const characterId of uniqueIds) {
-    db.insert(schema.storyboardCharacters).values({
+    await db.insert(schema.storyboardCharacters).values({
       storyboardId,
       characterId,
     }).execute()
   }
 }
 
-function getStoryboardCharacterIds(storyboardId: number) {
-  return db.select().from(schema.storyboardCharacters)
+async function getStoryboardCharacterIds(storyboardId: number) {
+  return (await db.select().from(schema.storyboardCharacters)
     .where(eq(schema.storyboardCharacters.storyboardId, storyboardId)).execute()
-    .map(link => link.characterId)
+  ).map(link => link.characterId)
 }
 
 function normalizeIdArray(value: any) {
@@ -57,16 +57,16 @@ function normalizeIdArray(value: any) {
   return trimmed.split(',').map(item => Number(item.trim())).filter(Boolean)
 }
 
-function validateStoryboardBindings(episodeId: number, sceneId: number | null | undefined, characterIds: number[] | undefined) {
+async function validateStoryboardBindings(episodeId: number, sceneId: number | null | undefined, characterIds: number[] | undefined) {
   const episodeSceneIds = new Set(
-    db.select().from(schema.episodeScenes)
+    (await db.select().from(schema.episodeScenes)
       .where(eq(schema.episodeScenes.episodeId, episodeId)).execute()
-      .map(link => link.sceneId),
+    ).map(link => link.sceneId),
   )
   const episodeCharacterIds = new Set(
-    db.select().from(schema.episodeCharacters)
+    (await db.select().from(schema.episodeCharacters)
       .where(eq(schema.episodeCharacters.episodeId, episodeId)).execute()
-      .map(link => link.characterId),
+    ).map(link => link.characterId),
   )
 
   if (sceneId != null && !episodeSceneIds.has(sceneId)) {
@@ -93,8 +93,8 @@ app.post('/', async (c) => {
     characterIds,
   })
   logTaskPayload('StoryboardAPI', 'create body', body)
-  validateStoryboardBindings(body.episode_id, sceneId, characterIds)
-  const res = db.insert(schema.storyboards).values({
+  await validateStoryboardBindings(body.episode_id, sceneId, characterIds)
+  const res = await db.insert(schema.storyboards).values({
     episodeId: body.episode_id,
     storyboardNumber,
     title: body.title,
@@ -116,8 +116,8 @@ app.post('/', async (c) => {
     createdAt: ts,
     updatedAt: ts,
   }).execute()
-  syncStoryboardCharacters(Number(res.insertId), characterIds)
-  const [result] = db.select().from(schema.storyboards)
+  await syncStoryboardCharacters(Number(res.insertId), characterIds)
+  const [result] = await db.select().from(schema.storyboards)
     .where(eq(schema.storyboards.id, Number(res.insertId))).execute()
   logTaskSuccess('StoryboardAPI', 'create', {
     storyboardId: result.id,
@@ -126,7 +126,7 @@ app.post('/', async (c) => {
   })
   return created(c, {
     ...toSnakeCase(result),
-    character_ids: getStoryboardCharacterIds(result.id),
+    character_ids: await getStoryboardCharacterIds(result.id),
   })
 })
 
@@ -170,17 +170,17 @@ app.put('/:id', async (c) => {
     updates.subtitleUrl = null
   }
 
-  validateStoryboardBindings(
+  await validateStoryboardBindings(
     storyboard.episodeId,
     'scene_id' in body ? body.scene_id : ('sceneId' in body ? body.sceneId : storyboard.sceneId),
     ('character_ids' in body || 'characterIds' in body || 'characters_in_shot' in body || 'charactersInShot' in body)
       ? normalizeIdArray(body.character_ids ?? body.characterIds ?? body.characters_in_shot ?? body.charactersInShot)
-      : getStoryboardCharacterIds(id),
+      : await getStoryboardCharacterIds(id),
   )
 
   await db.update(schema.storyboards).set(updates).where(eq(schema.storyboards.id, id)).execute()
   if ('character_ids' in body || 'characterIds' in body || 'characters_in_shot' in body || 'charactersInShot' in body) {
-    syncStoryboardCharacters(id, normalizeIdArray(body.character_ids ?? body.characterIds ?? body.characters_in_shot ?? body.charactersInShot))
+    await syncStoryboardCharacters(id, normalizeIdArray(body.character_ids ?? body.characterIds ?? body.characters_in_shot ?? body.charactersInShot))
   }
   logTaskSuccess('StoryboardAPI', 'update', {
     storyboardId: id,
@@ -235,7 +235,7 @@ app.post('/:id/generate-tts', async (c) => {
       relatedTaskId: id,
       taskType: 'storyboard_tts',
     })
-  db.update(schema.storyboards)
+  await db.update(schema.storyboards)
     .set({ ttsAudioUrl: audioPath, updatedAt: now() })
     .where(eq(schema.storyboards.id, id))
     .execute()

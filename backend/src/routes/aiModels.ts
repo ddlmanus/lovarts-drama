@@ -590,14 +590,17 @@ async function serializeModelOptions(rows: Array<{
 app.get('/options', async (c) => {
   const userId = currentUserId(c)
   const serviceType = c.req.query('service_type')
-  await ensureUser(userId)
+  const publicOnly = c.req.query('scope') === 'public' || userId === DEFAULT_USER_ID
+  if (!publicOnly) await ensureUser(userId)
   const publicModelRows = await publicModels()
 
-  const userProviders = (await db.select().from(schema.aiUserProviderConfigs)
-    .where(eq(schema.aiUserProviderConfigs.userId, userId))
-    .execute())
-    .filter(row => row.isActive)
-    .filter(row => !isPlatformUserId(row.userId))
+  const userProviders = publicOnly
+    ? []
+    : (await db.select().from(schema.aiUserProviderConfigs)
+      .where(eq(schema.aiUserProviderConfigs.userId, userId))
+      .execute())
+      .filter(row => row.isActive)
+      .filter(row => !isPlatformUserId(row.userId))
 
   const rows: Array<{
     model: typeof schema.aiModelConfigs.$inferSelect
@@ -1334,7 +1337,7 @@ app.post('/seed-from-configs', async (c) => {
     const key = providerKey(config.provider || config.name)
     let provider = (await db.select().from(schema.aiServiceProviders).where(eq(schema.aiServiceProviders.provider, key)).execute())[0]
     if (!provider) {
-      const providerResult = db.insert(schema.aiServiceProviders).values({
+      const providerResult = await db.insert(schema.aiServiceProviders).values({
         name: config.name || key,
         displayName: config.name || key,
         serviceType: config.serviceType,
@@ -1353,7 +1356,7 @@ app.post('/seed-from-configs', async (c) => {
       if (!modelId) continue
       const exists = (await publicModels()).find(row => row.provider === key && row.serviceType === config.serviceType && row.modelId === modelId)
       if (exists) continue
-      db.insert(schema.aiModelConfigs).values({
+      await db.insert(schema.aiModelConfigs).values({
         userId: null,
         providerId: provider.id,
         serviceType: config.serviceType,

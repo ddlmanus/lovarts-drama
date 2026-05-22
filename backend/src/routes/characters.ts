@@ -31,7 +31,7 @@ function buildCharacterImagePrompt(char: typeof schema.characters.$inferSelect) 
 // GET /characters/library
 app.get('/library', async (c) => {
   const q = String(c.req.query('q') || '').trim().toLowerCase()
-  const rows = await db.select().from(schema.characterLibrary).execute()
+  const rows = (await db.select().from(schema.characterLibrary).execute())
     .filter(row => !row.deletedAt)
     .filter(row => {
       if (!q) return true
@@ -53,7 +53,7 @@ app.post('/', async (c) => {
   if (!name) return badRequest(c, 'name is required')
 
   const ts = now()
-  const result = db.insert(schema.characters).values({
+  const result = await db.insert(schema.characters).values({
     dramaId,
     name,
     age: body.age || '',
@@ -66,7 +66,7 @@ app.post('/', async (c) => {
     updatedAt: ts,
   }).execute()
   const characterId = Number(result.insertId)
-  db.insert(schema.episodeCharacters).values({
+  await db.insert(schema.episodeCharacters).values({
     episodeId,
     characterId,
     createdAt: ts,
@@ -81,7 +81,7 @@ app.post('/:id/save-to-library', async (c) => {
   if (!char || char.deletedAt) return badRequest(c, 'Character not found')
 
   const ts = now()
-  const result = db.insert(schema.characterLibrary).values({
+  const result = await db.insert(schema.characterLibrary).values({
     name: char.name,
     age: char.age || '',
     gender: char.gender || '',
@@ -112,7 +112,7 @@ app.post('/library/:id/apply', async (c) => {
   if (!item || item.deletedAt) return badRequest(c, 'Library character not found')
 
   const ts = now()
-  const result = db.insert(schema.characters).values({
+  const result = await db.insert(schema.characters).values({
     dramaId,
     name: item.name,
     age: item.age || '',
@@ -128,7 +128,7 @@ app.post('/library/:id/apply', async (c) => {
     updatedAt: ts,
   }).execute()
   const characterId = Number(result.insertId)
-  db.insert(schema.episodeCharacters).values({
+  await db.insert(schema.episodeCharacters).values({
     episodeId,
     characterId,
     createdAt: ts,
@@ -175,7 +175,7 @@ app.post('/:id/generate-voice-sample', async (c) => {
   try {
     logTaskStart('VoiceSample', 'generate', { characterId: id, characterName: char.name, episodeId: ep.id, voice: char.voiceStyle })
     const audioPath = await generateVoiceSample(char.name, char.voiceStyle, ep.audioConfigId ?? undefined, currentAuthUserId(c), id)
-    db.update(schema.characters)
+    await db.update(schema.characters)
       .set({ voiceSampleUrl: audioPath, updatedAt: now() })
       .where(eq(schema.characters.id, id)).execute()
     logTaskSuccess('VoiceSample', 'generate', { characterId: id, path: audioPath })

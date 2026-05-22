@@ -25,7 +25,7 @@ app.post('/storyboards/:id/compose', async (c) => {
 // POST /episodes/:id/compose-all — 批量合成全部镜头
 app.post('/episodes/:id/compose-all', async (c) => {
   const episodeId = Number(c.req.param('id'))
-  const storyboards = db.select().from(schema.storyboards)
+  const storyboards = await db.select().from(schema.storyboards)
     .where(eq(schema.storyboards.episodeId, episodeId))
     .orderBy(schema.storyboards.storyboardNumber)
     .execute()
@@ -36,7 +36,7 @@ app.post('/episodes/:id/compose-all', async (c) => {
   if (withVideo.length === 0) return badRequest(c, 'No storyboards have video yet')
 
   // 异步处理
-  db.update(schema.storyboards)
+  await db.update(schema.storyboards)
     .set({ status: 'compose_processing' })
     .where(eq(schema.storyboards.episodeId, episodeId))
     .execute()
@@ -62,7 +62,7 @@ app.post('/episodes/:id/compose-all', async (c) => {
 // GET /episodes/:id/compose-status — 查询批量合成状态
 app.get('/episodes/:id/compose-status', async (c) => {
   const episodeId = Number(c.req.param('id'))
-  const storyboards = db.select().from(schema.storyboards)
+  const storyboards = await db.select().from(schema.storyboards)
     .where(eq(schema.storyboards.episodeId, episodeId))
     .orderBy(schema.storyboards.storyboardNumber)
     .execute()

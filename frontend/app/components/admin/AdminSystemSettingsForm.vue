@@ -39,6 +39,15 @@
     </section>
 
     <section class="settings-section">
+      <h3>积分赠送</h3>
+      <div class="form-grid">
+        <label>每天登录送积分<input v-model.number="admin.systemSettingsForm.daily_login_bonus_credits" type="number" min="0" step="1" /></label>
+        <label>用户注册赠送积分<input v-model.number="admin.systemSettingsForm.register_bonus_credits" type="number" min="0" step="1" /></label>
+      </div>
+      <label>每邀请一人送积分<input v-model.number="admin.systemSettingsForm.invite_bonus_credits" type="number" min="0" step="1" /></label>
+    </section>
+
+    <section class="settings-section">
       <h3>文件存储</h3>
       <div class="form-grid">
         <label>存储方式

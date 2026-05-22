@@ -244,7 +244,7 @@ export async function chargeCreditsAsync(params: CreditChargeRequest): Promise<C
     ])
     logId = Number(result.insertId || 0)
   } else {
-    const result = db.insert(schema.pointsLogs).values({
+    const result = await db.insert(schema.pointsLogs).values({
       userId,
       amount: -cost.amount,
       balance: nextBalance,

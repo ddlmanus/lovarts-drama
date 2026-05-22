@@ -86,7 +86,7 @@ export async function composeStoryboard(storyboardId: number): Promise<string> {
         if (parsedDialogue.speaker) {
           const charName = parsedDialogue.speaker
           if (ep) {
-            const chars = db.select().from(schema.characters)
+            const chars = await db.select().from(schema.characters)
               .where(eq(schema.characters.dramaId, ep.dramaId)).execute()
             const found = chars.find(c => c.name === charName)
             if (found?.voiceStyle) voiceId = found.voiceStyle

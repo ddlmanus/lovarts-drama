@@ -165,6 +165,9 @@ export function useAdminManagement() {
     oss_access_key_id: '',
     oss_access_key_secret: '',
     oss_public_base_url: '',
+    daily_login_bonus_credits: 0,
+    register_bonus_credits: 0,
+    invite_bonus_credits: 0,
   })
 
   const sortedProviders = computed(() => [...providerOptions.value].sort((a, b) => (a.rank || 0) - (b.rank || 0) || (a.display_name || a.name).localeCompare(b.display_name || b.name)))
@@ -427,6 +430,7 @@ export function useAdminManagement() {
     try {
       Object.assign(systemSettingsForm, await adminSystemAPI.settings())
       if (!systemSettingsForm.storage_driver) systemSettingsForm.storage_driver = 'local'
+      normalizeSystemRewardSettings()
     } finally {
       systemSettingsLoading.value = false
     }
@@ -437,12 +441,19 @@ export function useAdminManagement() {
     try {
       Object.assign(systemSettingsForm, await adminSystemAPI.updateSettings({ ...systemSettingsForm }))
       if (!systemSettingsForm.storage_driver) systemSettingsForm.storage_driver = 'local'
+      normalizeSystemRewardSettings()
       toast.success('系统设置已保存')
     } catch (error: any) {
       toast.error(error.message || '系统设置保存失败')
     } finally {
       systemSettingsSaving.value = false
     }
+  }
+
+  function normalizeSystemRewardSettings() {
+    systemSettingsForm.daily_login_bonus_credits = Math.max(0, Math.trunc(Number(systemSettingsForm.daily_login_bonus_credits || 0)))
+    systemSettingsForm.register_bonus_credits = Math.max(0, Math.trunc(Number(systemSettingsForm.register_bonus_credits || 0)))
+    systemSettingsForm.invite_bonus_credits = Math.max(0, Math.trunc(Number(systemSettingsForm.invite_bonus_credits || 0)))
   }
 
   async function uploadSystemAsset(field: 'site_logo_url' | 'default_avatar_url', file?: File | null) {

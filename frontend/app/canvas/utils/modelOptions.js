@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { aiModelAPI } from '~/composables/useApi'
+import { aiModelAPI, getAuthUser } from '~/composables/useApi'
 
 const imageModels = ref([])
 const videoModels = ref([])
@@ -170,10 +170,11 @@ export const useUserModelOptions = () => {
     loading.value = true
     error.value = null
     try {
+      const params = getAuthUser()?.id ? {} : { scope: 'public' }
       const [images, videos, texts] = await Promise.all([
-        aiModelAPI.options('image'),
-        aiModelAPI.options('video'),
-        aiModelAPI.options('text')
+        aiModelAPI.options('image', params),
+        aiModelAPI.options('video', params),
+        aiModelAPI.options('text', params)
       ])
       imageModels.value = Array.isArray(images) ? images : []
       videoModels.value = Array.isArray(videos) ? videos : []

@@ -8,7 +8,7 @@ const app = new Hono()
 
 // GET /agent-configs
 app.get('/', async (c) => {
-  const rows = db.select().from(schema.agentConfigs)
+  const rows = await db.select().from(schema.agentConfigs)
     .where(isNull(schema.agentConfigs.deletedAt)).execute()
   return success(c, toSnakeCaseArray(rows))
 })
@@ -16,7 +16,7 @@ app.get('/', async (c) => {
 // GET /agent-configs/:id
 app.get('/:id', async (c) => {
   const id = Number(c.req.param('id'))
-  const [row] = db.select().from(schema.agentConfigs)
+  const [row] = await db.select().from(schema.agentConfigs)
     .where(eq(schema.agentConfigs.id, id)).execute()
   if (!row) return badRequest(c, 'Not found')
   return success(c, toSnakeCase(row))
@@ -29,12 +29,12 @@ app.post('/', async (c) => {
   const ts = now()
 
   // Check if exists (including soft-deleted)
-  const [existing] = db.select().from(schema.agentConfigs)
+  const [existing] = await db.select().from(schema.agentConfigs)
     .where(eq(schema.agentConfigs.agentType, body.agent_type)).execute()
 
   if (existing) {
     // Update existing
-    db.update(schema.agentConfigs).set({
+    await db.update(schema.agentConfigs).set({
       name: body.name || existing.name,
       model: body.model ?? existing.model,
       systemPrompt: body.system_prompt ?? existing.systemPrompt,
@@ -49,7 +49,7 @@ app.post('/', async (c) => {
     return success(c, toSnakeCase(row))
   }
 
-  const res = db.insert(schema.agentConfigs).values({
+  const res = await db.insert(schema.agentConfigs).values({
     agentType: body.agent_type,
     name: body.name || '',
     description: body.description || '',
@@ -62,7 +62,7 @@ app.post('/', async (c) => {
     createdAt: ts,
     updatedAt: ts,
   }).execute()
-  const [result] = db.select().from(schema.agentConfigs)
+  const [result] = await db.select().from(schema.agentConfigs)
     .where(eq(schema.agentConfigs.id, Number(res.insertId))).execute()
   return success(c, toSnakeCase(result))
 })

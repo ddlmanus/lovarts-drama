@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
 import { badRequest, forbidden, success, now } from '../utils/response.js'
 import { createAuthToken, currentAuthUser, currentAuthUserId, hashPassword, verifyPassword } from '../utils/auth.js'
+import { grantDailyLoginReward, grantRegisterRewards } from '../services/reward-settings.js'
 
 const app = new Hono()
 
@@ -66,7 +67,8 @@ app.post('/register', async (c) => {
     updatedAt: ts,
   }).execute()
 
-  const user = (await db.select().from(schema.aiUsers).where(eq(schema.aiUsers.id, userId)).execute())[0]
+  let user = (await db.select().from(schema.aiUsers).where(eq(schema.aiUsers.id, userId)).execute())[0]
+  user = await grantRegisterRewards(user, inviteCode)
   return success(c, { token: createAuthToken(userId), user: serializeUser(user), needs_onboarding: true })
 })
 
@@ -81,13 +83,16 @@ app.post('/login', async (c) => {
   const user = users.find(row => row.account === account || row.phone === account || row.email === account)
   if (!user || !verifyPassword(password, user.passwordHash)) return badRequest(c, '账号或密码错误')
   if (!user.isActive) return badRequest(c, '账号已停用')
+  const rewardedUser = await grantDailyLoginReward(user)
+  const ts = now()
   await db.update(schema.aiUsers).set({
-    lastLoginAt: now(),
+    lastLoginAt: ts,
     lastLoginIp: String(c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '').split(',')[0]?.trim() || null,
     loginChannel: 'password',
-    updatedAt: now(),
+    updatedAt: ts,
   }).where(eq(schema.aiUsers.id, user.id)).execute()
-  return success(c, { token: createAuthToken(user.id), user: serializeUser(user) })
+  const updated = (await db.select().from(schema.aiUsers).where(eq(schema.aiUsers.id, user.id)).execute())[0] || rewardedUser
+  return success(c, { token: createAuthToken(user.id), user: serializeUser(updated) })
 })
 
 app.post('/wechat/bind', async (c) => {
@@ -118,6 +123,7 @@ app.post('/wechat/login', async (c) => {
   const rows = await db.select().from(schema.aiUsers).execute()
   let user = rows.find(row => (openid && row.wxOpenid === openid) || (unionid && row.wxUnionid === unionid))
   const ts = now()
+  let createdUser = false
   if (!user) {
     const userId = `wx_${unionid || openid}_${Math.random().toString(36).slice(2, 8)}`
     await db.insert(schema.aiUsers).values({
@@ -136,8 +142,11 @@ app.post('/wechat/login', async (c) => {
       updatedAt: ts,
     }).execute()
     user = (await db.select().from(schema.aiUsers).where(eq(schema.aiUsers.id, userId)).execute())[0]
+    user = await grantRegisterRewards(user)
+    createdUser = true
   }
   if (!user.isActive) return badRequest(c, '账号已停用')
+  if (!createdUser) await grantDailyLoginReward(user)
   await db.update(schema.aiUsers).set({
     lastLoginAt: ts,
     lastLoginIp: String(c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '').split(',')[0]?.trim() || null,

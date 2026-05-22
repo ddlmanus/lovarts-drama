@@ -28,7 +28,7 @@ app.post('/episodes/:id/merge', async (c) => {
 // GET /episodes/:id/merge — 查询拼接状态
 app.get('/episodes/:id/merge', async (c) => {
   const episodeId = Number(c.req.param('id'))
-  const merges = db.select().from(schema.videoMerges)
+  const merges = await db.select().from(schema.videoMerges)
     .where(eq(schema.videoMerges.episodeId, episodeId))
     .execute()
 

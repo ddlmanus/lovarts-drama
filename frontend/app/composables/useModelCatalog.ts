@@ -1,4 +1,5 @@
 import { aiModelAPI } from '~/composables/useApi'
+import { getAuthUser } from '~/composables/useApi'
 
 const imageModels = ref([])
 const videoModels = ref([])
@@ -11,11 +12,12 @@ async function loadModelCatalog(force = false) {
   if (loadingPromise && !force) return loadingPromise
   if (loaded.value && !force) return { imageModels: imageModels.value, videoModels: videoModels.value }
 
+  const params = getAuthUser()?.id ? {} : { scope: 'public' }
   loading.value = true
   error.value = null
   loadingPromise = Promise.all([
-    aiModelAPI.options('image'),
-    aiModelAPI.options('video'),
+    aiModelAPI.options('image', params),
+    aiModelAPI.options('video', params),
   ])
     .then(([images, videos]) => {
       imageModels.value = Array.isArray(images) ? images : []

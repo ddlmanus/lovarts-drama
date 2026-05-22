@@ -482,7 +482,10 @@ VALUES
   ('oss_endpoint', '', 'storage', '阿里云 OSS Endpoint', 'string', 'system', 'system'),
   ('oss_access_key_id', '', 'storage', '阿里云 OSS AccessKey ID', 'string', 'system', 'system'),
   ('oss_access_key_secret', '', 'storage', '阿里云 OSS AccessKey Secret', 'secret', 'system', 'system'),
-  ('oss_public_base_url', '', 'storage', '阿里云 OSS 公网域名', 'string', 'system', 'system')
+  ('oss_public_base_url', '', 'storage', '阿里云 OSS 公网域名', 'string', 'system', 'system'),
+  ('daily_login_bonus_credits', '0', 'rewards', '每天登录赠送积分', 'number', 'system', 'system'),
+  ('register_bonus_credits', '0', 'rewards', '用户注册赠送积分', 'number', 'system', 'system'),
+  ('invite_bonus_credits', '0', 'rewards', '每邀请一人赠送积分', 'number', 'system', 'system')
 ON DUPLICATE KEY UPDATE label = VALUES(label), value_type = VALUES(value_type), updated_by = 'system';
 
 INSERT INTO ai_model_parameter_profiles (profile_key, name, service_type, description, is_builtin, created_by, updated_by)
