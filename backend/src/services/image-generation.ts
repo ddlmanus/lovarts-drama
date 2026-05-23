@@ -12,6 +12,7 @@ import { generateZenmuxImageDirect, shouldUseZenmuxDirect } from './zenmux-direc
 import { chargeCreditsAsync } from './credits.js'
 import { logTaskError, logTaskPayload, logTaskProgress, logTaskStart, logTaskSuccess, logTaskWarn, redactUrl } from '../utils/task-logger.js'
 import { findImageGeneration, insertImageGeneration, updateGeneratedCharacter, updateGeneratedScene, updateGeneratedStoryboard, updateImageGeneration } from '../repositories/generations.js'
+import { appendStylePrompt, getDramaStyleProfile } from './drama-style.js'
 
 interface GenerateImageParams {
   storyboardId?: number
@@ -71,6 +72,9 @@ export async function generateImage(params: GenerateImageParams): Promise<number
   const config = await getConfigForModelAsync('image', params.model, params.configId, params.userId, params.userProviderId)
   if (!config) throw new Error('No active image AI config')
   const defaults = config.modelDefaults || {}
+  const prompt = params.dramaId
+    ? appendStylePrompt(params.prompt, await getDramaStyleProfile(params.dramaId), params.characterId ? 'character' : params.sceneId ? 'scene' : 'image')
+    : params.prompt
   const sequentialOptions = params.sequentialImageGenerationOptions || defaults.sequential_image_generation_options || defaults.sequentialImageGenerationOptions || null
   const sequentialMaxImages = sequentialOptions && typeof sequentialOptions === 'object' ? sequentialOptions.max_images ?? sequentialOptions.maxImages : undefined
   const numberOfImages = normalizeNumberOfImages(params.numberOfImages ?? sequentialMaxImages ?? defaults.numberOfImages ?? defaults.number_of_images ?? defaults.sampleCount ?? defaults.sample_count)
@@ -80,7 +84,7 @@ export async function generateImage(params: GenerateImageParams): Promise<number
     dramaId: params.dramaId,
     sceneId: params.sceneId,
     characterId: params.characterId,
-    prompt: params.prompt,
+    prompt,
     model: params.model || config.model,
     provider: config.provider,
     size: params.size || defaults.size || defaults.aspect_ratio || '1920x1080',
@@ -553,6 +557,74 @@ async function pollImageTask(id: number, config: AIConfig, taskId: string, userI
       logTaskWarn('ImageTask', 'poll-retry', { id, taskId, attempt: i + 1, error: err.message })
     }
   }
+}
+
+export async function syncImageGenerationTask(id: number, userId?: string): Promise<boolean> {
+  const record = await findImageGeneration(id)
+  if (!record?.taskId) return false
+  const status = String(record.status || '').toLowerCase()
+  if (!['pending', 'processing'].includes(status)) return false
+
+  const config = await getConfigForModelAsync('image', record.model, null, userId)
+  if (!config) return false
+  if (record.provider && config.provider && record.provider.toLowerCase() !== config.provider.toLowerCase()) {
+    logTaskWarn('ImageTask', 'sync-provider-mismatch', {
+      id,
+      taskId: record.taskId,
+      recordProvider: record.provider,
+      configProvider: config.provider,
+    })
+    return false
+  }
+
+  const adapter = getImageAdapterForConfig(config)
+  try {
+    const { url, method, headers } = adapter.buildPollRequest(config, record.taskId, record.model)
+    logTaskProgress('ImageTask', 'sync-poll-request', {
+      id,
+      taskId: record.taskId,
+      provider: config.provider,
+      method,
+      url: redactUrl(url),
+    })
+    const resp = await fetch(url, {
+      method,
+      headers,
+      signal: AbortSignal.timeout(60_000),
+    })
+    if (!resp.ok) return false
+    const result = await resp.json() as any
+    const pollResp = adapter.parsePollResponse(result)
+
+    if (pollResp.status === 'completed' && pollResp.imageUrl) {
+      logTaskSuccess('ImageTask', 'sync-poll-complete', { id, taskId: record.taskId, imageUrl: pollResp.imageUrl })
+      await handleImageCompleteMany(id, config, extractImageUrls(adapter, result, pollResp.imageUrl), userId)
+      return true
+    }
+
+    if (pollResp.status === 'completed') {
+      const b64List = extractImageBase64List(adapter, result)
+      if (b64List.length) {
+        logTaskSuccess('ImageTask', 'sync-poll-base64-complete', { id, taskId: record.taskId, count: b64List.length, mimeType: b64List[0]?.mimeType })
+        await handleImageCompleteBase64Many(id, config, b64List, userId)
+        return true
+      }
+    }
+
+    if (pollResp.status === 'failed') {
+      await updateImageGeneration(id, { status: 'failed', errorMsg: pollResp.error || 'Generation failed', updatedAt: now() }, userId)
+      logTaskError('ImageTask', 'sync-poll-failed', { id, taskId: record.taskId, error: pollResp.error || 'Generation failed' })
+      return true
+    }
+  } catch (err: any) {
+    logTaskWarn('ImageTask', 'sync-poll-retry-later', {
+      id,
+      taskId: record.taskId,
+      error: err.message,
+    })
+  }
+
+  return false
 }
 
 function extractImageUrls(adapter: ReturnType<typeof getImageAdapterForConfig>, result: any, fallback?: string): string[] {

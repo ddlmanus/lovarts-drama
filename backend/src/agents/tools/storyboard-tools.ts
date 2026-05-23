@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm'
 import { now } from '../../utils/response.js'
 import { logTaskProgress, logTaskSuccess } from '../../utils/task-logger.js'
 import { updateAgentTask } from '../task-progress.js'
+import { appendStylePrompt, buildStyleAgentInstruction, getDramaStyleProfile } from '../../services/drama-style.js'
 
 async function syncStoryboardCharacters(storyboardId: number, characterIds: number[]) {
   await db.delete(schema.storyboardCharacters)
@@ -234,6 +235,32 @@ function assertStoryboardQuality(storyboards: ReturnType<typeof normalizeGenerat
   if (errors.length) throw new Error(`分镜质量校验失败：${errors.slice(0, 8).join('；')}`)
 }
 
+const STYLE_CONFLICT_TERMS: Record<string, string[]> = {
+  '动漫风格': ['photorealistic', 'live action', 'real person', 'realistic photo', '3d render', '3d animation', 'clay toy', 'minecraft', '真人', '写实照片', '真实摄影', '3d渲染', '三维渲染', '黏土', 'q版'],
+  '3D动画': ['2d anime', 'manga', 'comic book', 'live action', 'real person', 'photorealistic', 'watercolor', 'sketch', '二维动漫', '漫画线稿', '真人', '写实照片', '水彩', '素描'],
+  '可爱Q版': ['photorealistic', 'live action', 'real person', 'realistic adult proportions', 'hard horror realism', '真人', '写实照片', '真实摄影', '真实成人比例'],
+  '插画艺术': ['photorealistic', 'live action', 'real person', '3d render', 'raw camera photo', '真人', '写实照片', '真实摄影', '3d渲染'],
+  '都市言情': ['chibi', 'minecraft', 'clay toy', 'fantasy anime', 'q版', '像素', '黏土', '奇幻动漫'],
+  '写实风格': ['anime', 'manga', 'chibi', 'cartoon', '3d animation', 'illustration', '动漫', '漫画', 'q版', '卡通', '插画', '3d动画'],
+}
+
+function assertStoryboardStyleConsistency(storyboards: ReturnType<typeof normalizeGeneratedStoryboard>[], styleProfile: Awaited<ReturnType<typeof getDramaStyleProfile>>) {
+  const terms = [...(styleProfile.forbiddenKeywords || []), ...(STYLE_CONFLICT_TERMS[styleProfile.category] || [])]
+    .map(term => String(term || '').trim().toLowerCase())
+    .filter(Boolean)
+  if (!terms.length) return
+
+  const errors: string[] = []
+  storyboards.forEach((sb, index) => {
+    const text = [
+      sb.title, sb.description, sb.action, sb.atmosphere, sb.image_prompt, sb.video_prompt,
+    ].join('\n').toLowerCase()
+    const conflict = terms.find(term => text.includes(term))
+    if (conflict) errors.push(`第 ${index + 1} 条包含与「${styleProfile.category} / ${styleProfile.styleLabel}」冲突的风格词：${conflict}`)
+  })
+  if (errors.length) throw new Error(`分镜风格校验失败：${errors.slice(0, 5).join('；')}。请严格按当前项目风格重新生成分镜。`)
+}
+
 export function createStoryboardTools(episodeId: number, dramaId: number, taskId?: string) {
   const readStoryboardContext = createTool({
     id: 'read_storyboard_context',
@@ -250,6 +277,7 @@ export function createStoryboardTools(episodeId: number, dramaId: number, taskId
       if (!ep) return { error: 'Episode not found' }
       const script = ep.scriptContent || ep.content
       if (!script) return { error: 'Episode has no script' }
+      const styleProfile = await getDramaStyleProfile(dramaId)
 
       const charLinks = await db.select().from(schema.episodeCharacters)
         .where(eq(schema.episodeCharacters.episodeId, episodeId)).execute()
@@ -328,6 +356,7 @@ export function createStoryboardTools(episodeId: number, dramaId: number, taskId
             sceneId: '必须使用 scenes 中的 id',
             durationSeconds: '2、3、4、5，转场空镜最多 8',
           },
+          style_contract: buildStyleAgentInstruction(styleProfile),
         },
         episode: {
           id: ep.id,
@@ -336,6 +365,8 @@ export function createStoryboardTools(episodeId: number, dramaId: number, taskId
           description: ep.description || '',
         },
         script,
+        style_profile: styleProfile,
+        style_contract: buildStyleAgentInstruction(styleProfile),
         characters,
         scenes,
         existing_storyboards: existingStoryboards
@@ -433,6 +464,8 @@ export function createStoryboardTools(episodeId: number, dramaId: number, taskId
         .map((sb, index) => ({ ...sb, shot_number: index + 1 }))
       assertStoryboardQuality(storyboards)
       const ts = now()
+      const styleProfile = await getDramaStyleProfile(dramaId)
+      assertStoryboardStyleConsistency(storyboards, styleProfile)
       updateAgentTask(taskId, {
         step: 'save_storyboards',
         message: `正在保存 ${storyboards.length} 个分镜...`,
@@ -468,9 +501,9 @@ export function createStoryboardTools(episodeId: number, dramaId: number, taskId
           angle: sb.angle, movement: sb.movement,
           location: sb.location, time: sb.time,
           action: sb.action, dialogue: sb.dialogue,
-          description: sb.description, result: sb.result,
-          atmosphere: sb.atmosphere, imagePrompt: sb.image_prompt,
-          videoPrompt: sb.video_prompt, bgmPrompt: sb.bgm_prompt,
+          description: appendStylePrompt(sb.description, styleProfile, 'storyboard'), result: sb.result,
+          atmosphere: sb.atmosphere, imagePrompt: appendStylePrompt(sb.image_prompt || sb.description, styleProfile, 'image'),
+          videoPrompt: appendStylePrompt(sb.video_prompt || sb.action || sb.description, styleProfile, 'storyboard'), bgmPrompt: sb.bgm_prompt,
           soundEffect: sb.sound_effect,
           sceneId: sb.scene_id, duration: sb.duration || 10,
           createdBy: userId, createdAt: ts, updatedBy: userId, updatedAt: ts,

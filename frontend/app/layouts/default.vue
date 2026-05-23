@@ -113,7 +113,7 @@
             <div class="profile-row"><span>名称</span><strong>{{ currentUser?.name || '-' }}</strong></div>
             <div class="profile-row"><span>账号</span><strong>{{ currentUser?.account || '-' }}</strong></div>
             <div class="profile-row"><span>邮箱</span><strong>{{ currentUser?.email || '-' }}</strong></div>
-            <div class="profile-row"><span>积分</span><strong>{{ billingStatus?.credits ?? currentUser?.credits ?? 0 }}</strong></div>
+            <div class="profile-row"><span>积分</span><strong>{{ currentCredits }}</strong></div>
             <div class="profile-row"><span>会员状态</span><strong>{{ membershipStatusLabel }}</strong></div>
             <div class="profile-row"><span>角色</span><strong>{{ roleLabel }}</strong></div>
           </div>
@@ -150,7 +150,7 @@
         <form v-else-if="authMode === 'provider'" class="login-form provider-form" @submit.prevent="saveProvider">
           <div class="form-header">
             <h2 class="form-title">选择供应商</h2>
-            <p class="form-subtitle">填写你的 Base URL 和 API Key，可以为同一账号添加多个供应商密钥。</p>
+            <p class="form-subtitle">{{ providerBaseUrlEditable ? '填写你的 Base URL 和 API Key，可以为同一账号添加多个供应商密钥。' : '该供应商使用平台预设接口地址，只需要填写 API Key。' }}</p>
           </div>
           <div class="form-content">
             <div class="form-group">
@@ -160,7 +160,18 @@
               </select>
             </div>
             <div class="form-group"><div class="input-prefix"><SettingsIcon :size="18" /><input v-model="providerForm.name" type="text" placeholder="配置名称，例如 Gemini 官方 / ZenMux 主账号" /></div></div>
-            <div class="form-group"><div class="input-prefix"><LinkIcon :size="18" /><input v-model="providerForm.baseUrl" type="text" placeholder="Base URL，例如 https://zenmux.ai/api/v1" /></div></div>
+            <div class="form-group">
+              <div class="input-prefix" :class="{ 'is-readonly': !providerBaseUrlEditable }">
+                <LinkIcon :size="18" />
+                <input
+                  v-model="providerForm.baseUrl"
+                  type="text"
+                  :readonly="!providerBaseUrlEditable"
+                  :aria-readonly="!providerBaseUrlEditable"
+                  :placeholder="providerBaseUrlEditable ? 'Base URL，例如 https://zenmux.ai/api/v1' : '使用平台预设 Base URL'"
+                />
+              </div>
+            </div>
             <div class="form-group"><div class="input-prefix"><KeyRound :size="18" /><input v-model="providerForm.apiKey" type="password" placeholder="API Key" /></div></div>
             <button class="login-btn" type="submit" :disabled="authLoading">{{ authLoading ? '保存中...' : '添加并开始使用' }}</button>
             <div class="actions"><button type="button" @click="authMode = 'resourceMode'">返回选择</button></div>
@@ -244,7 +255,19 @@ const loginForm = reactive({ account: '', password: '', captcha: '' })
 const registerForm = reactive({ account: '', password: '', confirmPassword: '', captcha: '', inviteCode: '' })
 const providerForm = reactive({ providerId: 0, name: '', baseUrl: 'https://zenmux.ai/api/v1', apiKey: '' })
 const activeProviders = computed(() => (Array.isArray(providers.value) ? providers.value : []).filter(p => p.is_active !== false))
+const selectedProvider = computed(() => providers.value.find(p => Number(p.id) === Number(providerForm.providerId)) || null)
+const providerBaseUrlEditable = computed(() => canEditProviderBaseUrl(selectedProvider.value))
 const userInitial = computed(() => String(currentUser.value?.name || currentUser.value?.account || currentUser.value?.id || 'U').trim().slice(0, 1).toUpperCase())
+function optionalNumber(value) {
+  if (value === undefined || value === null || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+const currentCredits = computed(() => {
+  const userCredits = optionalNumber(currentUser.value?.credits)
+  if (userCredits !== null) return userCredits
+  return 0
+})
 const membershipStatusLabel = computed(() => {
   const status = String(billingStatus.value?.membership_status || currentUser.value?.membership_status || 'none').toLowerCase()
   const labels = {
@@ -385,10 +408,30 @@ async function loadProviders() {
 }
 
 function syncSelectedProviderDefaults() {
-  const selected = providers.value.find(p => Number(p.id) === Number(providerForm.providerId))
+  const selected = selectedProvider.value
   if (!selected) return
   providerForm.name = providerForm.name || selected.display_name || selected.name || ''
   providerForm.baseUrl = selected.default_url || selected.defaultUrl || providerForm.baseUrl || ''
+}
+
+function canEditProviderBaseUrl(provider) {
+  if (!provider) return true
+  const key = String(provider.key || provider.provider || '').toLowerCase()
+  const label = `${provider.display_name || ''} ${provider.name || ''}`.toLowerCase()
+  return key === 'gemini' ||
+    key.includes('google') ||
+    key.includes('openai-compatible') ||
+    key.includes('openai_compatible') ||
+    key.includes('openai-compatible-image') ||
+    label.includes('google') ||
+    label.includes('gemini') ||
+    label.includes('openai') ||
+    label.includes('兼容')
+}
+
+function selectedProviderDefaultBaseUrl() {
+  const selected = selectedProvider.value
+  return String(selected?.default_url || selected?.defaultUrl || providerForm.baseUrl || '').trim()
 }
 
 async function openProviderSettings() {
@@ -424,7 +467,6 @@ async function loadBillingStatus() {
   try {
     const status = await billingAPI.membershipStatus()
     billingStatus.value = status
-    updateCurrentUser(status)
   } catch {
     billingStatus.value = null
   }
@@ -514,10 +556,11 @@ async function choosePlatformMode() {
 async function saveProvider() {
   try {
     authLoading.value = true
+    const baseUrl = providerBaseUrlEditable.value ? providerForm.baseUrl : selectedProviderDefaultBaseUrl()
     await aiModelAPI.connectUserProvider({
       provider_id: providerForm.providerId,
       name: providerForm.name,
-      base_url: providerForm.baseUrl,
+      base_url: baseUrl,
       api_key: providerForm.apiKey,
     })
     toast.success('供应商密钥已添加')
@@ -1062,6 +1105,15 @@ function finishProviderSetup() {
   border: 1px solid #e5e5e5;
   border-radius: 8px;
   background: #fafafa;
+}
+
+.input-prefix.is-readonly {
+  background: #f3f4f6;
+}
+
+.input-prefix.is-readonly input {
+  color: #52525b;
+  cursor: default;
 }
 
 .form-group select {

@@ -59,10 +59,18 @@ function tokenFromRequest(c: Context): string {
   return bearer || c.req.query('token') || ''
 }
 
+function canUseDevUserHeader(c: Context): boolean {
+  if (process.env.ALLOW_DEV_USER_HEADER === '1') return true
+  if (process.env.ALLOW_DEV_USER_HEADER === '0') return false
+  if (process.env.NODE_ENV === 'production') return false
+  const host = String(c.req.header('host') || '').toLowerCase()
+  return /^(localhost|127\.0\.0\.1|\[::1\])(?::|$)/.test(host)
+}
+
 export function optionalAuthUserId(c: Context): string | null {
   const verified = verifyAuthToken(tokenFromRequest(c))
   if (verified) return verified
-  if (process.env.ALLOW_DEV_USER_HEADER === '1') {
+  if (canUseDevUserHeader(c)) {
     const devUserId = String(c.req.header('x-user-id') || '').trim()
     return devUserId || null
   }

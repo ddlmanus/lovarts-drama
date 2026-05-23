@@ -11,6 +11,7 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { db, schema } from '../../db/index.js'
 import { eq } from 'drizzle-orm'
+import { appendStylePrompt, getDramaStyleProfile } from '../../services/drama-style.js'
 
 export function createGridPromptTools(episodeId: number, dramaId: number) {
 
@@ -24,7 +25,9 @@ export function createGridPromptTools(episodeId: number, dramaId: number) {
       const chars = (await db.select().from(schema.characters)
         .where(eq(schema.characters.dramaId, dramaId)).execute())
         .filter(c => !c.deletedAt)
+      const styleProfile = await getDramaStyleProfile(dramaId)
       return {
+        style_profile: styleProfile,
         characters: chars.map(c => ({
           id: c.id,
           name: c.name,
@@ -55,7 +58,7 @@ export function createGridPromptTools(episodeId: number, dramaId: number) {
       if (c.personality) parts.push(`personality: ${c.personality}`)
 
       const base = parts.join(', ')
-      const prompt = `${base}, cinematic portrait, high quality, consistent art style, no text, no watermark`
+      const prompt = appendStylePrompt(`${base}, cinematic portrait, high quality, consistent art style, no text, no watermark`, await getDramaStyleProfile(dramaId), 'character')
 
       return {
         character_id: c.id,
@@ -75,7 +78,9 @@ export function createGridPromptTools(episodeId: number, dramaId: number) {
       const scenes = (await db.select().from(schema.scenes)
         .where(eq(schema.scenes.dramaId, dramaId)).execute())
         .filter(s => !s.deletedAt)
+      const styleProfile = await getDramaStyleProfile(dramaId)
       return {
+        style_profile: styleProfile,
         scenes: scenes.map(s => ({
           id: s.id,
           location: s.location,
@@ -103,7 +108,7 @@ export function createGridPromptTools(episodeId: number, dramaId: number) {
       if (s.prompt) parts.push(s.prompt)
 
       const base = parts.join(', ')
-      const prompt = `${base}, cinematic scene, atmospheric lighting, high quality, consistent art style, no text, no watermark`
+      const prompt = appendStylePrompt(`${base}, cinematic scene, atmospheric lighting, high quality, consistent art style, no text, no watermark`, await getDramaStyleProfile(dramaId), 'scene')
 
       return {
         scene_id: s.id,

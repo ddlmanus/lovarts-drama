@@ -2,15 +2,41 @@ import { Hono } from 'hono'
 import { and, eq } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
 import { success, badRequest, now } from '../utils/response.js'
-import { toSnakeCaseArray } from '../utils/transform.js'
+import { toSnakeCase, toSnakeCaseArray } from '../utils/transform.js'
 import { generateVoiceSample } from '../services/tts-generation.js'
 import { generateImage } from '../services/image-generation.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 import { ensureOwnedDrama, ensureOwnedEpisode, ownedRow, requestUserId } from '../utils/dramaAccess.js'
+import { appendStylePrompt, getDramaStyleProfile } from '../services/drama-style.js'
 
 const app = new Hono()
 
-function buildCharacterImagePrompt(char: typeof schema.characters.$inferSelect) {
+function limitText(value: string | null | undefined, maxLength: number) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (text.length <= maxLength) return text
+  return `${text.slice(0, maxLength)}...`
+}
+
+function collectCharacterScriptContext(script: string, characterName: string) {
+  const lines = script.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  const hitIndexes = lines
+    .map((line, index) => line.includes(characterName) ? index : -1)
+    .filter(index => index >= 0)
+  if (!hitIndexes.length) return limitText(script, 1200)
+
+  const selected = new Set<number>()
+  for (const index of hitIndexes.slice(0, 6)) {
+    for (let offset = -2; offset <= 2; offset += 1) {
+      const next = index + offset
+      if (next >= 0 && next < lines.length) selected.add(next)
+    }
+  }
+  return limitText([...selected].sort((a, b) => a - b).map(index => lines[index]).join('\n'), 1500)
+}
+
+function buildCharacterImagePrompt(char: typeof schema.characters.$inferSelect, episode?: typeof schema.episodes.$inferSelect | null) {
+  const scriptText = episode ? String(episode.scriptContent || episode.content || episode.description || '') : ''
+  const scriptContext = scriptText ? collectCharacterScriptContext(scriptText, char.name) : ''
   const parts = [
     `角色名称：${char.name}`,
     char.gender ? `性别：${char.gender}` : '',
@@ -23,9 +49,11 @@ function buildCharacterImagePrompt(char: typeof schema.characters.$inferSelect) 
 
   return [
     parts.join('\n'),
+    scriptContext ? `当前集剧本中与该角色相关的描述：\n${scriptContext}` : '',
     '请根据以上角色卡片信息生成单人角色形象图。',
+    '形象生成优先级：项目风格类型锁定 > 当前集剧本中的角色描写 > 角色卡字段。若角色卡与剧本冲突，以剧本和项目风格为准。',
     '要求：角色主体清晰，正面或半身构图，人物特征稳定，服装、气质、时代背景与角色设定一致，高质量，细节丰富，干净背景，不要出现文字、水印、多人或无关元素。',
-  ].join('\n')
+  ].filter(Boolean).join('\n')
 }
 
 // GET /characters/library
@@ -41,6 +69,68 @@ app.get('/library', async (c) => {
     })
     .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
   return success(c, toSnakeCaseArray(rows))
+})
+
+// POST /characters/library
+app.post('/library', async (c) => {
+  const body = await c.req.json()
+  const userId = requestUserId(c)
+  const name = String(body.name || '').trim()
+  if (!name) return badRequest(c, 'name is required')
+
+  const ts = now()
+  const result = await db.insert(schema.characterLibrary).values({
+    userId,
+    name,
+    age: body.age || '',
+    gender: body.gender || '',
+    role: body.role || '',
+    description: body.description || '',
+    appearance: body.appearance || '',
+    personality: body.personality || '',
+    voiceStyle: body.voice_style ?? body.voiceStyle ?? '',
+    imageUrl: body.image_url ?? body.imageUrl ?? '',
+    referenceImages: body.reference_images ?? body.referenceImages ?? '',
+    sourceCharacterId: body.source_character_id ?? body.sourceCharacterId ?? null,
+    createdBy: userId,
+    createdAt: ts,
+    updatedBy: userId,
+    updatedAt: ts,
+  }).execute()
+  const [row] = await db.select().from(schema.characterLibrary).where(eq(schema.characterLibrary.id, Number(result.insertId))).execute()
+  return success(c, toSnakeCase(row))
+})
+
+// PUT /characters/library/:id
+app.put('/library/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json()
+  const userId = requestUserId(c)
+  const [item] = await db.select().from(schema.characterLibrary).where(eq(schema.characterLibrary.id, id)).execute()
+  if (!ownedRow(item, userId)) return badRequest(c, 'Library character not found')
+
+  const updates: Record<string, any> = { updatedAt: now(), updatedBy: userId }
+  for (const key of ['name', 'age', 'gender', 'role', 'description', 'appearance', 'personality', 'voiceStyle', 'imageUrl', 'referenceImages']) {
+    const snakeKey = key.replace(/[A-Z]/g, m => '_' + m.toLowerCase())
+    if (snakeKey in body) updates[key] = body[snakeKey]
+    else if (key in body) updates[key] = body[key]
+  }
+  if (!String(updates.name ?? item.name ?? '').trim()) return badRequest(c, 'name is required')
+
+  await db.update(schema.characterLibrary).set(updates).where(and(eq(schema.characterLibrary.id, id), eq(schema.characterLibrary.userId, userId))).execute()
+  const [row] = await db.select().from(schema.characterLibrary).where(eq(schema.characterLibrary.id, id)).execute()
+  return success(c, toSnakeCase(row))
+})
+
+// DELETE /characters/library/:id
+app.delete('/library/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  const userId = requestUserId(c)
+  await db.update(schema.characterLibrary)
+    .set({ deletedAt: now(), deletedBy: userId, updatedAt: now(), updatedBy: userId })
+    .where(and(eq(schema.characterLibrary.id, id), eq(schema.characterLibrary.userId, userId)))
+    .execute()
+  return success(c)
 })
 
 // POST /characters
@@ -216,13 +306,14 @@ app.post('/:id/generate-image', async (c) => {
   const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, Number(body.episode_id))).execute()
   if (!ep) return badRequest(c, 'Episode not found')
 
-  const prompt = buildCharacterImagePrompt(char)
+  const prompt = buildCharacterImagePrompt(char, ep)
+  const styleProfile = await getDramaStyleProfile(char.dramaId)
   try {
     logTaskStart('CharacterImage', 'generate', { characterId: id, episodeId: ep.id, dramaId: char.dramaId })
     const genId = await generateImage({
       characterId: id,
       dramaId: char.dramaId,
-      prompt,
+      prompt: appendStylePrompt(prompt, styleProfile, 'character'),
       model: body.model,
       configId: body.model_config_id ?? body.modelConfigId ?? body.config_id ?? ep.imageConfigId ?? undefined,
       userProviderId: body.user_provider_id ?? body.userProviderId ?? undefined,
@@ -252,12 +343,13 @@ app.post('/batch-generate-images', async (c) => {
       failed.push({ character_id: cid, message: 'Character not found' })
       continue
     }
-    const prompt = buildCharacterImagePrompt(char)
+    const prompt = buildCharacterImagePrompt(char, ep)
+    const styleProfile = await getDramaStyleProfile(char.dramaId)
     try {
       const genId = await generateImage({
         characterId: cid,
         dramaId: char.dramaId,
-        prompt,
+        prompt: appendStylePrompt(prompt, styleProfile, 'character'),
         model: body.model,
         configId: body.model_config_id ?? body.modelConfigId ?? body.config_id ?? ep.imageConfigId ?? undefined,
         userProviderId: body.user_provider_id ?? body.userProviderId ?? undefined,

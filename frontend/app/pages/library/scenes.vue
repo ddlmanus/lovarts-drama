@@ -24,6 +24,10 @@
           <Search :size="18" />
           搜索
         </button>
+        <button class="search-btn secondary" type="button" @click="createScene">
+          <Plus :size="18" />
+          新增场景
+        </button>
       </section>
 
       <section v-if="loading" class="library-empty">
@@ -34,7 +38,8 @@
       <section v-else-if="!items.length" class="library-empty">
         <Mountain :size="84" />
         <h2>场景库为空</h2>
-        <p>在项目中创建场景后，可以保存到公共库以便复用</p>
+        <p>直接创建场景，或在项目中创建后保存到公共库</p>
+        <button class="empty-create-btn" type="button" @click="createScene">新增场景</button>
       </section>
 
       <section v-else class="library-grid">
@@ -47,6 +52,9 @@
             <div class="card-actions">
               <button class="icon-btn" type="button" title="查看图片" @click="openPreview(item)">
                 <Eye :size="18" />
+              </button>
+              <button class="icon-btn" type="button" title="编辑场景" @click="editScene(item)">
+                <Pencil :size="18" />
               </button>
               <button class="icon-btn danger" type="button" title="删除场景" @click="deleteScene(item)">
                 <Trash2 :size="18" />
@@ -82,18 +90,69 @@
         </div>
       </section>
     </div>
+
+    <div v-if="formOpen" class="role-modal-overlay" @click.self="closeForm">
+      <section class="role-design-modal" role="dialog" aria-modal="true" aria-label="场景设计">
+        <button class="role-modal-close" type="button" aria-label="关闭" @click="closeForm">
+          <X :size="22" />
+        </button>
+        <h2 class="role-modal-title">{{ editingId ? '场景设计' : '自定义场景' }}</h2>
+        <div class="role-modal-content">
+          <div class="role-modal-image">
+            <label v-if="form.image_url" class="role-modal-image-upload">
+              <img :src="assetUrl(form.image_url)" alt="" />
+              <input type="file" accept="image/*" @change="uploadImage" />
+            </label>
+            <div v-else class="role-modal-image-placeholder">
+              <ImageIcon :size="34" />
+              <label class="role-upload-btn">
+                {{ uploading ? '上传中...' : '手动上传' }}
+                <input type="file" accept="image/*" :disabled="uploading" @change="uploadImage" />
+              </label>
+            </div>
+          </div>
+          <form class="role-modal-form" @submit.prevent="saveScene">
+            <label class="role-field">
+              <span>地点</span>
+              <input v-model.trim="form.location" type="text" required placeholder="请输入场景地点" />
+            </label>
+            <label class="role-field">
+              <span>时间</span>
+              <input v-model.trim="form.time" type="text" placeholder="请输入时间段" />
+            </label>
+            <label class="role-field">
+              <span>场景描述</span>
+              <textarea v-model.trim="form.prompt" rows="8" placeholder="请输入场景描述"></textarea>
+            </label>
+          </form>
+        </div>
+        <div class="role-modal-actions">
+          <button class="role-modal-text-btn" type="button" @click="closeForm">取消</button>
+          <button class="role-modal-primary-btn" type="button" :disabled="saving || uploading" @click="saveScene">
+            <Loader2 v-if="saving || uploading" :size="15" class="spin" />
+            <span v-else>确认</span>
+          </button>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { Clock, Eye, Folder, ImageIcon, Loader2, Mountain, Search, Trash2, X } from 'lucide-vue-next'
+import { Clock, Eye, Folder, ImageIcon, Loader2, Mountain, Pencil, Plus, Search, Trash2, X } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
-import { sceneAPI } from '~/composables/useApi'
+import { sceneAPI, uploadAPI } from '~/composables/useApi'
 
 const keyword = ref('')
 const items = ref([])
 const loading = ref(false)
 const previewScene = ref(null)
+const formOpen = ref(false)
+const saving = ref(false)
+const uploading = ref(false)
+const editingId = ref(null)
+const emptyForm = () => ({ location: '', time: '', prompt: '', image_url: '' })
+const form = reactive(emptyForm())
 
 function sceneTitle(scene) {
   return `${scene?.location || '未命名场景'}${scene?.time ? '-' + scene.time : ''}`
@@ -137,10 +196,67 @@ function closePreview() {
   previewScene.value = null
 }
 
-async function deleteScene(scene) {
-  if (!confirm(`确定删除「${sceneTitle(scene)}」？此操作不可恢复。`)) return
+function resetForm(values = {}) {
+  Object.assign(form, emptyForm(), values)
+}
+
+function createScene() {
+  editingId.value = null
+  resetForm()
+  formOpen.value = true
+}
+
+function editScene(scene) {
+  editingId.value = scene.id
+  resetForm({
+    location: scene.location || '',
+    time: scene.time || '',
+    prompt: scene.prompt || '',
+    image_url: scene.image_url || scene.imageUrl || '',
+  })
+  formOpen.value = true
+}
+
+function closeForm() {
+  formOpen.value = false
+  editingId.value = null
+}
+
+async function uploadImage(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  uploading.value = true
   try {
-    await sceneAPI.del(scene.id)
+    const result = await uploadAPI.image(file)
+    form.image_url = result.url || result.path || ''
+  } catch (e) {
+    toast.error(e.message || '上传失败')
+  } finally {
+    uploading.value = false
+  }
+}
+
+async function saveScene() {
+  saving.value = true
+  try {
+    const payload = { ...form }
+    if (editingId.value) await sceneAPI.updateLibrary(editingId.value, payload)
+    else await sceneAPI.createLibrary(payload)
+    toast.success('已保存到场景库')
+    closeForm()
+    await load()
+  } catch (e) {
+    toast.error(e.message || '保存失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function deleteScene(scene) {
+  if (!confirm(`确定删除「${sceneTitle(scene)}」？此操作不会影响已使用到项目中的场景。`)) return
+  try {
+    await sceneAPI.deleteLibrary(scene.id)
     toast.success('已删除')
     await load()
   } catch (e) {
@@ -253,6 +369,23 @@ onMounted(load)
   gap: 8px;
   font-size: 15px;
   font-weight: 500;
+  cursor: pointer;
+}
+.search-btn.secondary {
+  min-width: 112px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: rgba(255,255,255,0.86);
+}
+.empty-create-btn {
+  margin-top: 18px;
+  height: 36px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 4px;
+  background: #1688ff;
+  color: #fff;
+  font-size: 14px;
   cursor: pointer;
 }
 .library-empty {
@@ -428,6 +561,188 @@ onMounted(load)
   gap: 12px;
   color: rgba(255,255,255,0.5);
 }
+.role-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0,0,0,0.54);
+}
+.role-design-modal {
+  position: relative;
+  width: min(760px, calc(100vw - 48px));
+  height: auto;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 28px 20px;
+  border-radius: 3px;
+  border: 1px solid rgba(255,255,255,0.09);
+  background: linear-gradient(180deg, #2c2c32 0%, #3a4254 100%);
+  color: rgba(255,255,255,0.86);
+  box-shadow: 0 24px 72px rgba(0,0,0,0.42);
+}
+.role-modal-close {
+  position: absolute;
+  top: 20px;
+  right: 26px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: rgba(255,255,255,0.52);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.role-modal-close:hover {
+  background: rgba(255,255,255,0.12);
+}
+.role-modal-title {
+  margin: 0 0 8px;
+  color: rgba(255,255,255,0.92);
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 500;
+}
+.role-modal-content {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 16px;
+}
+.role-modal-image {
+  height: 460px;
+  min-height: 460px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #1f2027 0%, #252936 100%);
+}
+.role-modal-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.role-modal-image-placeholder {
+  width: 100%;
+  height: 100%;
+  min-height: 460px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: rgba(255,255,255,0.48);
+}
+.role-modal-image-upload {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+.role-modal-image-upload input,
+.role-upload-btn input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.role-upload-btn {
+  position: relative;
+  min-height: 30px;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #9bd9ff;
+  color: #07111c;
+}
+.role-modal-form {
+  min-height: 0;
+  max-height: 460px;
+  overflow-y: auto;
+  padding-right: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.role-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: rgba(255,255,255,0.9);
+  font-size: 14px;
+  font-weight: 400;
+}
+.role-field input,
+.role-field textarea {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.86);
+  outline: none;
+  font-size: 15px;
+  font-family: inherit;
+}
+.role-field input {
+  height: 40px;
+  padding: 0 14px;
+}
+.role-field textarea {
+  min-height: 80px;
+  resize: vertical;
+  padding: 8px 12px;
+  line-height: 1.6;
+}
+.role-field input:focus,
+.role-field textarea:focus {
+  border-color: #409cff;
+  box-shadow: 0 0 8px rgba(10,132,255,0.3);
+  background: rgba(10,132,255,0.1);
+}
+.role-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+.role-modal-text-btn,
+.role-modal-primary-btn {
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.role-modal-text-btn {
+  background: transparent;
+  color: rgba(255,255,255,0.9);
+}
+.role-modal-primary-btn {
+  background: #9bd9ff;
+  color: #06101a;
+}
+.role-modal-primary-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
 @media (max-width: 1280px) {
   .library-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -464,6 +779,22 @@ onMounted(load)
   }
   .card-body h3 {
     font-size: 20px;
+  }
+  .role-modal-overlay {
+    padding: 12px;
+  }
+  .role-design-modal {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 16px 20px 20px;
+  }
+  .role-modal-content {
+    grid-template-columns: 1fr;
+  }
+  .role-modal-image,
+  .role-modal-image-placeholder {
+    min-height: 280px;
+    height: 280px;
   }
 }
 </style>

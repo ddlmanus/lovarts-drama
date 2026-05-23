@@ -368,11 +368,23 @@ async function load() {
 async function submitDrama() {
   if (!form.value.title?.trim()) return
   try {
+    const selectedStyle = artStyleCategories.flatMap(category => category.styles.map(style => ({
+      ...style,
+      category: category.name,
+    }))).find(style => style.value === form.value.style)
     const payload = {
       title: form.value.title,
       total_episodes: editingDrama.value ? form.value.total_episodes : 1,
+      genre: form.value.genres?.join('、') || '通用',
       style: form.value.style,
       description: buildProjectDescription(),
+      metadata: JSON.stringify({
+        ratio: form.value.ratio,
+        genres: form.value.genres || ['通用'],
+        style: form.value.style,
+        style_label: selectedStyle?.label || form.value.style,
+        style_category: selectedStyle?.category || activeArtCategory.value,
+      }),
     }
     if (editingDrama.value) {
       await dramaAPI.update(editingDrama.value.id, payload)

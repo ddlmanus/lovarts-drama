@@ -73,7 +73,7 @@ const SUPPORTED_QUALITIES = new Set(['auto', 'low', 'medium', 'high'])
 const SUPPORTED_BACKGROUNDS = new Set(['auto', 'opaque', 'transparent'])
 const SUPPORTED_MODERATIONS = new Set(['auto', 'low'])
 const SUPPORTED_OUTPUT_FORMATS = new Set(['png', 'jpeg', 'webp'])
-const PIXEL_SIZE_RE = /^\d{2,5}x\d{2,5}$/i
+const PIXEL_SIZE_RE = /^(\d{2,5})x(\d{2,5})$/i
 
 function isGeminiImageModel(model: string) {
   return GEMINI_IMAGE_MODELS.has(model)
@@ -87,8 +87,18 @@ function normalizeSize(size: string | null | undefined, model: string): string {
   const value = String(size || '').trim().toLowerCase()
   if (!value) return '1:1'
   const supported = isGeminiProImageModel(model) ? GEMINI_PRO_IMAGE_SIZES : isGeminiImageModel(model) ? GEMINI_IMAGE_SIZES : GPT_IMAGE_SIZES
-  if (supported.has(value) || (!isGeminiImageModel(model) && PIXEL_SIZE_RE.test(value))) return value
+  if (supported.has(value)) return value
+  const pixelMatch = value.match(PIXEL_SIZE_RE)
+  if (!isGeminiImageModel(model) && pixelMatch) {
+    const width = Number(pixelMatch[1])
+    const height = Number(pixelMatch[2])
+    return `${roundDownTo16(width)}x${roundDownTo16(height)}`
+  }
   throw new Error(`APIMart ${model} size 不支持: ${size}`)
+}
+
+function roundDownTo16(value: number) {
+  return Math.max(16, Math.floor(value / 16) * 16)
 }
 
 function normalizeResolution(value: string | null | undefined, model: string): string {
@@ -166,6 +176,11 @@ function extractApimartImageUrls(result: any): string[] {
     if (typeof image?.url === 'string') return [image.url]
     return []
   }).filter(Boolean)
+}
+
+function isTemporaryPollError(message: string) {
+  const normalized = message.toLowerCase()
+  return normalized.includes('please wait') || normalized.includes('try again later')
 }
 
 export class ApimartImageAdapter implements ImageProviderAdapter {
@@ -253,9 +268,12 @@ export class ApimartImageAdapter implements ImageProviderAdapter {
     }
 
     if (status === 'failed') {
+      const error = data?.error?.message || result?.error?.message || data?.message || result?.message || 'Generation failed'
+      const progress = Number(data?.progress ?? result?.progress ?? 0)
+      if (isTemporaryPollError(String(error)) && progress < 100) return { status: 'processing' }
       return {
         status: 'failed',
-        error: data?.error?.message || result?.error?.message || 'Generation failed',
+        error,
       }
     }
 

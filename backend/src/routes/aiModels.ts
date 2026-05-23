@@ -330,6 +330,25 @@ async function providerForModel(model: typeof schema.aiModelConfigs.$inferSelect
   return (await db.select().from(schema.aiServiceProviders).where(eq(schema.aiServiceProviders.provider, model.provider)).execute())[0]
 }
 
+function canUserOverrideProviderBaseUrl(provider: ProviderRow) {
+  const key = String(provider.provider || '').toLowerCase()
+  const label = `${provider.displayName || ''} ${provider.name || ''}`.toLowerCase()
+  return key === 'gemini' ||
+    key.includes('google') ||
+    key.includes('openai-compatible') ||
+    key.includes('openai_compatible') ||
+    label.includes('google') ||
+    label.includes('gemini') ||
+    label.includes('openai') ||
+    label.includes('兼容')
+}
+
+function resolveUserProviderBaseUrl(provider: ProviderRow, requestedBaseUrl: string) {
+  const defaultUrl = String(provider.defaultUrl || '').trim()
+  if (!defaultUrl) return requestedBaseUrl
+  return canUserOverrideProviderBaseUrl(provider) ? (requestedBaseUrl || defaultUrl) : defaultUrl
+}
+
 function clampInt(value: string | undefined, fallback: number, min: number, max: number) {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return fallback
@@ -1222,7 +1241,7 @@ app.post('/admin/user-providers', async (c) => {
   const providerId = Number(body.provider_id || body.providerId)
   const provider = await providerById(providerId)
   if (!provider) return notFound(c, 'provider not found')
-  const baseUrl = String(body.base_url || body.baseUrl || '').trim()
+  const baseUrl = resolveUserProviderBaseUrl(provider, String(body.base_url || body.baseUrl || '').trim())
   const apiKey = String(body.api_key || body.apiKey || '').trim()
   if (!baseUrl || !apiKey) return badRequest(c, 'base_url and api_key are required')
   const ts = now()
@@ -1251,12 +1270,13 @@ app.put('/admin/user-providers/:id', async (c) => {
   const provider = await providerById(providerId)
   if (!provider) return notFound(c, 'provider not found')
   const apiKey = String(body.api_key || body.apiKey || '').trim()
+  const requestedBaseUrl = String(body.base_url || body.baseUrl || row.baseUrl || '').trim()
   await db.update(schema.aiUserProviderConfigs).set({
     userId: rawUserId === undefined ? row.userId : (String(rawUserId || '').trim() || null),
     providerId,
     provider: provider.provider,
     name: body.name || provider.displayName || provider.name,
-    baseUrl: body.base_url || body.baseUrl || row.baseUrl,
+    baseUrl: resolveUserProviderBaseUrl(provider, requestedBaseUrl),
     apiKey: apiKey && apiKey !== '********' ? apiKey : row.apiKey,
     isActive: body.is_active ?? body.isActive ?? row.isActive,
     updatedAt: now(),
@@ -1289,7 +1309,7 @@ app.post('/user/providers/connect', async (c) => {
   const providerId = Number(body.provider_id || body.providerId)
   const provider = await providerById(providerId)
   if (!provider) return notFound(c, 'provider not found')
-  const baseUrl = String(body.base_url || body.baseUrl || '').trim()
+  const baseUrl = resolveUserProviderBaseUrl(provider, String(body.base_url || body.baseUrl || '').trim())
   const apiKey = String(body.api_key || body.apiKey || '').trim()
   if (!baseUrl || !apiKey) return badRequest(c, 'base_url and api_key are required')
   const ts = now()

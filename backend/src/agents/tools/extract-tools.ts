@@ -14,6 +14,7 @@ import { eq, and } from 'drizzle-orm'
 import { now } from '../../utils/response.js'
 import { logTaskProgress, logTaskSuccess } from '../../utils/task-logger.js'
 import { updateAgentTask } from '../task-progress.js'
+import { appendStylePrompt, buildStyleAgentInstruction, getDramaStyleProfile } from '../../services/drama-style.js'
 
 // ─── 关联辅助 ────────────────────────────────────────────────
 async function linkCharToEpisode(episodeId: number, characterId: number) {
@@ -65,7 +66,8 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
         progress: 22,
         details: { scriptLength: content.length },
       })
-      return { script: content }
+      const profile = await getDramaStyleProfile(dramaId)
+      return { script: content, style_contract: buildStyleAgentInstruction(profile) }
     },
   })
 
@@ -163,6 +165,7 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
     execute: async ({ characters }) => {
       const ts = now()
       const userId = await ownerUserId()
+      const profile = await getDramaStyleProfile(dramaId)
       const results = { created: 0, merged: 0 }
       const savedIds: number[] = []
       updateAgentTask(taskId, {
@@ -190,7 +193,7 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
             gender: char.gender || existing.gender,
             role: char.role || existing.role,
             description: char.description || existing.description,
-            appearance: char.appearance || existing.appearance,
+            appearance: appendStylePrompt(char.appearance || existing.appearance || '', profile, 'character'),
             personality: char.personality || existing.personality,
             updatedAt: ts,
           }).where(eq(schema.characters.id, existing.id)).execute()
@@ -206,7 +209,7 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
             gender: char.gender || '',
             role: char.role || '',
             description: char.description || '',
-            appearance: char.appearance || '',
+            appearance: appendStylePrompt(char.appearance || '', profile, 'character'),
             personality: char.personality || '',
             dramaId,
             createdBy: userId,
@@ -258,6 +261,7 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
     execute: async ({ scenes }) => {
       const ts = now()
       const userId = await ownerUserId()
+      const profile = await getDramaStyleProfile(dramaId)
       const results = { created: 0, reused: 0 }
       updateAgentTask(taskId, {
         step: 'save_dedup_scenes',
@@ -294,7 +298,7 @@ export function createExtractTools(episodeId: number, dramaId: number, taskId?: 
             dramaId,
             location: scene.location,
             time: scene.time || '',
-            prompt: scene.prompt || scene.location,
+            prompt: appendStylePrompt(scene.prompt || scene.location, profile, 'scene'),
             createdBy: userId,
             createdAt: ts,
             updatedBy: userId,

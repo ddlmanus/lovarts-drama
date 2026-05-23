@@ -143,6 +143,13 @@
                 <button class="target-action-btn secondary-action small" type="button" @click="cancelRawEdit">
                   <span>取消</span>
                 </button>
+                <button class="target-action-btn secondary-action small" type="button" :disabled="rn" @click="agentRewriteCurrentScript">
+                  <Loader2 v-if="rn && rt === 'script_rewriter'" :size="14" class="animate-spin" />
+                  <svg v-else class="svg-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor" d="M12 2l1.25 4.25L17.5 7.5l-4.25 1.25L12 13l-1.25-4.25L6.5 7.5l4.25-1.25L12 2Zm6.5 9l.8 2.7L22 14.5l-2.7.8l-.8 2.7l-.8-2.7l-2.7-.8l2.7-.8l.8-2.7ZM6 13l1 3.4l3.4 1L7 18.4L6 22l-1-3.6l-3.4-1L5 16.4L6 13Z"></path>
+                  </svg>
+                  <span>{{ rn && rt === 'script_rewriter' ? '改写中...' : 'Agent改写' }}</span>
+                </button>
                 <button class="target-action-btn primary-action small" type="button" @click="saveRawEdit">
                   <span>保存修改</span>
                 </button>
@@ -155,6 +162,13 @@
                 <span>编辑剧本</span>
               </button>
               <BaseSelect v-model="scriptModel" :options="scriptModelOptions" placeholder="选择模型" searchable class="script-model-select" />
+              <button class="target-action-btn secondary-action small" type="button" :disabled="rn" @click="agentRewriteCurrentScript">
+                <Loader2 v-if="rn && rt === 'script_rewriter'" :size="14" class="animate-spin" />
+                <svg v-else class="svg-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="currentColor" d="M12 2l1.25 4.25L17.5 7.5l-4.25 1.25L12 13l-1.25-4.25L6.5 7.5l4.25-1.25L12 2Zm6.5 9l.8 2.7L22 14.5l-2.7.8l-.8 2.7l-.8-2.7l-2.7-.8l2.7-.8l.8-2.7ZM6 13l1 3.4l3.4 1L7 18.4L6 22l-1-3.6l-3.4-1L5 16.4L6 13Z"></path>
+                </svg>
+                <span>{{ rn && rt === 'script_rewriter' ? '改写中...' : 'Agent改写' }}</span>
+              </button>
               <button class="target-action-btn secondary-action small" type="button" :disabled="rn" @click="startExtractFromRaw">
                 <Loader2 v-if="rn && rt === 'extractor'" :size="14" class="animate-spin" />
                 <svg v-else class="svg-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
@@ -229,6 +243,13 @@
                 <button class="target-action-btn secondary-action small" type="button" @click="cancelScriptEdit">
                   <span>取消</span>
                 </button>
+                <button class="target-action-btn secondary-action small" type="button" :disabled="rn" @click="agentRewriteCurrentScript">
+                  <Loader2 v-if="rn && rt === 'script_rewriter'" :size="14" class="animate-spin" />
+                  <svg v-else class="svg-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor" d="M12 2l1.25 4.25L17.5 7.5l-4.25 1.25L12 13l-1.25-4.25L6.5 7.5l4.25-1.25L12 2Zm6.5 9l.8 2.7L22 14.5l-2.7.8l-.8 2.7l-.8-2.7l-2.7-.8l2.7-.8l.8-2.7ZM6 13l1 3.4l3.4 1L7 18.4L6 22l-1-3.6l-3.4-1L5 16.4L6 13Z"></path>
+                  </svg>
+                  <span>{{ rn && rt === 'script_rewriter' ? '改写中...' : 'Agent改写' }}</span>
+                </button>
                 <button class="target-action-btn primary-action small" type="button" @click="saveScriptEdit">
                   <span>保存修改</span>
                 </button>
@@ -241,6 +262,13 @@
                 <span>编辑剧本</span>
               </button>
               <BaseSelect v-model="scriptModel" :options="scriptModelOptions" placeholder="选择模型" searchable class="script-model-select" />
+              <button class="target-action-btn secondary-action small" type="button" :disabled="rn" @click="agentRewriteCurrentScript">
+                <Loader2 v-if="rn && rt === 'script_rewriter'" :size="14" class="animate-spin" />
+                <svg v-else class="svg-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="currentColor" d="M12 2l1.25 4.25L17.5 7.5l-4.25 1.25L12 13l-1.25-4.25L6.5 7.5l4.25-1.25L12 2Zm6.5 9l.8 2.7L22 14.5l-2.7.8l-.8 2.7l-.8-2.7l-2.7-.8l2.7-.8l.8-2.7ZM6 13l1 3.4l3.4 1L7 18.4L6 22l-1-3.6l-3.4-1L5 16.4L6 13Z"></path>
+                </svg>
+                <span>{{ rn && rt === 'script_rewriter' ? '改写中...' : 'Agent改写' }}</span>
+              </button>
               <button class="target-action-btn secondary-action small" type="button" :disabled="rn" @click="startExtractToCharacters">
                 <Loader2 v-if="rn && rt === 'extractor'" :size="14" class="animate-spin" />
                 <svg v-else class="svg-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
@@ -264,9 +292,9 @@
             <div class="empty-title">AI 改写为格式化剧本</div>
             <div class="empty-desc">你可以先用 AI 把原始内容整理成格式化剧本，也可以跳过这一步，直接使用原始内容继续提取角色与场景。</div>
             <div class="step-empty-actions">
-              <button class="btn btn-primary" @click="doRewrite">
+              <button class="btn btn-primary" @click="agentRewriteCurrentScript">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                开始改写
+                Agent改写
               </button>
               <button class="btn" @click="skipRewrite">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 18l6-6-6-6"/></svg>
@@ -485,7 +513,7 @@
             <div class="extract-orbit" aria-hidden="true">
               <span></span>
             </div>
-            <div class="extract-main-text">{{ agentTaskMessage || storyboardLoadingMessage }}</div>
+            <div class="extract-main-text">{{ storyboardLoadingMessage }}</div>
             <div class="extract-sub-text">提取中... ({{ agentTaskProgress || storyboardLoadingProgress }}%)</div>
           </div>
 
@@ -656,7 +684,7 @@
                   <Loader2 v-if="batchCharImageRunning" :size="18" class="animate-spin" />
                   <svg v-else width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m19 9l-1.25-2.75L15 5l2.75-1.25L19 1l1.25 2.75L23 5l-2.75 1.25L19 9Zm0 14l-1.25-2.75L15 19l2.75-1.25L19 15l1.25 2.75L23 19l-2.75 1.25L19 23ZM9 20l-2.5-5.5L1 12l5.5-2.5L9 4l2.5 5.5L17 12l-5.5 2.5L9 20Z"/></svg>
                   <span>{{ batchCharImageRunning ? '生成中' : '一键生成形象' }}</span>
-                  <span class="role-cost">120</span>
+                  <span v-if="batchCharacterImageCreditCost !== null" class="role-cost">{{ batchCharacterImageCreditCost }}</span>
                 </button>
                 <button class="role-next-btn" type="button" @click="goNextProd">下一步</button>
               </div>
@@ -747,7 +775,7 @@
                         <Loader2 v-if="isPendingCharImage(editingRoleForm.id)" :size="14" class="animate-spin" />
                         <svg v-else width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m19 9l-1.25-2.75L15 5l2.75-1.25L19 1l1.25 2.75L23 5l-2.75 1.25L19 9ZM9 20l-2.5-5.5L1 12l5.5-2.5L9 4l2.5 5.5L17 12l-5.5 2.5z"/></svg>
                         智能生成
-                        <span class="role-generate-cost">40</span>
+                        <span v-if="singleImageCreditCost !== null" class="role-generate-cost">{{ singleImageCreditCost }}</span>
                       </button>
                     </div>
                   </div>
@@ -948,7 +976,7 @@
                   <Loader2 v-if="batchSceneImageRunning" :size="18" class="animate-spin" />
                   <svg v-else width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m19 9l-1.25-2.75L15 5l2.75-1.25L19 1l1.25 2.75L23 5l-2.75 1.25L19 9Zm0 14l-1.25-2.75L15 19l2.75-1.25L19 15l1.25 2.75L23 19l-2.75 1.25L19 23ZM9 20l-2.5-5.5L1 12l5.5-2.5L9 4l2.5 5.5L17 12l-5.5 2.5L9 20Z"/></svg>
                   <span>{{ batchSceneImageRunning ? '生成中' : '一键生成背景' }}</span>
-                  <span class="role-cost">40</span>
+                  <span v-if="batchSceneImageCreditCost !== null" class="role-cost">{{ batchSceneImageCreditCost }}</span>
                 </button>
                 <button class="role-next-btn" type="button" @click="goNextProd">下一步</button>
               </div>
@@ -1528,15 +1556,16 @@
                         <span class="btn-title">{{ isPendingShotFrame(selectedShot.id, activeFrameType) ? '生成中' : '生成图片' }}</span>
                         <span class="btn-desc">{{ activeFrameLabel }}</span>
                       </div>
-                      <span class="cost-pill">40</span>
+                      <span v-if="singleImageCreditCost !== null" class="cost-pill">{{ singleImageCreditCost }}</span>
                     </button>
-                    <button class="action-btn secondary-action compact flex-1" type="button" @click="batchShotFrames">
-                      <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 14h10l-3.45-4.5l-2.3 3l-1.55-2zm-1 4q-.825 0-1.412-.587T6 16V4q0-.825.588-1.412T8 2h12q.825 0 1.413.588T22 4v12q0 .825-.587 1.413T20 18zm-4 4q-.825 0-1.412-.587T2 20V6h2v14h14v2z"/></svg>
+                    <button class="action-btn secondary-action compact flex-1" type="button" :disabled="batchShotFrameRunning" @click="batchShotFrames">
+                      <Loader2 v-if="batchShotFrameRunning" :size="16" class="animate-spin" />
+                      <svg v-else width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 14h10l-3.45-4.5l-2.3 3l-1.55-2zm-1 4q-.825 0-1.412-.587T6 16V4q0-.825.588-1.412T8 2h12q.825 0 1.413.588T22 4v12q0 .825-.587 1.413T20 18zm-4 4q-.825 0-1.412-.587T2 20V6h2v14h14v2z"/></svg>
                       <div class="btn-text-group">
-                        <span class="btn-title">批量生成</span>
-                        <span class="btn-desc">所有帧</span>
+                        <span class="btn-title">{{ batchShotFrameRunning ? '批量生成中' : '批量生成' }}</span>
+                        <span class="btn-desc">{{ pendingShotFrameCount }} 张 · {{ activeFrameLabel }}</span>
                       </div>
-                      <span class="cost-pill">160</span>
+                      <span v-if="batchShotFrameCreditCost !== null" class="cost-pill">{{ batchShotFrameCreditCost }}</span>
                     </button>
                   </div>
                   <div v-else class="sticky-btn-row">
@@ -1993,7 +2022,7 @@
 <script setup>
 import { toast } from 'vue-sonner'
 import {
-  Download, FileText, FolderKanban, ImageIcon, Layers, MapPin, Mic2, Users, Video, Clapperboard,
+  Download, FileText, FolderKanban, ImageIcon, Layers, Loader2, MapPin, Mic2, Users, Video, Clapperboard,
 } from 'lucide-vue-next'
 import { dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, imageAPI, videoAPI, composeAPI, mergeAPI, gridAPI, aiModelAPI, voicesAPI, uploadAPI, taskAPI, authAPI, billingAPI, getAuthUser, subscribeCreditEvents, updateAuthUser } from '~/composables/useApi'
 import { useAgent } from '~/composables/useAgent'
@@ -2005,6 +2034,7 @@ const dramaId = Number(route.params.id)
 const episodeNumber = Number(route.params.episodeNumber)
 
 const drama = ref(null), episode = ref(null), chars = ref([]), scenes = ref([]), sbs = ref([]), mergeData = ref(null)
+const storyboardImageRecords = ref([])
 const panel = ref('script')
 const {
   running: rn,
@@ -2153,6 +2183,7 @@ const pendingSceneImageTaskIds = ref({})
 const batchSceneImageRunning = ref(false)
 const failedSceneImageMessages = ref({})
 const pendingShotFrameKeys = ref([])
+const batchShotFrameRunning = ref(false)
 const pendingVideoIds = ref([])
 const pendingComposeIds = ref([])
 const failedVideoMessages = ref({})
@@ -2170,7 +2201,29 @@ const taskPollTimer = ref(null)
 const currentUser = ref(getAuthUser())
 const billingStatus = ref(null)
 let creditEventSource = null
-const currentCredits = computed(() => Number(billingStatus.value?.credits ?? currentUser.value?.credits ?? 0))
+const currentCredits = computed(() => {
+  const userCredits = optionalNumber(currentUser.value?.credits)
+  if (userCredits !== null) return userCredits
+  return 0
+})
+const selectedImageResolution = computed(() => {
+  const option = selectedImageModelOption.value || {}
+  const configured = option.default_resolution || option.defaultResolution || option.defaults?.resolution || option.defaults?.sample_image_size || option.defaults?.sampleImageSize
+  if (configured) return configured
+  const creditMap = imageCreditMapForOption(option)
+  const keys = Object.keys(creditMap).filter(Boolean)
+  return keys.length === 1 ? keys[0] : ''
+})
+const singleImageCreditCost = computed(() => imageCreditCostForCount(1))
+const batchCharacterImageCount = computed(() => visualChars.value.filter(c => c.id).length)
+const batchSceneImageCount = computed(() => scenes.value.filter(s => s.id).length)
+const pendingShotFrameCount = computed(() => {
+  const frameType = activeFrameType.value
+  return sbs.value.filter(sb => !hasShotFrameType(sb, frameType)).length
+})
+const batchCharacterImageCreditCost = computed(() => imageCreditCostForCount(batchCharacterImageCount.value))
+const batchSceneImageCreditCost = computed(() => imageCreditCostForCount(batchSceneImageCount.value))
+const batchShotFrameCreditCost = computed(() => imageCreditCostForCount(pendingShotFrameCount.value))
 const taskCategoryOptions = [
   { label: '文本提取', value: 'text' },
   { label: '图片生成', value: 'image' },
@@ -2285,6 +2338,86 @@ function findSelectableModelOption(options, value) {
     || null
 }
 
+function modelPayload(model) {
+  if (!model || typeof model !== 'object') return { model }
+  return {
+    model: model.model_id || model.model || model.value,
+    model_config_id: model.model_config_id || model.id,
+    user_provider_id: model.user_provider_id,
+  }
+}
+
+function optionalNumber(value) {
+  if (value === undefined || value === null || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function normalizeResolutionKey(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, '').replace(/[*×]/g, 'x')
+}
+
+function mappedResolutionCredit(map, resolution) {
+  const normalizedResolution = normalizeResolutionKey(resolution)
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return null
+  const values = Object.values(map).map(optionalNumber).filter(value => value !== null)
+  if (!normalizedResolution) {
+    if (values.length === 1) return values[0]
+    return values.length ? Math.max(...values) : null
+  }
+  for (const [rawKey, rawValue] of Object.entries(map)) {
+    const amount = optionalNumber(rawValue)
+    if (amount === null) continue
+    if (normalizeResolutionKey(rawKey) === normalizedResolution) return amount
+  }
+  return values.length === 1 ? values[0] : null
+}
+
+function billingRulesCreditMap(rules) {
+  if (!Array.isArray(rules)) return {}
+  return rules.reduce((acc, rule) => {
+    const serviceType = String(rule?.service_type || rule?.serviceType || '').trim().toLowerCase()
+    const parameterType = String(rule?.parameter_type || rule?.parameterType || '').trim().toLowerCase()
+    const parameterValue = String(rule?.parameter_value || rule?.parameterValue || '').trim()
+    const credits = optionalNumber(rule?.credits)
+    if (serviceType && serviceType !== 'image') return acc
+    if (!['resolution', 'sample_image_size', 'image_size'].includes(parameterType)) return acc
+    if (!parameterValue || credits === null) return acc
+    acc[parameterValue] = credits
+    return acc
+  }, {})
+}
+
+function imageCreditMapForOption(option) {
+  const billing = option?.billing_config || option?.billingConfig || {}
+  return {
+    ...billingRulesCreditMap(option?.billing_rules || option?.billingRules),
+    ...billingRulesCreditMap(billing.billing_rules || billing.billingRules || billing.rules),
+    ...(option?.image_credit_by_resolution || option?.imageCreditByResolution || {}),
+    ...(billing.image_credit_by_resolution || billing.imageCreditByResolution || {}),
+  }
+}
+
+function isFreeImageModel(option) {
+  if (!option) return true
+  if (String(option.resource_mode || '').toLowerCase() === 'user_api' || option.user_provider_id) return true
+  if (option.is_free || option.isFree) return true
+  return option.billing_required === false || option.billingRequired === false
+}
+
+function imageCreditCostForCount(count) {
+  const quantity = Math.max(0, Number(count) || 0)
+  if (!quantity) return 0
+  const option = selectedImageModelOption.value
+  if (isFreeImageModel(option)) return null
+  const billing = option?.billing_config || option?.billingConfig || {}
+  const creditMap = imageCreditMapForOption(option)
+  const perImage = mappedResolutionCredit(creditMap, selectedImageResolution.value)
+    ?? optionalNumber(billing.image_credit || billing.imageCredit || billing.credit || billing.credits)
+    ?? 0
+  return Math.max(0, perImage * quantity)
+}
+
 function isPendingCharImage(id) {
   return pendingCharImageIds.value.includes(id)
 }
@@ -2350,6 +2483,8 @@ function handleImageViewerKeydown(event) {
 
 onMounted(() => {
   window.addEventListener('keydown', handleImageViewerKeydown)
+  window.addEventListener('huobao-auth-change', handleAuthChange)
+  window.addEventListener('storage', handleAuthStorageChange)
   loadTasks()
   loadCurrentCredits()
   connectCreditEvents()
@@ -2360,10 +2495,23 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleImageViewerKeydown)
+  window.removeEventListener('huobao-auth-change', handleAuthChange)
+  window.removeEventListener('storage', handleAuthStorageChange)
   if (taskPollTimer.value) window.clearInterval(taskPollTimer.value)
   disconnectCreditEvents()
   stopExtractProgress()
 })
+
+function handleAuthChange() {
+  currentUser.value = getAuthUser()
+  loadCurrentCredits()
+  connectCreditEvents()
+}
+
+function handleAuthStorageChange(event) {
+  if (event.key && !['huobao_auth_token', 'huobao_auth_user'].includes(event.key)) return
+  handleAuthChange()
+}
 
 function updateCurrentUser(user) {
   currentUser.value = {
@@ -2380,14 +2528,16 @@ async function loadCurrentCredits() {
     return
   }
   try {
-    const [user, status] = await Promise.all([
-      authAPI.me(),
-      billingAPI.membershipStatus(),
-    ])
+    const user = await authAPI.me()
     if (user) updateCurrentUser(user)
+  } catch (err) {
+    console.error('Failed to load current user credits', err)
+  }
+  try {
+    const status = await billingAPI.membershipStatus()
     billingStatus.value = status || null
   } catch (err) {
-    console.error('Failed to load current credits', err)
+    console.error('Failed to load membership status', err)
   }
 }
 
@@ -2655,6 +2805,11 @@ function prodStepDone(id) {
 }
 const canExport = computed(() => !!sbs.value.length && composedCount.value === sbs.value.length)
 function goNextProd() {
+  if (prodTab.value === 'scenes') {
+    panel.value = 'script'
+    scriptStep.value = 4
+    return
+  }
   const flow = ['chars', 'scenes', 'shots', 'videos', 'compose']
   const currentIndex = flow.indexOf(prodTab.value)
   if (currentIndex >= 0 && currentIndex < flow.length - 1) {
@@ -3456,13 +3611,13 @@ const shotModeReferenceText = computed(() => {
 })
 const storyboardLoadingMessage = computed(() => {
   const progress = agentTaskProgress.value || 0
-  if (agentTaskStep.value === 'read_storyboard_context') return '正在读取剧本、角色列表和场景列表...'
-  if (agentTaskStep.value === 'storyboard_context_loaded') return '正在把文字变成分镜...'
-  if (agentTaskStep.value === 'save_storyboards') return '正在保存分镜脚本...'
-  if (progress >= 80) return '正在保存分镜脚本...'
-  if (progress >= 32) return '正在把文字变成分镜...'
-  if (progress >= 18) return '正在读取剧本、角色列表和场景列表...'
-  return '正在启动分镜拆解...'
+  if (agentTaskStep.value === 'read_storyboard_context') return '正在读取剧本、角色和场景资料...'
+  if (agentTaskStep.value === 'storyboard_context_loaded') return '正在使用专业 Agent 为你制作商业分镜...'
+  if (agentTaskStep.value === 'save_storyboards') return '正在保存专业分镜脚本...'
+  if (progress >= 80) return '正在保存专业分镜脚本...'
+  if (progress >= 32) return '正在使用专业 Agent 为你制作商业分镜...'
+  if (progress >= 18) return '正在读取剧本、角色和场景资料...'
+  return '正在启动专业分镜 Agent...'
 })
 const storyboardLoadingProgress = computed(() => {
   const progress = Number(agentTaskProgress.value || 0)
@@ -3621,6 +3776,14 @@ function saveShotVideoPrompt(sb, value) {
 function shotAssetRows(sb) {
   if (!sb) return []
   const makeImage = (key, path, title) => path ? [{ key, kind: 'image', url: assetPathUrl(path), title }] : []
+  const makeGeneratedImages = (frameType, title) => storyboardImageRecords.value
+    .filter(row => Number(row.storyboard_id || row.storyboardId) === Number(sb.id))
+    .filter(row => String(row.frame_type || row.frameType || '') === frameType)
+    .filter(row => String(row.status || '') === 'completed')
+    .map(row => row.local_path || row.localPath)
+    .filter(Boolean)
+    .filter((path, index, arr) => arr.indexOf(path) === index)
+    .map((path, index) => ({ key: `${frameType}-${index}`, kind: 'image', url: assetPathUrl(path), title }))
   const refs = getRefs(sb).map((path, index) => ({
     key: `ref-${index}`,
     kind: 'image',
@@ -3638,7 +3801,7 @@ function shotAssetRows(sb) {
       key: 'key',
       label: '关键帧',
       icon: '<svg width="14" height="14" viewBox="0 0 24 24"><path fill="currentColor" d="m5.825 21l1.625-7.025L2 9.25l7.2-.625L12 2l2.8 6.625l7.2.625l-5.45 4.725L18.175 21L12 17.275z"/></svg>',
-      items: makeImage('cover', getStoryboardCover(sb), `${shotDisplayTitle(sb)} 关键帧`),
+      items: makeImage('key', getStoryboardGeneratedImage(sb), `${shotDisplayTitle(sb)} 关键帧`),
     },
     {
       key: 'first',
@@ -3656,7 +3819,7 @@ function shotAssetRows(sb) {
       key: 'action',
       label: '动作序列',
       icon: '<svg width="14" height="14" viewBox="0 0 24 24"><path fill="currentColor" d="m8 22l1-7H4l9-13h2l-1 8h6L10 22z"/></svg>',
-      items: [],
+      items: makeGeneratedImages('action_sequence', `${shotDisplayTitle(sb)} 动作序列`),
     },
     {
       key: 'other',
@@ -3783,6 +3946,7 @@ async function refresh() {
       try { chars.value = await episodeAPI.characters(ep.id) } catch { chars.value = [] }
       try { scenes.value = await episodeAPI.scenes(ep.id) } catch { scenes.value = [] }
       sbs.value = await episodeAPI.storyboards(ep.id)
+      try { storyboardImageRecords.value = await imageAPI.list({ drama_id: dramaId }) } catch { storyboardImageRecords.value = [] }
       if (sbs.value.length && !selectedSb.value) selectedSb.value = sbs.value[0]
 
       const epHasContent = !!(episode.value?.content)
@@ -3847,9 +4011,35 @@ async function saveScriptEdit() {
   isEditingScript.value = false
   toast.success('保存成功')
 }
-async function doRewrite() {
+async function agentRewriteCurrentScript() {
+  const source = (
+    scriptStep.value === 1
+      ? (localScript.value || scriptContent.value || localRaw.value || rawContent.value)
+      : (localRaw.value || rawContent.value || localScript.value || scriptContent.value)
+  ).trim()
+  if (!source) {
+    toast.warning('请先输入要改写的内容')
+    return
+  }
+  localRaw.value = source
   await saveRaw()
-  runAgent('script_rewriter', '请读取剧本并改写为格式化剧本，然后保存', dramaId, epId.value, refresh, { model: selectedScriptModelOption.value?.model_id || scriptModel.value })
+  isEditingRaw.value = false
+  isEditingScript.value = false
+  scriptStep.value = 1
+  await runAgent(
+    'script_rewriter',
+    '请以资深导演和专业编剧标准，将用户输入改写为符合当前项目类型与艺术风格的专业短剧剧本。必须严格匹配项目选择的类型和风格，强化戏剧冲突、人物动机、场景调度、动作节奏、对白质感、画面可拍摄性和短剧节奏，输出格式化剧本并保存。',
+    dramaId,
+    epId.value,
+    async () => {
+      await refresh()
+      scriptStep.value = 1
+    },
+    { model: selectedScriptModelOption.value?.model_id || scriptModel.value },
+  )
+}
+async function doRewrite() {
+  await agentRewriteCurrentScript()
 }
 async function startExtractFromRaw() {
   await saveRaw()
@@ -3950,7 +4140,7 @@ async function batchGenSamples() {
 function doBreakdown() {
   const cfg = videoConfigs.value.find(c => c.id === lockedVideoConfigId.value)
   const label = cfg ? configLabel(cfg) : '默认'
-  runAgent('storyboard_breaker', `请把当前剧本转换成生产级结构化分镜脚本，并调用 save_storyboards 保存。每条分镜必须包含 shotNumber、title、shotType、cameraAngle、cameraMovement、durationSeconds、visualDescription、action、dialogue、soundEffects、backgroundMusic、atmosphere、charactersInShot、sceneId、image_prompt、video_prompt。shotType/cameraAngle/cameraMovement 使用标准英文枚举；角色和场景必须来自 read_storyboard_context。视频模型：${label}，请同时生成适配该模型的 video_prompt。`, dramaId, epId.value, async () => {
+  runAgent('storyboard_breaker', `请以资深商业分镜导演、跨媒介视觉预演导演和 AI 影像制作导演标准，把当前剧本转换成可直接制作的生产级结构化分镜脚本，并调用 save_storyboards 保存。必须严格读取并遵守当前项目的 style_contract / style_profile，按项目选择的类型和风格自适应创作：动漫风格使用动漫/漫剧镜头与表演语言，3D 动画使用 3D 动画镜头、材质和空间调度语言，写实风格使用真人影视拍摄语言，插画、Q版、都市言情等其他风格使用对应的视觉叙事语言。所有镜头叙事、角色表演、场景调度、image_prompt、video_prompt 都必须保持当前项目风格，不能风格变异。每条分镜必须包含 shotNumber、title、shotType、cameraAngle、cameraMovement、durationSeconds、visualDescription、action、dialogue、soundEffects、backgroundMusic、atmosphere、charactersInShot、sceneId、image_prompt、video_prompt。shotType/cameraAngle/cameraMovement 使用标准英文枚举；角色和场景必须来自 read_storyboard_context。视频模型：${label}，请同时生成适配该模型的 video_prompt。`, dramaId, epId.value, async () => {
     await refresh()
     scriptStep.value = 4
   }, { model: selectedScriptModelOption.value?.model_id || scriptModel.value })
@@ -4555,7 +4745,13 @@ async function batchShotTTS() {
 
 function getFirstFrame(s) { return s?.first_frame_image || s?.firstFrameImage || null }
 function getLastFrame(s) { return s?.last_frame_image || s?.lastFrameImage || null }
-function getStoryboardCover(s) { return s?.composed_image || s?.composedImage || getFirstFrame(s) || getLastFrame(s) || null }
+function getStoryboardGeneratedImage(s) { return s?.composed_image || s?.composedImage || null }
+function getStoryboardCover(s) { return getStoryboardGeneratedImage(s) || getFirstFrame(s) || getLastFrame(s) || null }
+function hasShotFrameType(s, frameType) {
+  if (frameType === 'first_frame') return !!getFirstFrame(s)
+  if (frameType === 'last_frame') return !!getLastFrame(s)
+  return !!getStoryboardGeneratedImage(s)
+}
 function getVideoUrl(s) { return s?.video_url || s?.videoUrl || null }
 function getComposedVideoUrl(s) { return s?.composed_video_url || s?.composedVideoUrl || null }
 function hasImg(s) { return !!getStoryboardCover(s) }
@@ -4665,11 +4861,12 @@ function buildShotImagePrompt(sb, frameMode) {
     modeSentence = `${subject}处在最能代表该镜头内容的关键瞬间，构图明确，情绪和动作具有代表性。`
   }
 
-  const styleSentence = '皮克斯动画风格的顶尖三维建模，电影级布光，极致材质细节，清晰的皮肤纹理和环境质感，无文字，无水印。'
+  const styleSentence = '严格遵守当前项目选择的类型与风格，并与已生成的角色图、场景图保持一致；不得切换成其他画风。高质量画面，构图清晰，光线和材质细节完整，无文字，无水印。'
   return [referencePrefix, modeSentence, base, styleSentence].filter(Boolean).join('，')
 }
 
-async function genShotFrame(sb, frameType) {
+async function genShotFrame(sb, frameType, options = {}) {
+  const silent = Boolean(options.silent)
   const prompt = getShotFramePrompt(sb, activeShotFrameMode.value) || buildShotImagePrompt(sb, activeShotFrameMode.value)
   const referenceImages = getShotReferenceImages(sb)
   const key = framePendingKey(sb.id, frameType)
@@ -4681,34 +4878,73 @@ async function genShotFrame(sb, frameType) {
       prompt,
       frame_type: frameType,
       reference_images: referenceImages.length ? referenceImages : undefined,
+      ...(modelPayload(selectedImageModelOption.value || imageModel.value)),
     }
     await imageAPI.generate(body)
-    toast.success(frameType === 'first_frame' ? '首帧生成中' : '尾帧生成中')
-    await refresh()
-    watchAsyncResult(() => {
+    if (!silent) {
+      toast.success(`${activeFrameLabel.value}生成中`)
+      await refresh()
+    }
+    if (!silent) watchAsyncResult(() => {
       const target = sbs.value.find(s => s.id === sb.id)
-      const done = frameType === 'first_frame' ? !!getFirstFrame(target) : !!getLastFrame(target)
+      const done = hasShotFrameType(target, frameType)
       if (done) pendingShotFrameKeys.value = pendingShotFrameKeys.value.filter(item => item !== key)
       return done
     })
+    return true
   } catch (e) {
     pendingShotFrameKeys.value = pendingShotFrameKeys.value.filter(item => item !== key)
-    toast.error(e.message)
+    if (!silent) toast.error(e.message)
+    throw e
   }
 }
 
-function batchShotFrames() {
+async function watchBatchShotFrames(targetKeys, frameType, attempts = 120, delay = 5000) {
+  const keys = new Set(targetKeys)
+  for (let i = 0; i < attempts; i++) {
+    await sleep(delay)
+    await refresh()
+    for (const key of Array.from(keys)) {
+      const [id] = key.split(':')
+      const target = sbs.value.find(s => Number(s.id) === Number(id))
+      if (hasShotFrameType(target, frameType)) {
+        keys.delete(key)
+        pendingShotFrameKeys.value = pendingShotFrameKeys.value.filter(item => item !== key)
+      }
+    }
+    if (!keys.size) {
+      batchShotFrameRunning.value = false
+      toast.success('批量图片生成完成')
+      return
+    }
+  }
+  batchShotFrameRunning.value = false
+  toast.error('批量图片生成超时，请在任务列表查看进度')
+}
+
+async function batchShotFrames() {
   const frameType = activeFrameType.value
-  const pending = sbs.value.filter((sb) => {
-    if (frameType === 'last_frame') return !getLastFrame(sb)
-    if (frameType === 'first_frame') return !getFirstFrame(sb)
-    return !getStoryboardCover(sb)
-  })
+  const pending = sbs.value.filter(sb => !hasShotFrameType(sb, frameType))
   if (!pending.length) {
     toast.info('所有分镜已生成当前帧类型')
     return
   }
-  pending.forEach(sb => genShotFrame(sb, frameType))
+  batchShotFrameRunning.value = true
+  const targetKeys = pending.map(sb => framePendingKey(sb.id, frameType))
+  pendingShotFrameKeys.value = [...new Set([...pendingShotFrameKeys.value, ...targetKeys])]
+  const results = await Promise.allSettled(pending.map(sb => genShotFrame(sb, frameType, { silent: true })))
+  const started = results.filter(item => item.status === 'fulfilled').length
+  const failed = results.length - started
+  await refresh()
+  if (!started) {
+    batchShotFrameRunning.value = false
+    pendingShotFrameKeys.value = pendingShotFrameKeys.value.filter(item => !targetKeys.includes(item))
+    toast.error('批量图片任务创建失败')
+    return
+  }
+  if (failed) toast.error(`${failed} 个分镜图片任务创建失败`)
+  toast.success(`已创建 ${started} 个分镜图片任务`)
+  watchBatchShotFrames(targetKeys, frameType)
 }
 
 async function openShotReferenceUpload(sb) {
@@ -5082,7 +5318,7 @@ button {
   justify-content: center;
   gap: 42px;
   min-width: 0;
-  max-width: calc(100% - 560px);
+  max-width: calc(100% - 690px);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -5128,11 +5364,13 @@ button {
 }
 
 .nav-right {
-  flex: 0 0 240px;
+  flex: 0 0 auto;
+  min-width: 330px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
+  white-space: nowrap;
   position: relative;
   z-index: 2;
 }
@@ -5141,6 +5379,8 @@ button {
   position: relative;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
   gap: 8px;
   height: 36px;
   min-height: 36px;
@@ -5159,6 +5399,10 @@ button {
 }
 
 .task-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
@@ -5166,15 +5410,16 @@ button {
   background: #0a84ff;
   color: #fff;
   font-size: 11px;
-  line-height: 18px;
   text-align: center;
 }
 
 .credit-pill {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 8px;
   color: #f4f7fb;
+  white-space: nowrap;
 }
 
 .credit-icon {
@@ -5184,12 +5429,14 @@ button {
 .credit-label {
   font-size: 18px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .credit-value {
   color: #1ac3ff;
   font-size: 16px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .task-modal-backdrop {
@@ -9170,7 +9417,7 @@ button {
 
   .nav-center {
     gap: 34px;
-    max-width: calc(100% - 500px);
+    max-width: calc(100% - 650px);
   }
 
   .nav-item {
@@ -9182,7 +9429,7 @@ button {
   }
 
   .nav-right {
-    flex-basis: 220px;
+    min-width: 310px;
   }
 
   .task-list-btn {

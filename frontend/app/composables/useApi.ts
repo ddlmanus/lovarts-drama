@@ -26,6 +26,7 @@ export function setAuthSession(token: string, user: any) {
 export function updateAuthUser(user: any) {
   if (typeof localStorage === 'undefined') return
   localStorage.setItem(USER_KEY, JSON.stringify(user || null))
+  window.dispatchEvent(new CustomEvent('huobao-auth-change'))
 }
 
 export function clearAuthSession() {
@@ -198,6 +199,9 @@ export const characterAPI = {
   update: (id: number, data: any) => api.put(`/characters/${id}`, data),
   del: (id: number) => api.del(`/characters/${id}`),
   library: (q = '') => api.get(`/characters/library${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  createLibrary: (data: any) => api.post('/characters/library', data),
+  updateLibrary: (id: number, data: any) => api.put(`/characters/library/${id}`, data),
+  deleteLibrary: (id: number) => api.del(`/characters/library/${id}`),
   saveToLibrary: (id: number) => api.post(`/characters/${id}/save-to-library`),
   applyFromLibrary: (id: number, data: any) => api.post(`/characters/library/${id}/apply`, data),
   voiceSample: (id: number, episodeId: number) => api.post(`/characters/${id}/generate-voice-sample`, { episode_id: episodeId }),
@@ -210,6 +214,9 @@ export const sceneAPI = {
   update: (id: number, data: any) => api.put(`/scenes/${id}`, data),
   del: (id: number, episodeId?: number) => api.post(`/scenes/${id}/delete`, episodeId ? { episode_id: episodeId } : {}),
   library: (q = '') => api.get(`/scenes/library${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  createLibrary: (data: any) => api.post('/scenes/library', data),
+  updateLibrary: (id: number, data: any) => api.put(`/scenes/library/${id}`, data),
+  deleteLibrary: (id: number) => api.del(`/scenes/library/${id}`),
   saveToLibrary: (id: number) => api.post(`/scenes/${id}/save-to-library`),
   applyFromLibrary: (id: number, data: any) => api.post(`/scenes/library/${id}/apply`, data),
   generateImage: (id: number, episodeId: number, model?: any) => api.post(`/scenes/${id}/generate-image`, { episode_id: episodeId, ...modelPayload(model) }),

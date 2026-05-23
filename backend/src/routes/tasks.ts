@@ -1,9 +1,10 @@
 import { Hono } from 'hono'
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
 import { success } from '../utils/response.js'
 import { listAgentTasks } from '../agents/task-progress.js'
 import { requestUserId } from '../utils/dramaAccess.js'
+import { syncImageGenerationTask } from '../services/image-generation.js'
 
 const app = new Hono()
 
@@ -74,6 +75,28 @@ function withLabels(task: any) {
   }
 }
 
+async function syncVisibleImageTasks(userId: string, filters: { dramaId?: number | null; episodeId?: number | null }) {
+  const rows = await db.select().from(schema.imageGenerations)
+    .where(and(
+      eq(schema.imageGenerations.createdBy, userId),
+      inArray(schema.imageGenerations.status, ['pending', 'processing']),
+    ))
+    .execute()
+  let candidates = rows.filter(row => row.taskId)
+  if (filters.dramaId) candidates = candidates.filter(row => row.dramaId === filters.dramaId)
+  if (filters.episodeId) {
+    const storyboards = await db.select().from(schema.storyboards)
+      .where(eq(schema.storyboards.episodeId, filters.episodeId))
+      .execute()
+    const storyboardIds = new Set(storyboards.map(item => item.id))
+    candidates = candidates.filter(row => row.storyboardId && storyboardIds.has(row.storyboardId))
+  }
+
+  for (const row of candidates.slice(0, 20)) {
+    await syncImageGenerationTask(row.id, userId)
+  }
+}
+
 app.get('/', async (c) => {
   const category = c.req.query('category') || ''
   const status = c.req.query('status') || ''
@@ -81,6 +104,8 @@ app.get('/', async (c) => {
   const episodeId = c.req.query('episode_id') ? Number(c.req.query('episode_id')) : null
   const limit = Math.max(1, Math.min(200, Number(c.req.query('limit') || 100)))
   const userId = requestUserId(c)
+
+  await syncVisibleImageTasks(userId, { dramaId, episodeId })
 
   const dramas = ((await db.select().from(schema.dramas).where(eq(schema.dramas.userId, userId)).execute()) as any[]).filter(item => !item.deletedAt)
   const episodes = ((await db.select().from(schema.episodes).where(eq(schema.episodes.userId, userId)).execute()) as any[]).filter(item => !item.deletedAt)

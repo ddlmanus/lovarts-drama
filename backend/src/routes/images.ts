@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
 import { success, created, badRequest, notFound } from '../utils/response.js'
-import { generateImage } from '../services/image-generation.js'
+import { generateImage, syncImageGenerationTask } from '../services/image-generation.js'
 import { logTaskError, logTaskPayload, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 import { currentAuthUserId } from '../utils/auth.js'
 
@@ -99,6 +99,15 @@ app.get('/', async (c) => {
 
   if (storyboardId) rows = rows.filter(r => r.storyboardId === Number(storyboardId))
   if (dramaId) rows = rows.filter(r => r.dramaId === Number(dramaId))
+  for (const row of rows.filter(r => r.taskId && ['pending', 'processing'].includes(String(r.status || '').toLowerCase())).slice(0, 20)) {
+    await syncImageGenerationTask(row.id, userId)
+  }
+  if (rows.some(r => r.taskId && ['pending', 'processing'].includes(String(r.status || '').toLowerCase()))) {
+    rows = await db.select().from(schema.imageGenerations).execute()
+    rows = rows.filter(r => r.createdBy === userId)
+    if (storyboardId) rows = rows.filter(r => r.storyboardId === Number(storyboardId))
+    if (dramaId) rows = rows.filter(r => r.dramaId === Number(dramaId))
+  }
 
   return success(c, rows)
 })

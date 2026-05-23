@@ -7,8 +7,14 @@ import { z } from 'zod'
 import { db, schema } from '../../db/index.js'
 import { eq } from 'drizzle-orm'
 import { now } from '../../utils/response.js'
+import { appendStylePrompt, buildStyleAgentInstruction, getDramaStyleProfile } from '../../services/drama-style.js'
 
-export function createScriptTools(episodeId: number) {
+export function createScriptTools(episodeId: number, dramaId?: number) {
+  async function styleInstruction() {
+    if (!dramaId) return ''
+    return buildStyleAgentInstruction(await getDramaStyleProfile(dramaId))
+  }
+
   const readEpisodeScript = createTool({
     id: 'read_episode_script',
     description: 'Read the script content of the current episode.',
@@ -19,7 +25,7 @@ export function createScriptTools(episodeId: number) {
       if (!ep) return { error: `Episode not found (id=${episodeId})` }
       const content = ep.content || ep.scriptContent
       if (!content) return { error: `Episode has no content (id=${episodeId})` }
-      return { content, word_count: content.length, episode_id: episodeId }
+      return { content, word_count: content.length, episode_id: episodeId, style_contract: await styleInstruction() }
     },
   })
 
@@ -36,6 +42,7 @@ export function createScriptTools(episodeId: number) {
       const source = ep.content || ep.scriptContent
       if (!source) return { error: `Episode has no content to rewrite` }
 
+      const profile = dramaId ? await getDramaStyleProfile(dramaId) : null
       return {
         source_content: source,
         instruction: `请将以下内容改写为格式化剧本。
@@ -45,6 +52,8 @@ export function createScriptTools(episodeId: number) {
 - 动作描写：自然段落，不包含镜头语言
 - 对白：角色名：（状态/表情）台词内容
 - 每个场景 30-60 秒内容
+
+${profile ? appendStylePrompt('', profile, 'script') : ''}
 
 ${instructions || ''}
 
@@ -61,8 +70,9 @@ ${source}`,
       content: z.string().describe('The formatted screenplay content to save'),
     }),
     execute: async ({ content }) => {
+      const profile = dramaId ? await getDramaStyleProfile(dramaId) : null
       await db.update(schema.episodes)
-        .set({ scriptContent: content, updatedAt: now() })
+        .set({ scriptContent: profile ? appendStylePrompt(content, profile, 'script') : content, updatedAt: now() })
         .where(eq(schema.episodes.id, episodeId))
         .execute()
       return { message: `Script saved`, word_count: content.length }

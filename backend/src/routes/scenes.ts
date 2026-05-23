@@ -2,10 +2,11 @@ import { Hono } from 'hono'
 import { and, eq } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
 import { success, created, badRequest, now } from '../utils/response.js'
-import { toSnakeCaseArray } from '../utils/transform.js'
+import { toSnakeCase, toSnakeCaseArray } from '../utils/transform.js'
 import { generateImage } from '../services/image-generation.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 import { ensureOwnedDrama, ensureOwnedEpisode, ownedRow, requestUserId } from '../utils/dramaAccess.js'
+import { appendStylePrompt, getDramaStyleProfile } from '../services/drama-style.js'
 
 const app = new Hono()
 
@@ -36,6 +37,62 @@ app.get('/library', async (c) => {
     })
     .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
   return success(c, toSnakeCaseArray(rows))
+})
+
+// POST /scenes/library
+app.post('/library', async (c) => {
+  const body = await c.req.json()
+  const userId = requestUserId(c)
+  const location = String(body.location || '').trim()
+  if (!location) return badRequest(c, 'location is required')
+
+  const ts = now()
+  const result = await db.insert(schema.sceneLibrary).values({
+    userId,
+    location,
+    time: body.time || '',
+    prompt: body.prompt || '',
+    imageUrl: body.image_url ?? body.imageUrl ?? '',
+    sourceSceneId: body.source_scene_id ?? body.sourceSceneId ?? null,
+    createdBy: userId,
+    createdAt: ts,
+    updatedBy: userId,
+    updatedAt: ts,
+  }).execute()
+  const [row] = await db.select().from(schema.sceneLibrary).where(eq(schema.sceneLibrary.id, Number(result.insertId))).execute()
+  return created(c, toSnakeCase(row))
+})
+
+// PUT /scenes/library/:id
+app.put('/library/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json()
+  const userId = requestUserId(c)
+  const [item] = await db.select().from(schema.sceneLibrary).where(eq(schema.sceneLibrary.id, id)).execute()
+  if (!ownedRow(item, userId)) return badRequest(c, 'Library scene not found')
+
+  const updates: Record<string, any> = { updatedAt: now(), updatedBy: userId }
+  if (body.location !== undefined) updates.location = body.location
+  if (body.time !== undefined) updates.time = body.time
+  if (body.prompt !== undefined) updates.prompt = body.prompt
+  if (body.image_url !== undefined) updates.imageUrl = body.image_url
+  else if (body.imageUrl !== undefined) updates.imageUrl = body.imageUrl
+  if (!String(updates.location ?? item.location ?? '').trim()) return badRequest(c, 'location is required')
+
+  await db.update(schema.sceneLibrary).set(updates).where(and(eq(schema.sceneLibrary.id, id), eq(schema.sceneLibrary.userId, userId))).execute()
+  const [row] = await db.select().from(schema.sceneLibrary).where(eq(schema.sceneLibrary.id, id)).execute()
+  return success(c, toSnakeCase(row))
+})
+
+// DELETE /scenes/library/:id
+app.delete('/library/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  const userId = requestUserId(c)
+  await db.update(schema.sceneLibrary)
+    .set({ deletedAt: now(), deletedBy: userId, updatedAt: now(), updatedBy: userId })
+    .where(and(eq(schema.sceneLibrary.id, id), eq(schema.sceneLibrary.userId, userId)))
+    .execute()
+  return success(c)
 })
 
 // POST /scenes
@@ -160,13 +217,14 @@ app.post('/:id/generate-image', async (c) => {
   if (!ep) return badRequest(c, 'Episode not found')
 
   const prompt = buildSceneImagePrompt(scene)
+  const styleProfile = await getDramaStyleProfile(scene.dramaId)
   try {
     logTaskStart('SceneImage', 'generate', { sceneId: id, episodeId: ep.id, dramaId: scene.dramaId, location: scene.location })
     await db.update(schema.scenes).set({ status: 'processing', updatedAt: now(), updatedBy: userId }).where(eq(schema.scenes.id, id)).execute()
     const genId = await generateImage({
       sceneId: id,
       dramaId: scene.dramaId,
-      prompt,
+      prompt: appendStylePrompt(prompt, styleProfile, 'scene'),
       model: body.model,
       configId: body.model_config_id ?? body.modelConfigId ?? body.config_id ?? ep.imageConfigId ?? undefined,
       userProviderId: body.user_provider_id ?? body.userProviderId ?? undefined,
@@ -199,12 +257,13 @@ app.post('/batch-generate-images', async (c) => {
       continue
     }
     const prompt = buildSceneImagePrompt(scene)
+    const styleProfile = await getDramaStyleProfile(scene.dramaId)
     try {
       await db.update(schema.scenes).set({ status: 'processing', updatedAt: now(), updatedBy: userId }).where(eq(schema.scenes.id, sid)).execute()
       const genId = await generateImage({
         sceneId: sid,
         dramaId: scene.dramaId,
-        prompt,
+        prompt: appendStylePrompt(prompt, styleProfile, 'scene'),
         model: body.model,
         configId: body.model_config_id ?? body.modelConfigId ?? body.config_id ?? ep.imageConfigId ?? undefined,
         userProviderId: body.user_provider_id ?? body.userProviderId ?? undefined,

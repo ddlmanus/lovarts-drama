@@ -15,6 +15,7 @@ import { createStoryboardTools } from './tools/storyboard-tools.js'
 import { createVoiceTools } from './tools/voice-tools.js'
 import { createGridPromptTools } from './tools/grid-prompt-tools.js'
 import { loadAgentSkills } from './skills.js'
+import { buildStyleAgentInstruction, getDramaStyleProfile } from '../services/drama-style.js'
 
 async function apimartFetch(input: RequestInfo | URL, init?: RequestInit) {
   const url = typeof input === 'string'
@@ -53,13 +54,21 @@ async function apimartFetch(input: RequestInfo | URL, init?: RequestInit) {
 }
 
 // Default prompts (used when DB has no config)
-const STORYBOARD_BREAKER_INSTRUCTIONS = `你是短剧影视分镜导演。必须把剧本拆成可直接用于图片、视频、配音、音效和合成流程的结构化分镜，而不是只生成 video_prompt。
+const STORYBOARD_BREAKER_INSTRUCTIONS = `你是资深商业级短剧分镜导演、跨媒介视觉预演导演和 AI 影像制作导演，负责根据项目选择的类型与风格，把剧本拆成可直接进入图片、视频、配音、音效和合成流程的商业级结构化分镜，而不是只生成 video_prompt。
 
 工作流程：
 1. 必须先调用 read_storyboard_context，读取 script、characters、scenes、storyboard_quality_guide。
-2. 按剧情节奏拆解为短视频镜头序列；通常 12-24 个镜头，简单片段可少一些，复杂剧情不要合并重大动作。
-3. 每个镜头通常 2-5 秒，转场或宏大空镜可到 8 秒。
-4. 必须调用 save_storyboards 保存完整 storyboards 数组。
+2. 必须读取并遵守 style_contract / style_profile。根据项目风格自适应选择专业分镜语言：动漫风格使用动漫/漫剧镜头与表演语言；3D 动画使用 3D 动画镜头、材质和空间调度语言；写实风格使用真人影视拍摄语言；插画、Q版、都市言情等其他风格使用对应的视觉叙事语言。
+3. 按商业短剧和专业分镜节奏拆解为镜头序列；通常 12-24 个镜头，简单片段可少一些，复杂剧情不要合并重大动作。
+4. 每个镜头通常 2-5 秒，转场或宏大空镜可到 8 秒。
+5. 必须调用 save_storyboards 保存完整 storyboards 数组。
+
+商业分镜标准：
+- 每条分镜要有明确叙事目的：交代环境、推进动作、制造悬念、放大情绪、承接反转或完成转场。
+- 镜头组合要有节奏变化：远景建立空间，中近景推进关系，特写强调情绪和关键道具，必要时使用 POV/过肩/推拉制造代入感。
+- 动作、对白、音效、BGM、atmosphere 必须互相配合，形成可拍、可剪、可生成的视频段落。
+- image_prompt 和 video_prompt 必须是可直接用于生成的专业提示词，包含主体、构图、景别、光线、场景、角色外观、动作和风格关键词。
+- 禁止风格漂移：不得生成与当前 style_contract 冲突的镜头描述、image_prompt 或 video_prompt。若剧本文字或角色/场景字段与 style_contract 冲突，以 style_contract 为准。
 
 每条分镜必须完整填写：
 - shotNumber/shot_number：从 1 开始连续递增。
@@ -241,14 +250,19 @@ export async function createAgent(type: string, episodeId: number, dramaId: numb
     ? defaults.instructions
     : dbInstructions || defaults.instructions
   const skillInstructions = loadAgentSkills(type)
-  const instructions = skillInstructions
-    ? [baseInstructions, '', skillInstructions].join('\n')
-    : baseInstructions
+  const styleProfile = await getDramaStyleProfile(dramaId)
+  const styleInstructions = buildStyleAgentInstruction(styleProfile)
+  const instructions = [
+    baseInstructions,
+    '',
+    styleInstructions,
+    skillInstructions ? ['', skillInstructions].join('\n') : '',
+  ].filter(Boolean).join('\n')
   const name = dbConfig?.name || defaults.name
 
   let tools: Record<string, any> = {}
   switch (type) {
-    case 'script_rewriter': tools = createScriptTools(episodeId); break
+    case 'script_rewriter': tools = createScriptTools(episodeId, dramaId); break
     case 'extractor': tools = createExtractTools(episodeId, dramaId, taskId); break
     case 'storyboard_breaker': tools = createStoryboardTools(episodeId, dramaId, taskId); break
     case 'voice_assigner': tools = createVoiceTools(episodeId, dramaId); break
