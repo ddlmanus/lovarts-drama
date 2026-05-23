@@ -19,17 +19,18 @@ export class VolcEngineVideoAdapter implements VideoProviderAdapter {
   buildGenerateRequest(config: AIConfig, record: VideoGenerationRecord): ProviderRequest {
     const model = record.model || config.model || 'doubao-seedance-2-0-260128'
     const content = this.buildContent(record)
+    const seedance20 = this.isSeedance20Model(model)
 
     const body: any = { model, content }
-    this.setIfPresent(body, 'generate_audio', record.generateAudio)
+    this.setIfPresent(body, 'generate_audio', record.generateAudio ?? (seedance20 ? true : undefined))
     this.setIfPresent(body, 'ratio', record.aspectRatio)
     this.setIfPresent(body, 'duration', this.normalizeDuration(record.duration, model))
     this.setIfPresent(body, 'frames', record.frames)
     this.setIfPresent(body, 'resolution', record.resolution)
     this.setIfPresent(body, 'seed', record.seed)
     this.setIfPresent(body, 'camera_fixed', record.cameraFixed)
-    this.setIfPresent(body, 'watermark', record.watermark)
-    this.setIfPresent(body, 'return_last_frame', record.returnLastFrame)
+    this.setIfPresent(body, 'watermark', record.watermark ?? (seedance20 ? false : undefined))
+    this.setIfPresent(body, 'return_last_frame', record.returnLastFrame ?? (seedance20 ? true : undefined))
     this.setIfPresent(body, 'service_tier', record.serviceTier)
     this.setIfPresent(body, 'execution_expires_after', record.executionExpiresAfter)
     this.setIfPresent(body, 'callback_url', record.callbackUrl)
@@ -55,7 +56,7 @@ export class VolcEngineVideoAdapter implements VideoProviderAdapter {
     // 同步返回
     const videoUrl = result.video_url || result.content?.video_url || result.data?.video_url
     if (videoUrl) {
-      return { isAsync: false, videoUrl }
+      return { isAsync: false, videoUrl, lastFrameUrl: this.extractLastFrameUrl(result) }
     }
     throw new Error('No task_id or video_url in response')
   }
@@ -75,9 +76,11 @@ export class VolcEngineVideoAdapter implements VideoProviderAdapter {
     const status = result.status
     if (status === 'succeeded') {
       const videoUrl = result.video_url || result.content?.video_url || result.data?.video_url
+      const lastFrameUrl = this.extractLastFrameUrl(result)
       return {
         status: 'completed',
         videoUrl,
+        lastFrameUrl,
       }
     }
     if (status === 'failed') {
@@ -88,6 +91,31 @@ export class VolcEngineVideoAdapter implements VideoProviderAdapter {
 
   extractVideoUrl(result: any): string | null {
     return result.video_url || result.content?.video_url || result.data?.video_url || null
+  }
+
+  private extractLastFrameUrl(result: any): string | undefined {
+    const candidates = [
+      result.last_frame_url,
+      result.lastFrameUrl,
+      result.content?.last_frame_url,
+      result.content?.lastFrameUrl,
+      result.data?.last_frame_url,
+      result.data?.lastFrameUrl,
+      result.data?.result?.last_frame_url,
+      result.data?.result?.lastFrameUrl,
+      result.result?.last_frame_url,
+      result.result?.lastFrameUrl,
+    ]
+    const direct = candidates.find(value => typeof value === 'string' && value.trim())
+    if (direct) return direct.trim()
+    const images = result.images || result.data?.images || result.content?.images || result.result?.images || result.data?.result?.images
+    if (Array.isArray(images)) {
+      const item = images.find((image: any) => String(image?.role || image?.type || '').toLowerCase().includes('last'))
+        || images[images.length - 1]
+      const url = item?.url || item?.image_url || item?.imageUrl
+      if (typeof url === 'string' && url.trim()) return url.trim()
+    }
+    return undefined
   }
 
   private buildContent(record: VideoGenerationRecord): any[] {
@@ -178,6 +206,11 @@ export class VolcEngineVideoAdapter implements VideoProviderAdapter {
 
   private isReferenceMode(mode: string) {
     return mode === 'multiple' || mode === 'reference' || mode === 'multimodal_reference'
+  }
+
+  private isSeedance20Model(model: string) {
+    const value = String(model || '').toLowerCase()
+    return value.includes('seedance') && (value.includes('2.0') || value.includes('2-0') || value.includes('2_0'))
   }
 
   private imageItem(url: string, role?: 'first_frame' | 'last_frame') {

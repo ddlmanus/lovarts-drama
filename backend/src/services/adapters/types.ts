@@ -176,11 +176,13 @@ export interface VideoGenResponse {
   isAsync: boolean
   taskId?: string
   videoUrl?: string
+  lastFrameUrl?: string
 }
 
 export interface VideoPollResponse {
   status: 'pending' | 'processing' | 'completed' | 'failed'
   videoUrl?: string
+  lastFrameUrl?: string
   error?: string
 }
 

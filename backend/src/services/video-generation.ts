@@ -299,12 +299,12 @@ async function processVideoGeneration(id: number, config: AIConfig, runtimeOptio
     if (!resp.ok) throw new Error(`API error ${resp.status}: ${await resp.text()}`)
     const result = await resp.json() as any
 
-    const { isAsync, taskId, videoUrl } = adapter.parseGenerateResponse(result)
+    const { isAsync, taskId, videoUrl, lastFrameUrl } = adapter.parseGenerateResponse(result)
 
     if (!isAsync && videoUrl) {
       logTaskProgress('VideoTask', 'sync-complete', { id, videoUrl })
       // 同步模式
-      await handleVideoComplete(id, config, videoUrl, record.duration, record.storyboardId, userId)
+      await handleVideoComplete(id, config, videoUrl, record.duration, record.storyboardId, userId, lastFrameUrl)
       return
     }
 
@@ -406,7 +406,7 @@ async function pollVideoTask(id: number, config: AIConfig, taskId: string, story
 
       if (pollResp.status === 'completed' && pollResp.videoUrl) {
         logTaskSuccess('VideoTask', 'poll-complete', { id, taskId, videoUrl: pollResp.videoUrl })
-        await handleVideoComplete(id, config, pollResp.videoUrl, null, storyboardId, userId)
+        await handleVideoComplete(id, config, pollResp.videoUrl, null, storyboardId, userId, pollResp.lastFrameUrl)
         return
       }
       if (pollResp.status === 'failed') {
@@ -447,15 +447,16 @@ async function chargeCompletedVideo(id: number, config: AIConfig, record: any, u
   })
 }
 
-async function handleVideoComplete(id: number, config: AIConfig, videoUrl: string, duration: number | null | undefined, storyboardId?: number | null, userId?: string) {
+async function handleVideoComplete(id: number, config: AIConfig, videoUrl: string, duration: number | null | undefined, storyboardId?: number | null, userId?: string, lastFrameUrl?: string | null) {
   const localPath = await downloadFile(videoUrl, 'videos')
+  const localLastFramePath = lastFrameUrl ? await downloadFile(lastFrameUrl, 'images').catch(() => null) : null
   const record = await findVideoGeneration(id)
   await chargeCompletedVideo(id, config, record, userId)
   await updateVideoGeneration(id, { videoUrl, localPath, status: 'completed', completedAt: now(), updatedAt: now() }, userId)
   logTaskSuccess('VideoTask', 'downloaded', { id, localPath, storyboardId, duration })
 
   if (storyboardId) {
-    await updateGeneratedStoryboard(storyboardId, { videoUrl: localPath, duration: duration || undefined, updatedAt: now() }, userId)
+    await updateGeneratedStoryboard(storyboardId, { videoUrl: localPath, lastFrameImage: localLastFramePath || undefined, duration: duration || undefined, updatedAt: now() }, userId)
   }
 }
 

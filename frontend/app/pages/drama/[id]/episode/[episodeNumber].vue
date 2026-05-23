@@ -1,5 +1,19 @@
 <template>
-  <div class="studio" v-if="drama && initialRouteResolved">
+  <div class="studio">
+    <div v-if="initialPageLoading" class="studio-page-state">
+      <Loader2 :size="30" class="animate-spin" />
+      <div class="studio-page-state-title">正在加载短剧制作台...</div>
+      <div class="studio-page-state-desc">{{ initialLoadingText }}</div>
+    </div>
+    <div v-else-if="initialPageError" class="studio-page-state">
+      <div class="studio-page-state-icon">
+        <FileText :size="28" />
+      </div>
+      <div class="studio-page-state-title">加载失败</div>
+      <div class="studio-page-state-desc">{{ initialPageError }}</div>
+      <button class="studio-page-state-btn" type="button" @click="refresh">重新加载</button>
+    </div>
+    <template v-else>
     <input ref="assetUploadInput" class="asset-upload-input" type="file" accept="image/*" @change="handleAssetUploadChange" />
     <header class="navbar-wrapper">
       <div class="navbar">
@@ -577,7 +591,7 @@
                         <span v-for="name in getStoryboardCharacterNames(sb)" :key="name" class="character-tag">{{ name }}</span>
                       </div>
                       <div v-else class="empty-characters">
-                        <span class="add-character-btn" @click="selectedSb = sb">
+                        <span class="add-character-btn" @click="selectStoryboard(sb)">
                           <svg class="svg-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
                             <path fill="currentColor" d="M11 13H5v-2h6V5h2v6h6v2h-6v6h-2z"></path>
                           </svg>
@@ -1157,7 +1171,7 @@
                   :key="sb.id"
                   :class="['shot-item', { active: selectedSb?.id === sb.id }]"
                   type="button"
-                  @click="selectedSb = sb"
+                  @click="selectStoryboard(sb)"
                 >
                   <div class="shot-info">
                     <div class="shot-title-row">
@@ -1224,7 +1238,11 @@
                       <div class="header">
                         <div class="header-title">分镜素材</div>
                       </div>
-                      <div class="frame-rows">
+                      <div v-if="selectedStoryboardImagesLoading" class="shot-assets-loading">
+                        <Loader2 :size="18" class="animate-spin" />
+                        <span>正在加载当前分镜素材...</span>
+                      </div>
+                      <div v-else class="frame-rows">
                         <div v-for="row in shotAssetRows(selectedShot)" :key="row.key" :class="['frame-row', `row-${row.key}`]">
                           <div :class="['frame-tab', `tab-${row.key}`]">
                             <span class="asset-row-icon" v-html="row.icon"></span>
@@ -1519,7 +1537,33 @@
                 <div v-else class="tab-content">
                   <section class="settings-section compact">
                     <div class="section-title">视频模型</div>
-                    <div class="locked-model-display">{{ lockedVideoConfigLabel }}</div>
+                    <BaseSelect v-model="videoModel" :options="videoModelOptions" placeholder="视频模型" searchable class="model-select" />
+                    <div class="hint-text">仅支持 Seedance 2.0，最长 {{ selectedVideoMaxDuration }} 秒，可返回尾帧用于连续分段。</div>
+                  </section>
+                  <section class="settings-section compact">
+                    <div class="section-title">批量模式</div>
+                    <div class="frame-generation-steps">
+                      <button
+                        type="button"
+                        :class="['step-item', { active: batchVideoMode === 'shots' }]"
+                        @click="batchVideoMode = 'shots'"
+                      >
+                        <div class="step-content">
+                          <div class="step-title">逐分镜</div>
+                          <div class="step-desc">每个分镜生成一个视频</div>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        :class="['step-item', { active: batchVideoMode === 'continuous' }]"
+                        @click="batchVideoMode = 'continuous'"
+                      >
+                        <div class="step-content">
+                          <div class="step-title">连续分段</div>
+                          <div class="step-desc">{{ continuousVideoSegmentCount }} 段 · 按 {{ selectedVideoMaxDuration }}s 拆分</div>
+                        </div>
+                      </button>
+                    </div>
                   </section>
                   <section class="settings-section compact">
                     <div class="section-title">参考帧</div>
@@ -1577,11 +1621,12 @@
                         <span class="btn-desc">{{ Number(selectedShot.duration || selectedShot.durationSeconds || 5) }}s</span>
                       </div>
                     </button>
-                    <button class="action-btn secondary-action compact flex-1" type="button" @click="batchVideos">
+                    <button class="action-btn secondary-action compact flex-1" type="button" :disabled="batchVideoRunning" @click="batchVideos">
+                      <Loader2 v-if="batchVideoRunning" :size="16" class="animate-spin" />
                       <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 20q-.825 0-1.412-.587T2 18V6q0-.825.588-1.412T4 4h12q.825 0 1.413.588T18 6v4.5l4-4v11l-4-4V18q0 .825-.587 1.413T16 20z"/></svg>
                       <div class="btn-text-group">
-                        <span class="btn-title">批量视频</span>
-                        <span class="btn-desc">所有镜头</span>
+                        <span class="btn-title">{{ batchVideoRunning ? '批量生成中' : '批量视频' }}</span>
+                        <span class="btn-desc">{{ batchVideoMode === 'continuous' ? `${continuousVideoSegmentCount} 段连续` : '所有镜头' }}</span>
                       </div>
                     </button>
                   </div>
@@ -2016,6 +2061,7 @@
       </Teleport>
     </main>
     </div>
+    </template>
   </div>
 </template>
 
@@ -2024,7 +2070,7 @@ import { toast } from 'vue-sonner'
 import {
   Download, FileText, FolderKanban, ImageIcon, Layers, Loader2, MapPin, Mic2, Users, Video, Clapperboard,
 } from 'lucide-vue-next'
-import { dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, imageAPI, videoAPI, composeAPI, mergeAPI, gridAPI, aiModelAPI, voicesAPI, uploadAPI, taskAPI, authAPI, billingAPI, getAuthUser, subscribeCreditEvents, updateAuthUser } from '~/composables/useApi'
+import { dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, imageAPI, videoAPI, composeAPI, mergeAPI, gridAPI, aiModelAPI, voicesAPI, uploadAPI, taskAPI, authAPI, billingAPI, getAuthUser, updateAuthUser } from '~/composables/useApi'
 import { useAgent } from '~/composables/useAgent'
 import BaseSelect from '~/components/BaseSelect.vue'
 import { apimartMultimodalChatModels } from '~/utils/apimartModels'
@@ -2035,6 +2081,8 @@ const episodeNumber = Number(route.params.episodeNumber)
 
 const drama = ref(null), episode = ref(null), chars = ref([]), scenes = ref([]), sbs = ref([]), mergeData = ref(null)
 const storyboardImageRecords = ref([])
+const selectedStoryboardImageRecords = ref([])
+const selectedStoryboardImagesLoading = ref(false)
 const panel = ref('script')
 const {
   running: rn,
@@ -2060,6 +2108,9 @@ const mergeUrl = computed(() => mergeData.value?.merged_url || mergeData.value?.
 
 const scriptStep = ref(0)
 const initialRouteResolved = ref(false)
+const initialPageLoading = ref(true)
+const initialPageError = ref('')
+const initialLoadingText = ref('正在加载项目、分集和制作素材')
 const scriptModel = ref('gemini-3.1-pro-preview')
 const dbTextModelOptions = ref([])
 const dbImageModelOptions = ref([])
@@ -2071,8 +2122,12 @@ const fallbackImageModelOptions = [
   { label: 'Nano-Banana-Pro', value: 'gemini-3-pro-image-preview', group: 'APIMart' },
 ]
 const imageModelOptions = computed(() => normalizeSelectableModelOptions(dbImageModelOptions.value.length ? dbImageModelOptions.value : fallbackImageModelOptions))
+const videoModel = ref('')
+const dbVideoModelOptions = ref([])
+const videoModelOptions = computed(() => normalizeSelectableModelOptions(dbVideoModelOptions.value.length ? dbVideoModelOptions.value : videoConfigs.value).filter(isSeedance20ModelOption))
 const selectedScriptModelOption = computed(() => findSelectableModelOption(scriptModelOptions.value, scriptModel.value))
 const selectedImageModelOption = computed(() => findSelectableModelOption(imageModelOptions.value, imageModel.value))
+const selectedVideoModelOption = computed(() => findSelectableModelOption(videoModelOptions.value, videoModel.value))
 const roleAgeOptions = [
   { label: '婴儿', value: '婴儿' },
   { label: '幼儿', value: '幼儿' },
@@ -2142,6 +2197,8 @@ const shotPromptExpanded = ref(true)
 const shotLeftCollapsed = ref(false)
 const shotRightCollapsed = ref(false)
 const actionSequenceGridCount = ref(9)
+const batchVideoMode = ref('shots')
+const batchVideoRunning = ref(false)
 const shotFrameModeOptions = [
   { label: '关键帧', value: 'key_frame', desc: '可选参考' },
   { label: '首帧', value: 'first_frame' },
@@ -2200,7 +2257,6 @@ const taskFilters = ref({ category: '', status: '' })
 const taskPollTimer = ref(null)
 const currentUser = ref(getAuthUser())
 const billingStatus = ref(null)
-let creditEventSource = null
 const currentCredits = computed(() => {
   const userCredits = optionalNumber(currentUser.value?.credits)
   if (userCredits !== null) return userCredits
@@ -2214,6 +2270,9 @@ const selectedImageResolution = computed(() => {
   const keys = Object.keys(creditMap).filter(Boolean)
   return keys.length === 1 ? keys[0] : ''
 })
+const selectedVideoMaxDuration = computed(() => maxVideoDurationForOption(selectedVideoModelOption.value))
+const continuousVideoSegments = computed(() => buildContinuousVideoSegments(sbs.value, selectedVideoMaxDuration.value))
+const continuousVideoSegmentCount = computed(() => continuousVideoSegments.value.length)
 const singleImageCreditCost = computed(() => imageCreditCostForCount(1))
 const batchCharacterImageCount = computed(() => visualChars.value.filter(c => c.id).length)
 const batchSceneImageCount = computed(() => scenes.value.filter(s => s.id).length)
@@ -2283,6 +2342,54 @@ function configLabel(config) {
   return modelName ? `${name} · ${modelName} (${provider})` : `${name} (${provider})`
 }
 
+function isSeedance20ModelOption(option) {
+  const text = [
+    option?.model_id,
+    option?.model,
+    option?.value,
+    option?.name,
+    option?.label,
+    option?.description,
+  ].filter(Boolean).join(' ').toLowerCase()
+  return text.includes('seedance') && (text.includes('2.0') || text.includes('2-0') || text.includes('2_0') || text.includes('2 '))
+}
+
+function maxVideoDurationForOption(option) {
+  if (!option) return 15
+  const capabilities = option.capabilities || {}
+  const defaults = option.defaults || {}
+  const candidates = [
+    capabilities.duration?.max,
+    capabilities.duration_max,
+    capabilities.durationMax,
+    ...(Array.isArray(capabilities.durations) ? capabilities.durations : []),
+    ...(Array.isArray(capabilities.duration?.values) ? capabilities.duration.values : []),
+    defaults.max_duration,
+    defaults.maxDuration,
+    defaults.duration,
+  ].map(value => Number(String(value || '').match(/\d+/)?.[0] || 0)).filter(value => Number.isFinite(value) && value > 0)
+  return Math.min(15, Math.max(4, candidates.length ? Math.max(...candidates) : 15))
+}
+
+function configKey(value) {
+  if (value === undefined || value === null || value === '') return ''
+  return String(value)
+}
+
+function findModelConfig(configs, id) {
+  const target = configKey(id)
+  const rows = Array.isArray(configs) ? configs : []
+  if (target) {
+    const matched = rows.find(c =>
+      configKey(c.id) === target ||
+      configKey(c.model_config_id || c.modelConfigId) === target ||
+      configKey(c.config_id || c.configId) === target
+    )
+    if (matched) return matched
+  }
+  return rows.find(c => c.is_default || c.isDefault) || rows[0] || null
+}
+
 function getConfigModelName(config) {
   if (!config) return ''
   if (config.model_id || config.value) return config.model_id || config.value
@@ -2296,9 +2403,11 @@ function getConfigModelName(config) {
 
 function normalizeModelConfig(config) {
   const modelName = config.model_id || config.value || config.model || ''
+  const id = config.model_config_id || config.modelConfigId || config.config_id || config.configId || config.id
   return {
     ...config,
-    id: config.model_config_id || config.id,
+    id,
+    model_config_id: config.model_config_id || config.modelConfigId || id,
     name: config.name || config.label || modelName,
     model: JSON.stringify([modelName]),
     provider: config.provider || config.provider_name || '',
@@ -2335,6 +2444,7 @@ function findSelectableModelOption(options, value) {
   const target = String(value || '')
   return options.find(item => String(item.value || '') === target)
     || options.find(item => String(item.model_id || '') === target)
+    || options.find(item => String(item.model_config_id || item.modelConfigId || item.id || '') === target)
     || null
 }
 
@@ -2484,10 +2594,10 @@ function handleImageViewerKeydown(event) {
 onMounted(() => {
   window.addEventListener('keydown', handleImageViewerKeydown)
   window.addEventListener('huobao-auth-change', handleAuthChange)
+  window.addEventListener('huobao-user-change', handleAuthChange)
   window.addEventListener('storage', handleAuthStorageChange)
   loadTasks()
   loadCurrentCredits()
-  connectCreditEvents()
   taskPollTimer.value = window.setInterval(() => {
     if (taskModalOpen.value || activeTaskCount.value) loadTasks()
   }, 5000)
@@ -2496,16 +2606,14 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleImageViewerKeydown)
   window.removeEventListener('huobao-auth-change', handleAuthChange)
+  window.removeEventListener('huobao-user-change', handleAuthChange)
   window.removeEventListener('storage', handleAuthStorageChange)
   if (taskPollTimer.value) window.clearInterval(taskPollTimer.value)
-  disconnectCreditEvents()
   stopExtractProgress()
 })
 
 function handleAuthChange() {
   currentUser.value = getAuthUser()
-  loadCurrentCredits()
-  connectCreditEvents()
 }
 
 function handleAuthStorageChange(event) {
@@ -2539,30 +2647,6 @@ async function loadCurrentCredits() {
   } catch (err) {
     console.error('Failed to load membership status', err)
   }
-}
-
-function disconnectCreditEvents() {
-  if (creditEventSource) {
-    creditEventSource.close()
-    creditEventSource = null
-  }
-}
-
-function connectCreditEvents() {
-  disconnectCreditEvents()
-  if (!getAuthUser()?.id) return
-  creditEventSource = subscribeCreditEvents((event) => {
-    if (event?.type !== 'credits.changed') return
-    billingStatus.value = {
-      ...(billingStatus.value || {}),
-      credits: event.credits,
-    }
-    currentUser.value = {
-      ...(currentUser.value || {}),
-      credits: event.credits,
-    }
-    if (currentUser.value?.id) updateAuthUser(currentUser.value)
-  })
 }
 
 function framePendingKey(id, frameType) {
@@ -2620,10 +2704,17 @@ function assetUrl(path) {
 const lockedImageConfigId = computed(() => episode.value?.image_config_id || episode.value?.imageConfigId || null)
 const lockedVideoConfigId = computed(() => episode.value?.video_config_id || episode.value?.videoConfigId || null)
 const lockedAudioConfigId = computed(() => episode.value?.audio_config_id || episode.value?.audioConfigId || null)
-const lockedAudioProvider = computed(() => audioConfigs.value.find(c => c.id === lockedAudioConfigId.value)?.provider || '')
-const lockedImageConfigLabel = computed(() => configLabel(imageConfigs.value.find(c => c.id === lockedImageConfigId.value)))
-const lockedVideoConfigLabel = computed(() => configLabel(videoConfigs.value.find(c => c.id === lockedVideoConfigId.value)))
-const lockedAudioConfigLabel = computed(() => configLabel(audioConfigs.value.find(c => c.id === lockedAudioConfigId.value)))
+const lockedImageConfig = computed(() => findModelConfig(imageConfigs.value, lockedImageConfigId.value))
+const lockedVideoConfig = computed(() => findModelConfig(videoConfigs.value, lockedVideoConfigId.value))
+const lockedAudioConfig = computed(() => findModelConfig(audioConfigs.value, lockedAudioConfigId.value))
+const lockedVideoConfigIsFallback = computed(() => Boolean(lockedVideoConfig.value && lockedVideoConfigId.value && configKey(lockedVideoConfig.value.id) !== configKey(lockedVideoConfigId.value) && configKey(lockedVideoConfig.value.model_config_id || lockedVideoConfig.value.modelConfigId) !== configKey(lockedVideoConfigId.value)))
+const lockedAudioProvider = computed(() => lockedAudioConfig.value?.provider || '')
+const lockedImageConfigLabel = computed(() => configLabel(lockedImageConfig.value))
+const lockedVideoConfigLabel = computed(() => {
+  const label = configLabel(lockedVideoConfig.value)
+  return lockedVideoConfigIsFallback.value ? `${label}（默认）` : label
+})
+const lockedAudioConfigLabel = computed(() => configLabel(lockedAudioConfig.value))
 // Grid tool state
 const gridDialog = ref(false)
 const gridStep = ref(0)
@@ -3765,6 +3856,22 @@ function setShotFramePromptLocal(sb, mode, prompt) {
   }
 }
 
+function imageRecordsForStoryboard(sb) {
+  if (!sb) return []
+  const selectedId = selectedShot.value?.id
+  const source = selectedId && Number(selectedId) === Number(sb.id)
+    ? selectedStoryboardImageRecords.value
+    : storyboardImageRecords.value
+  return source.filter(row => Number(row.storyboard_id || row.storyboardId) === Number(sb.id))
+}
+
+function completedStoryboardImageRecords(sb, frameType) {
+  return imageRecordsForStoryboard(sb)
+    .filter(row => String(row.frame_type || row.frameType || '') === frameType)
+    .filter(row => String(row.status || '') === 'completed')
+    .filter(row => row.local_path || row.localPath)
+}
+
 function saveShotVideoPrompt(sb, value) {
   if (!sb) return
   const prompt = String(value || '').trim()
@@ -3776,14 +3883,20 @@ function saveShotVideoPrompt(sb, value) {
 function shotAssetRows(sb) {
   if (!sb) return []
   const makeImage = (key, path, title) => path ? [{ key, kind: 'image', url: assetPathUrl(path), title }] : []
-  const makeGeneratedImages = (frameType, title) => storyboardImageRecords.value
-    .filter(row => Number(row.storyboard_id || row.storyboardId) === Number(sb.id))
+  const makeGeneratedImages = (frameType, title) => imageRecordsForStoryboard(sb)
     .filter(row => String(row.frame_type || row.frameType || '') === frameType)
     .filter(row => String(row.status || '') === 'completed')
     .map(row => row.local_path || row.localPath)
     .filter(Boolean)
     .filter((path, index, arr) => arr.indexOf(path) === index)
     .map((path, index) => ({ key: `${frameType}-${index}`, kind: 'image', url: assetPathUrl(path), title }))
+  const makeFrameImages = (frameType, fallbackPath, title) => {
+    const paths = [
+      ...completedStoryboardImageRecords(sb, frameType).map(row => row.local_path || row.localPath),
+      fallbackPath,
+    ].filter(Boolean).filter((path, index, arr) => arr.indexOf(path) === index)
+    return paths.map((path, index) => ({ key: `${frameType}-${index}`, kind: 'image', url: assetPathUrl(path), title }))
+  }
   const refs = getRefs(sb).map((path, index) => ({
     key: `ref-${index}`,
     kind: 'image',
@@ -3801,19 +3914,19 @@ function shotAssetRows(sb) {
       key: 'key',
       label: '关键帧',
       icon: '<svg width="14" height="14" viewBox="0 0 24 24"><path fill="currentColor" d="m5.825 21l1.625-7.025L2 9.25l7.2-.625L12 2l2.8 6.625l7.2.625l-5.45 4.725L18.175 21L12 17.275z"/></svg>',
-      items: makeImage('key', getStoryboardGeneratedImage(sb), `${shotDisplayTitle(sb)} 关键帧`),
+      items: makeFrameImages('key_frame', getStoryboardGeneratedImage(sb), `${shotDisplayTitle(sb)} 关键帧`),
     },
     {
       key: 'first',
       label: '首帧',
       icon: '<svg width="14" height="14" viewBox="0 0 24 24"><path fill="currentColor" d="m4 4l2 4h3L7 4h2l2 4h3l-2-4h2l2 4h3l-2-4h3q.825 0 1.413.588T22 6v12q0 .825-.587 1.413T20 20H4q-.825 0-1.412-.587T2 18V6q0-.825.588-1.412T4 4"/></svg>',
-      items: makeImage('first', getFirstFrame(sb), `${shotDisplayTitle(sb)} 首帧`),
+      items: makeFrameImages('first_frame', getFirstFrame(sb), `${shotDisplayTitle(sb)} 首帧`),
     },
     {
       key: 'last',
       label: '尾帧',
       icon: '<svg width="14" height="14" viewBox="0 0 24 24"><path fill="currentColor" d="M5 21V4h9l.4 2H20v10h-7l-.4-2H7v7z"/></svg>',
-      items: makeImage('last', getLastFrame(sb), `${shotDisplayTitle(sb)} 尾帧`),
+      items: makeFrameImages('last_frame', getLastFrame(sb), `${shotDisplayTitle(sb)} 尾帧`),
     },
     {
       key: 'action',
@@ -3874,8 +3987,7 @@ async function deleteShot(sb) {
   await storyboardAPI.del(sb.id)
   await refresh()
   if (key != null) expandedStoryboardIds.value = expandedStoryboardIds.value.filter(item => item !== key)
-  if (sbs.value.length) selectedSb.value = sbs.value[Math.min(idx, sbs.value.length - 1)]
-  else selectedSb.value = null
+  await selectStoryboard(sbs.value.length ? sbs.value[Math.min(idx, sbs.value.length - 1)] : null)
 }
 
 async function insertShotAt(index) {
@@ -3894,7 +4006,7 @@ async function insertShotAt(index) {
     duration: 10,
   })
   await refresh()
-  selectedSb.value = sbs.value.find(item => item.id === res?.id) || sbs.value[index] || null
+  await selectStoryboard(sbs.value.find(item => item.id === res?.id) || sbs.value[index] || null)
   const key = storyboardExpandKey(selectedSb.value)
   if (key != null && !expandedStoryboardIds.value.includes(key)) {
     expandedStoryboardIds.value = [...expandedStoryboardIds.value, key]
@@ -3926,6 +4038,35 @@ watch(prodTab, (value) => {
   if (value === 'shots') shotWorkbenchTab.value = 'image'
 }, { immediate: true })
 
+async function loadSelectedStoryboardImages(storyboardId = selectedShot.value?.id) {
+  if (!storyboardId) {
+    selectedStoryboardImageRecords.value = []
+    selectedStoryboardImagesLoading.value = false
+    return
+  }
+  selectedStoryboardImagesLoading.value = true
+  try {
+    const rows = await imageAPI.list({ storyboard_id: Number(storyboardId) })
+    if (Number(selectedShot.value?.id) === Number(storyboardId)) {
+      selectedStoryboardImageRecords.value = rows
+    }
+  } catch {
+    if (Number(selectedShot.value?.id) === Number(storyboardId)) {
+      selectedStoryboardImageRecords.value = []
+    }
+  } finally {
+    if (Number(selectedShot.value?.id) === Number(storyboardId)) {
+      selectedStoryboardImagesLoading.value = false
+    }
+  }
+}
+
+async function selectStoryboard(sb) {
+  selectedSb.value = sb
+  selectedStoryboardImageRecords.value = []
+  await loadSelectedStoryboardImages(sb?.id)
+}
+
 function consumeCreateQuery() {
   const createType = route.query.create
   if (createType !== 'character' && createType !== 'scene') return
@@ -3938,16 +4079,32 @@ function consumeCreateQuery() {
 }
 
 async function refresh() {
+  const isInitialLoad = !initialRouteResolved.value && !drama.value
+  if (isInitialLoad) {
+    initialPageLoading.value = true
+    initialPageError.value = ''
+    initialLoadingText.value = '正在加载短剧项目'
+  }
   try {
     drama.value = await dramaAPI.get(dramaId)
     const ep = drama.value.episodes?.find(e => (e.episode_number || e.episodeNumber) === episodeNumber)
     if (ep) {
       episode.value = ep
+      if (isInitialLoad) initialLoadingText.value = '正在加载角色和场景'
       try { chars.value = await episodeAPI.characters(ep.id) } catch { chars.value = [] }
       try { scenes.value = await episodeAPI.scenes(ep.id) } catch { scenes.value = [] }
+      if (isInitialLoad) initialLoadingText.value = '正在加载分镜脚本'
       sbs.value = await episodeAPI.storyboards(ep.id)
+      if (isInitialLoad) initialLoadingText.value = '正在加载分镜素材'
       try { storyboardImageRecords.value = await imageAPI.list({ drama_id: dramaId }) } catch { storyboardImageRecords.value = [] }
-      if (sbs.value.length && !selectedSb.value) selectedSb.value = sbs.value[0]
+      if (sbs.value.length) {
+        selectedSb.value = selectedSb.value
+          ? (sbs.value.find(item => Number(item.id) === Number(selectedSb.value.id)) || sbs.value[0])
+          : sbs.value[0]
+      } else {
+        selectedSb.value = null
+      }
+      await loadSelectedStoryboardImages(selectedSb.value?.id)
 
       const epHasContent = !!(episode.value?.content)
       const epHasScript = !!(episode.value?.script_content || episode.value?.scriptContent)
@@ -3976,9 +4133,14 @@ async function refresh() {
       await loadLatestGridImage()
       await syncPendingImageTasks()
       consumeCreateQuery()
+    } else {
+      throw new Error(`未找到第 ${episodeNumber} 集`)
     }
   } catch (e) {
-    toast.error(e.message)
+    initialPageError.value = e?.message || '加载短剧制作台失败'
+    if (!isInitialLoad) toast.error(initialPageError.value)
+  } finally {
+    if (isInitialLoad) initialPageLoading.value = false
   }
   try { mergeData.value = await mergeAPI.status(epId.value) } catch {}
 }
@@ -4138,8 +4300,7 @@ async function batchGenSamples() {
   await refresh()
 }
 function doBreakdown() {
-  const cfg = videoConfigs.value.find(c => c.id === lockedVideoConfigId.value)
-  const label = cfg ? configLabel(cfg) : '默认'
+  const label = configLabel(selectedVideoModelOption.value || lockedVideoConfig.value)
   runAgent('storyboard_breaker', `请以资深商业分镜导演、跨媒介视觉预演导演和 AI 影像制作导演标准，把当前剧本转换成可直接制作的生产级结构化分镜脚本，并调用 save_storyboards 保存。必须严格读取并遵守当前项目的 style_contract / style_profile，按项目选择的类型和风格自适应创作：动漫风格使用动漫/漫剧镜头与表演语言，3D 动画使用 3D 动画镜头、材质和空间调度语言，写实风格使用真人影视拍摄语言，插画、Q版、都市言情等其他风格使用对应的视觉叙事语言。所有镜头叙事、角色表演、场景调度、image_prompt、video_prompt 都必须保持当前项目风格，不能风格变异。每条分镜必须包含 shotNumber、title、shotType、cameraAngle、cameraMovement、durationSeconds、visualDescription、action、dialogue、soundEffects、backgroundMusic、atmosphere、charactersInShot、sceneId、image_prompt、video_prompt。shotType/cameraAngle/cameraMovement 使用标准英文枚举；角色和场景必须来自 read_storyboard_context。视频模型：${label}，请同时生成适配该模型的 video_prompt。`, dramaId, epId.value, async () => {
     await refresh()
     scriptStep.value = 4
@@ -4758,6 +4919,36 @@ function hasImg(s) { return !!getStoryboardCover(s) }
 function hasVid(s) { return !!getVideoUrl(s) }
 function hasComposed(s) { return !!getComposedVideoUrl(s) }
 
+function shotDuration(sb) {
+  return Math.max(1, Number(sb?.duration || sb?.durationSeconds || 5) || 5)
+}
+
+function buildContinuousVideoSegments(storyboards, maxDuration) {
+  const limit = Math.max(4, Number(maxDuration || 15) || 15)
+  const segments = []
+  let current = []
+  let total = 0
+  for (const sb of storyboards || []) {
+    const duration = shotDuration(sb)
+    if (current.length && total + duration > limit) {
+      segments.push({ shots: current, duration: total })
+      current = []
+      total = 0
+    }
+    current.push(sb)
+    total += duration
+  }
+  if (current.length) segments.push({ shots: current, duration: total })
+  return segments
+}
+
+function segmentPrompt(segment) {
+  return segment.shots.map((sb, index) => {
+    const text = sb.video_prompt || sb.videoPrompt || sb.action || storyboardActionText(sb) || storyboardVisualText(sb)
+    return `镜头${index + 1}（${shotDuration(sb)}秒）：${text}`
+  }).join('\n')
+}
+
 function getShotReferenceImages(sb) {
   const refs = []
   const pushRef = (value) => {
@@ -4954,12 +5145,19 @@ async function openShotReferenceUpload(sb) {
   assetUploadInput.value?.click()
 }
 
-async function genVid(sb) {
+async function genVid(sb, overrides = {}) {
   const params = {
     storyboard_id: sb.id,
     drama_id: dramaId,
     prompt: sb.video_prompt || sb.videoPrompt || '',
-    duration: Number(sb.duration || 5),
+    duration: shotDuration(sb),
+    generate_audio: true,
+    generateAudio: true,
+    return_last_frame: true,
+    returnLastFrame: true,
+    watermark: false,
+    ...(modelPayload(selectedVideoModelOption.value || videoModel.value)),
+    ...overrides,
   }
   const first = getFirstFrame(sb)
   const last = getLastFrame(sb)
@@ -5018,6 +5216,30 @@ async function pollVideoGeneration(generationId, storyboardId) {
   }
   toast.error('视频生成超时')
 }
+
+async function waitVideoGeneration(generationId, storyboardId, attempts = 120, delay = 4000) {
+  if (!generationId) return null
+  for (let i = 0; i < attempts; i++) {
+    await sleep(delay)
+    const res = await videoAPI.get(generationId)
+    await refresh()
+    if (res?.status === 'completed') {
+      pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
+      delete failedVideoMessages.value[storyboardId]
+      return res
+    }
+    if (res?.status === 'failed') {
+      pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
+      const message = res?.error_msg || res?.errorMsg || '视频生成失败'
+      failedVideoMessages.value = {
+        ...failedVideoMessages.value,
+        [storyboardId]: message,
+      }
+      throw new Error(message)
+    }
+  }
+  throw new Error('视频生成超时')
+}
 async function doCompose(sb) {
   try {
     delete failedComposeMessages.value[sb.id]
@@ -5035,8 +5257,17 @@ async function doCompose(sb) {
     toast.error(e.message)
   }
 }
-function batchVideos() {
+async function batchVideos() {
+  if (batchVideoMode.value === 'continuous') {
+    await batchContinuousVideos()
+    return
+  }
   const pendingIds = sbs.value.filter(s => !hasVid(s)).map(s => s.id)
+  if (!pendingIds.length) {
+    toast.info('所有分镜视频已生成')
+    return
+  }
+  batchVideoRunning.value = true
   pendingIds.forEach(id => {
     const sb = sbs.value.find(item => item.id === id)
     if (sb) genVid(sb)
@@ -5049,6 +5280,60 @@ function batchVideos() {
       if (done) pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== id)
       return done
     }), 80, 4000)
+  }
+  batchVideoRunning.value = false
+}
+
+async function batchContinuousVideos() {
+  if (!selectedVideoModelOption.value) {
+    toast.error('请选择 Seedance 2.0 视频模型')
+    return
+  }
+  const segments = continuousVideoSegments.value
+  if (!segments.length) {
+    toast.info('暂无分镜可生成')
+    return
+  }
+  batchVideoRunning.value = true
+  let previousTailFrame = ''
+  try {
+    for (let index = 0; index < segments.length; index += 1) {
+      const segment = segments[index]
+      const firstShot = segment.shots[0]
+      const lastShot = segment.shots[segment.shots.length - 1]
+      const firstFrame = previousTailFrame || getFirstFrame(firstShot) || getStoryboardCover(firstShot)
+      const body = {
+        prompt: segmentPrompt(segment),
+        duration: Math.min(selectedVideoMaxDuration.value, segment.duration),
+        generate_audio: true,
+        generateAudio: true,
+        return_last_frame: true,
+        returnLastFrame: true,
+        watermark: false,
+        reference_mode: firstFrame ? 'single' : 'none',
+        image_url: firstFrame || undefined,
+      }
+      if (!pendingVideoIds.value.includes(lastShot.id)) pendingVideoIds.value.push(lastShot.id)
+      const generation = await videoAPI.generate({
+        storyboard_id: lastShot.id,
+        drama_id: dramaId,
+        ...modelPayload(selectedVideoModelOption.value),
+        ...body,
+      })
+      toast.success(`连续分段 ${index + 1}/${segments.length} 生成中`)
+      await waitVideoGeneration(generation?.id, lastShot.id)
+      const freshLastShot = sbs.value.find(item => Number(item.id) === Number(lastShot.id)) || lastShot
+      previousTailFrame = getLastFrame(freshLastShot)
+      if (!previousTailFrame && index < segments.length - 1) {
+        throw new Error('当前 Seedance 2.0 任务未返回尾帧，无法继续连续分段')
+      }
+    }
+    toast.success('连续分段视频生成完成')
+  } catch (e) {
+    toast.error(e.message || '连续分段视频生成失败')
+  } finally {
+    batchVideoRunning.value = false
+    await refresh()
   }
 }
 async function batchCompose() {
@@ -5116,6 +5401,7 @@ async function loadConfigs() {
     audioConfigs.value = normalizeModelConfigs(audioModels)
     dbTextModelOptions.value = Array.isArray(textModels) ? textModels : []
     dbImageModelOptions.value = Array.isArray(imageModels) ? imageModels : []
+    dbVideoModelOptions.value = Array.isArray(videoModels) ? videoModels : []
     if (scriptModelOptions.value.length) {
       const current = findSelectableModelOption(scriptModelOptions.value, scriptModel.value)
       const preferred = current || scriptModelOptions.value.find(m => m.is_default) || scriptModelOptions.value[0]
@@ -5125,6 +5411,12 @@ async function loadConfigs() {
       const current = findSelectableModelOption(imageModelOptions.value, imageModel.value)
       const preferred = current || imageModelOptions.value.find(m => m.is_default) || imageModelOptions.value[0]
       imageModel.value = preferred.value
+    }
+    if (videoModelOptions.value.length) {
+      const locked = findSelectableModelOption(videoModelOptions.value, lockedVideoConfigId.value)
+      const current = findSelectableModelOption(videoModelOptions.value, videoModel.value)
+      const preferred = current || locked || videoModelOptions.value.find(m => m.is_default || m.isDefault) || videoModelOptions.value[0]
+      videoModel.value = preferred.value
     }
   } catch (e) { console.error('Failed to load AI configs', e) }
 }
@@ -5172,6 +5464,63 @@ onMounted(() => { refresh(); loadConfigs(); loadVoices() })
   padding: 0;
   gap: 0;
   background: transparent;
+}
+
+.studio-page-state {
+  height: 100%;
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: rgba(255,255,255,0.82);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: linear-gradient(180deg, rgba(36,37,41,0.96) 0%, rgba(26,27,30,0.96) 100%);
+}
+
+.studio-page-state .animate-spin {
+  color: var(--accent);
+}
+
+.studio-page-state-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  color: rgba(255,255,255,0.72);
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.studio-page-state-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.92);
+}
+
+.studio-page-state-desc {
+  max-width: min(520px, calc(100vw - 80px));
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.7;
+  color: rgba(255,255,255,0.52);
+}
+
+.studio-page-state-btn {
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.86);
+  cursor: pointer;
+}
+
+.studio-page-state-btn:hover {
+  background: rgba(255,255,255,0.14);
 }
 
 .asset-upload-input {
@@ -8101,6 +8450,16 @@ button {
   color: rgba(255,255,255,0.78);
   font-size: 13px;
   font-weight: 700;
+}
+.shot-assets-loading {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: rgba(255,255,255,0.52);
+  font-size: 12px;
 }
 .bottom-media-library .frame-rows {
   min-height: 0;

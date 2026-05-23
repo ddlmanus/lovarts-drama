@@ -61,6 +61,28 @@ function extractVideoUrl(result: any): string | null {
   return null
 }
 
+function extractLastFrameUrl(result: any): string | undefined {
+  const data = unwrapData(result)
+  const candidates = [
+    data?.result?.last_frame_url,
+    data?.result?.lastFrameUrl,
+    data?.last_frame_url,
+    data?.lastFrameUrl,
+    result?.last_frame_url,
+    result?.lastFrameUrl,
+  ]
+  const direct = candidates.find(value => typeof value === 'string' && value.trim())
+  if (direct) return direct.trim()
+  const images = data?.result?.images || data?.images || result?.result?.images || result?.images
+  if (Array.isArray(images)) {
+    const item = images.find((image: any) => String(image?.role || image?.type || '').toLowerCase().includes('last'))
+      || images[images.length - 1]
+    const url = item?.url || item?.image_url || item?.imageUrl
+    if (typeof url === 'string' && url.trim()) return url.trim()
+  }
+  return undefined
+}
+
 export class ApimartVideoAdapter implements VideoProviderAdapter {
   provider = 'apimart'
 
@@ -68,10 +90,12 @@ export class ApimartVideoAdapter implements VideoProviderAdapter {
     const body: any = {
       model: record.model || config.model || DEFAULT_MODEL,
       prompt: record.prompt || '',
-      resolution: '720p',
+      resolution: record.resolution || '720p',
       size: normalizeSize(record.aspectRatio),
       duration: normalizeDuration(record.duration),
-      generate_audio: true,
+      generate_audio: record.generateAudio ?? true,
+      return_last_frame: record.returnLastFrame ?? true,
+      watermark: record.watermark ?? false,
     }
 
     if (record.referenceMode === 'single' && record.imageUrl) {
@@ -102,7 +126,7 @@ export class ApimartVideoAdapter implements VideoProviderAdapter {
     if (taskId) return { isAsync: true, taskId }
 
     const videoUrl = extractVideoUrl(result)
-    if (videoUrl) return { isAsync: false, videoUrl }
+    if (videoUrl) return { isAsync: false, videoUrl, lastFrameUrl: extractLastFrameUrl(result) }
 
     throw new Error(result?.error?.message || 'No APIMart task_id in video generation response')
   }
@@ -126,6 +150,7 @@ export class ApimartVideoAdapter implements VideoProviderAdapter {
       return {
         status: 'completed',
         videoUrl: extractVideoUrl(result) || undefined,
+        lastFrameUrl: extractLastFrameUrl(result),
       }
     }
 

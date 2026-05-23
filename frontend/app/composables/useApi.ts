@@ -1,6 +1,9 @@
 const BASE = '/api/v1'
 const TOKEN_KEY = 'huobao_auth_token'
 const USER_KEY = 'huobao_auth_user'
+const GET_CACHE_TTL_MS = 10_000
+const getCache = new Map<string, { expiresAt: number; value?: any; promise?: Promise<any> }>()
+const modelOptionsByScope = new Map<string, Promise<any[]>>()
 
 export function getAuthToken() {
   if (typeof localStorage === 'undefined') return ''
@@ -18,6 +21,8 @@ export function getAuthUser() {
 
 export function setAuthSession(token: string, user: any) {
   if (typeof localStorage === 'undefined') return
+  getCache.clear()
+  modelOptionsByScope.clear()
   localStorage.setItem(TOKEN_KEY, token)
   localStorage.setItem(USER_KEY, JSON.stringify(user || null))
   window.dispatchEvent(new CustomEvent('huobao-auth-change'))
@@ -26,11 +31,13 @@ export function setAuthSession(token: string, user: any) {
 export function updateAuthUser(user: any) {
   if (typeof localStorage === 'undefined') return
   localStorage.setItem(USER_KEY, JSON.stringify(user || null))
-  window.dispatchEvent(new CustomEvent('huobao-auth-change'))
+  window.dispatchEvent(new CustomEvent('huobao-user-change'))
 }
 
 export function clearAuthSession() {
   if (typeof localStorage === 'undefined') return
+  getCache.clear()
+  modelOptionsByScope.clear()
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
   window.dispatchEvent(new CustomEvent('huobao-auth-change'))
@@ -73,6 +80,46 @@ async function req<T = any>(method: string, path: string, body?: any): Promise<T
     }
     throw err
   }
+}
+
+function cachedGet<T = any>(path: string, ttl = GET_CACHE_TTL_MS): Promise<T> {
+  const userId = getAuthUser()?.id || 'guest'
+  const key = `${userId}:${path}`
+  const existing = getCache.get(key)
+  const ts = Date.now()
+  if (existing?.promise) return existing.promise
+  if (existing && existing.expiresAt > ts) return Promise.resolve(existing.value as T)
+
+  const promise = req<T>('GET', path)
+    .then((value) => {
+      getCache.set(key, { value, expiresAt: Date.now() + ttl })
+      return value
+    })
+    .catch((error) => {
+      getCache.delete(key)
+      throw error
+    })
+  getCache.set(key, { promise, expiresAt: ts + ttl })
+  return promise
+}
+
+async function modelOptions(serviceType?: string, params: Record<string, any> = {}) {
+  const query = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') query.set(key, String(value))
+  })
+  const path = `/ai-models/options${query.toString() ? `?${query.toString()}` : ''}`
+  const userId = getAuthUser()?.id || 'guest'
+  const scopeKey = `${userId}:${path}`
+  if (!modelOptionsByScope.has(scopeKey)) {
+    modelOptionsByScope.set(scopeKey, cachedGet<any[]>(path, 60_000).catch((error) => {
+      modelOptionsByScope.delete(scopeKey)
+      throw error
+    }))
+  }
+  const rows = await modelOptionsByScope.get(scopeKey)
+  if (!serviceType) return rows
+  return (Array.isArray(rows) ? rows : []).filter(row => String(row.service_type || row.serviceType || '') === serviceType)
 }
 
 export const api = {
@@ -345,14 +392,7 @@ export const aiModelAPI = {
     })
     return api.get(`/ai-models${query.toString() ? `?${query.toString()}` : ''}`)
   },
-  options: (serviceType?: string, params: Record<string, any> = {}) => {
-    const query = new URLSearchParams()
-    if (serviceType) query.set('service_type', serviceType)
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') query.set(key, String(value))
-    })
-    return api.get(`/ai-models/options${query.toString() ? `?${query.toString()}` : ''}`)
-  },
+  options: modelOptions,
   providers: (serviceType?: string) => api.get(`/ai-models/providers${serviceType ? `?service_type=${encodeURIComponent(serviceType)}` : ''}`),
   create: (d: any) => api.post('/ai-models', d),
   update: (id: number, d: any) => api.put(`/ai-models/${id}`, d),
@@ -453,7 +493,7 @@ export const siteAPI = {
 }
 
 export const billingAPI = {
-  membershipStatus: () => api.get('/billing/membership/status'),
+  membershipStatus: () => cachedGet('/billing/membership/status', 30_000),
   membershipPlans: () => api.get('/billing/membership-plans'),
   creditPackages: () => api.get('/billing/credit-packages'),
   pointLogs: (params: Record<string, any> = {}) => api.get(`/billing/points/logs${buildQuery(params) ? `?${buildQuery(params)}` : ''}`),
@@ -486,7 +526,7 @@ export function subscribeCreditEvents(onMessage: (event: any) => void) {
 export const authAPI = {
   register: (d: any) => api.post('/auth/register', d),
   login: (d: any) => api.post('/auth/login', d),
-  me: () => api.get('/auth/me'),
+  me: () => cachedGet('/auth/me', 10_000),
   setResourceMode: (d: any) => api.post('/auth/onboarding/resource-mode', d),
   adminMe: () => api.get('/auth/admin/me'),
 }

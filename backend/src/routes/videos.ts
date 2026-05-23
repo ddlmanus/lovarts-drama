@@ -25,7 +25,7 @@ app.post('/', async (c) => {
 
   try {
     let configId: number | undefined = body.model_config_id ?? body.modelConfigId ?? body.config_id
-    if (body.storyboard_id) {
+    if (!configId && body.storyboard_id) {
       const [sb] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, Number(body.storyboard_id))).execute()
       if (sb) {
         const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, sb.episodeId)).execute()

@@ -296,12 +296,14 @@ onMounted(() => {
   loadSiteSettings()
   refreshCaptcha()
   window.addEventListener('huobao-auth-change', syncAuthUser)
+  window.addEventListener('huobao-user-change', syncUserProfile)
   window.addEventListener('huobao-model-config-change', reloadModelCatalog)
   connectCreditEvents()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('huobao-auth-change', syncAuthUser)
+  window.removeEventListener('huobao-user-change', syncUserProfile)
   window.removeEventListener('huobao-model-config-change', reloadModelCatalog)
   disconnectCreditEvents()
 })
@@ -311,6 +313,10 @@ function syncAuthUser() {
   reloadModelCatalog()
   loadBillingStatus()
   connectCreditEvents()
+}
+
+function syncUserProfile() {
+  currentUser.value = getAuthUser()
 }
 
 async function preloadModels() {
@@ -377,6 +383,7 @@ function connectCreditEvents() {
       ...(currentUser.value || {}),
       credits: event.credits,
     }
+    if (currentUser.value?.id) updateAuthUser(currentUser.value)
   })
 }
 
