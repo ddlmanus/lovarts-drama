@@ -127,8 +127,13 @@ install_base_packages() {
   fi
 }
 
+use_bt_nginx() {
+  [ -x /www/server/nginx/sbin/nginx ] && \
+    ps -eo args= | awk '/nginx: master process/ && /\/www\/server\/nginx\/sbin\/nginx/ { found = 1 } END { exit !found }'
+}
+
 write_nginx_http_config() {
-  if [ -x /www/server/nginx/sbin/nginx ] && [ -d /www/server/panel/vhost/nginx ]; then
+  if use_bt_nginx && [ -d /www/server/panel/vhost/nginx ]; then
     local cert_name="lovarts.art"
     if [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
       cert_name="$DOMAIN"
@@ -200,22 +205,44 @@ NGINX
       sed -i 's/listen 443 ssl http2;/listen 443 ssl;/g; s/listen \[::\]:443 ssl http2;/listen [::]:443 ssl;/g' "/www/server/panel/vhost/nginx/lovarts.art.conf"
     fi
     /www/server/nginx/sbin/nginx -t -c /www/server/nginx/conf/nginx.conf
-    /www/server/nginx/sbin/nginx -s reload -c /www/server/nginx/conf/nginx.conf || kill -HUP "$(cat /www/server/nginx/logs/nginx.pid)"
+    if ! /www/server/nginx/sbin/nginx -s reload -c /www/server/nginx/conf/nginx.conf; then
+      local nginx_pid=""
+      if [ -f /www/server/nginx/logs/nginx.pid ]; then
+        nginx_pid="$(cat /www/server/nginx/logs/nginx.pid || true)"
+      fi
+      if [ -z "$nginx_pid" ] || ! kill -0 "$nginx_pid" 2>/dev/null; then
+        nginx_pid="$(ps -eo pid=,args= | awk '/nginx: master process/ && !/awk/ {print $1; exit}')"
+      fi
+      if [ -n "$nginx_pid" ] && kill -0 "$nginx_pid" 2>/dev/null; then
+        kill -HUP "$nginx_pid"
+      else
+        /www/server/nginx/sbin/nginx -c /www/server/nginx/conf/nginx.conf
+      fi
+    fi
     return
   fi
 
-  cat >"/etc/nginx/sites-available/${DOMAIN}.conf" <<NGINX
+  local cert_name="lovarts.art"
+  local ssl_server=""
+  if [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
+    cert_name="$DOMAIN"
+    ssl_server=$(cat <<NGINX
 server {
-    listen 80;
+    listen 443 ssl;
+    listen [::]:443 ssl;
     server_name ${DOMAIN};
-
-    client_max_body_size 200m;
-
+    client_max_body_size 1024m;
+    ssl_certificate /etc/letsencrypt/live/${cert_name}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${cert_name}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
     gzip on;
     gzip_comp_level 5;
     gzip_min_length 1024;
     gzip_types text/plain text/css application/javascript application/json application/xml image/svg+xml;
-
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    location ^~ /.well-known/acme-challenge/ { root ${REMOTE_DIR}/acme; }
     location ^~ /_nuxt/ {
         alias ${REMOTE_DIR}/current/frontend/.output/public/_nuxt/;
         expires 30d;
@@ -237,11 +264,11 @@ server {
         access_log off;
         try_files \$uri =404;
     }
-
     location / {
         proxy_pass http://127.0.0.1:${APP_PORT};
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
+        proxy_set_header Cookie \$http_cookie;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
@@ -251,6 +278,20 @@ server {
         proxy_send_timeout 600s;
     }
 }
+NGINX
+)
+  fi
+
+  mkdir -p "${REMOTE_DIR}/acme/.well-known/acme-challenge"
+  cat >"/etc/nginx/sites-available/${DOMAIN}.conf" <<NGINX
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN};
+    location ^~ /.well-known/acme-challenge/ { root ${REMOTE_DIR}/acme; }
+    location / { return 301 https://\$host\$request_uri; }
+}
+${ssl_server}
 NGINX
 
   ln -sf "/etc/nginx/sites-available/${DOMAIN}.conf" "/etc/nginx/sites-enabled/${DOMAIN}.conf"
@@ -268,7 +309,7 @@ issue_https_cert() {
   fi
 
   log "Requesting HTTPS certificate for ${DOMAIN}"
-  if [ -x /www/server/nginx/sbin/nginx ] && [ -d /www/server/panel/vhost/nginx ]; then
+  if use_bt_nginx && [ -d /www/server/panel/vhost/nginx ]; then
     mkdir -p "${REMOTE_DIR}/acme/.well-known/acme-challenge"
     if certbot certonly --webroot -w "${REMOTE_DIR}/acme" -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email; then
       write_nginx_http_config

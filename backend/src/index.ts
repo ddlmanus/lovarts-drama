@@ -40,7 +40,7 @@ import events from './routes/events.js'
 import canvasProjects from './routes/canvasProjects.js'
 import { requestLogger, errorHandler } from './middleware/logger.js'
 import { requireAdmin, requireAuth } from './utils/auth.js'
-import { startMembershipScheduler } from './services/membership.js'
+import { ensureMembershipSchema, startMembershipScheduler } from './services/membership.js'
 import { ensureDefaultAdmin } from './services/default-admin.js'
 import { ensureCanvasProjectsSchema } from './services/canvas-projects.js'
 
@@ -155,7 +155,12 @@ if (fs.existsSync(frontendDistPath)) {
 
 const port = Number(process.env.PORT || 5679)
 console.log(`🚀 Huobao Drama TS server on http://localhost:${port}`)
-ensureDefaultAdmin().catch(error => console.error('default admin init failed:', error))
+const membershipSchemaReady = ensureMembershipSchema()
+membershipSchemaReady
+  .then(() => ensureDefaultAdmin())
+  .catch(error => console.error('default admin init failed:', error))
 ensureCanvasProjectsSchema().catch(error => console.error('canvas projects schema init failed:', error))
-startMembershipScheduler().catch(error => console.error('membership scheduler failed:', error))
+membershipSchemaReady
+  .then(() => startMembershipScheduler())
+  .catch(error => console.error('membership scheduler failed:', error))
 serve({ fetch: app.fetch, port })

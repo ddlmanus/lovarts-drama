@@ -355,6 +355,13 @@ function clampInt(value: string | undefined, fallback: number, min: number, max:
   return Math.min(max, Math.max(min, Math.floor(parsed)))
 }
 
+async function findUserProviderConfig(userId: string | null, providerId: number) {
+  const rows = await db.select().from(schema.aiUserProviderConfigs)
+    .where(eq(schema.aiUserProviderConfigs.providerId, providerId))
+    .execute()
+  return rows.find(row => (row.userId || null) === userId) || null
+}
+
 async function normalizeModelBody(body: any, scope: 'public' | 'user') {
   const serviceType = String(body.service_type || body.serviceType || serviceFromType(body.type)).trim()
   const providerId = Number(body.provider_id ?? body.providerId ?? 0) || null
@@ -1245,6 +1252,22 @@ app.post('/admin/user-providers', async (c) => {
   const apiKey = String(body.api_key || body.apiKey || '').trim()
   if (!baseUrl || !apiKey) return badRequest(c, 'base_url and api_key are required')
   const ts = now()
+  const existing = await findUserProviderConfig(userId, providerId)
+  if (existing) {
+    await db.update(schema.aiUserProviderConfigs).set({
+      provider: provider.provider,
+      name: body.name || provider.displayName || provider.name,
+      baseUrl,
+      apiKey,
+      isActive: body.is_active ?? body.isActive ?? true,
+      deletedAt: null,
+      deletedBy: null,
+      isDeleted: false,
+      updatedAt: ts,
+    }).where(eq(schema.aiUserProviderConfigs.id, existing.id)).execute()
+    const row = (await db.select().from(schema.aiUserProviderConfigs).where(eq(schema.aiUserProviderConfigs.id, existing.id)).execute())[0]
+    return success(c, { ...toSnakeCase(row), api_key: row.apiKey ? '********' : '' })
+  }
   const result = await db.insert(schema.aiUserProviderConfigs).values({
     userId,
     providerId,
@@ -1314,20 +1337,39 @@ app.post('/user/providers/connect', async (c) => {
   if (!baseUrl || !apiKey) return badRequest(c, 'base_url and api_key are required')
   const ts = now()
 
-  const result = await db.insert(schema.aiUserProviderConfigs).values({
-    userId,
-    providerId,
-    provider: provider.provider,
-    name: String(body.name || '').trim() || provider.displayName || provider.name,
-    baseUrl,
-    apiKey,
-    isActive: true,
-    createdAt: ts,
-    updatedAt: ts,
-  }).execute()
-  const connected = (await db.select().from(schema.aiUserProviderConfigs)
-    .where(eq(schema.aiUserProviderConfigs.id, Number(result.insertId)))
-    .execute())[0]
+  const existing = await findUserProviderConfig(userId, providerId)
+  let connected: typeof schema.aiUserProviderConfigs.$inferSelect | null = null
+  if (existing) {
+    await db.update(schema.aiUserProviderConfigs).set({
+      provider: provider.provider,
+      name: String(body.name || '').trim() || provider.displayName || provider.name,
+      baseUrl,
+      apiKey,
+      isActive: true,
+      deletedAt: null,
+      deletedBy: null,
+      isDeleted: false,
+      updatedAt: ts,
+    }).where(eq(schema.aiUserProviderConfigs.id, existing.id)).execute()
+    connected = (await db.select().from(schema.aiUserProviderConfigs)
+      .where(eq(schema.aiUserProviderConfigs.id, existing.id))
+      .execute())[0] || null
+  } else {
+    const result = await db.insert(schema.aiUserProviderConfigs).values({
+      userId,
+      providerId,
+      provider: provider.provider,
+      name: String(body.name || '').trim() || provider.displayName || provider.name,
+      baseUrl,
+      apiKey,
+      isActive: true,
+      createdAt: ts,
+      updatedAt: ts,
+    }).execute()
+    connected = (await db.select().from(schema.aiUserProviderConfigs)
+      .where(eq(schema.aiUserProviderConfigs.id, Number(result.insertId)))
+      .execute())[0] || null
+  }
 
   const availableModels = (await publicModels())
     .filter(model => model.isActive)

@@ -110,6 +110,7 @@ app.get('/stats', async (c) => {
 // GET /dramas/:id - Get drama detail
 app.get('/:id', async (c) => {
   const id = Number(c.req.param('id'))
+  if (!Number.isSafeInteger(id) || id <= 0) return notFound(c, '剧本不存在')
   const userId = requestUserId(c)
   const [drama] = await db.select().from(schema.dramas)
     .where(and(eq(schema.dramas.id, id), eq(schema.dramas.userId, userId))).execute()
@@ -137,6 +138,7 @@ app.get('/:id', async (c) => {
 // PUT /dramas/:id - Update drama
 app.put('/:id', async (c) => {
   const id = Number(c.req.param('id'))
+  if (!Number.isSafeInteger(id) || id <= 0) return notFound(c, '剧本不存在')
   const body = await c.req.json()
   const userId = requestUserId(c)
   const updates: Record<string, any> = { updatedAt: now(), updatedBy: userId }
@@ -154,6 +156,7 @@ app.put('/:id', async (c) => {
 // DELETE /dramas/:id - Soft delete
 app.delete('/:id', async (c) => {
   const id = Number(c.req.param('id'))
+  if (!Number.isSafeInteger(id) || id <= 0) return notFound(c, '剧本不存在')
   const userId = requestUserId(c)
   await db.update(schema.dramas).set({ deletedAt: now(), deletedBy: userId, updatedAt: now(), updatedBy: userId }).where(and(eq(schema.dramas.id, id), eq(schema.dramas.userId, userId))).execute()
   return success(c)
@@ -162,6 +165,7 @@ app.delete('/:id', async (c) => {
 // PUT /dramas/:id/characters - Save characters
 app.put('/:id/characters', async (c) => {
   const dramaId = Number(c.req.param('id'))
+  if (!Number.isSafeInteger(dramaId) || dramaId <= 0) return notFound(c, '剧本不存在')
   const body = await c.req.json()
   const chars = body.characters || []
   const ts = now()
@@ -180,6 +184,7 @@ app.put('/:id/characters', async (c) => {
 // PUT /dramas/:id/episodes - Save episodes
 app.put('/:id/episodes', async (c) => {
   const dramaId = Number(c.req.param('id'))
+  if (!Number.isSafeInteger(dramaId) || dramaId <= 0) return notFound(c, '剧本不存在')
   const body = await c.req.json()
   const episodes = body.episodes || []
   const ts = now()
